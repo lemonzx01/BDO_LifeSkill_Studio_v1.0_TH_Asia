@@ -1,0 +1,1 @@
+# BDO_LifeSkill_Studio_v1.0_TH_Asia
