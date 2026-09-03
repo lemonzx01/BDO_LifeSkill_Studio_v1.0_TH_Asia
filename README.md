@@ -13,13 +13,24 @@ npm run import:data   # ดึงสูตร/ชื่อไอเท็ม/ไ
 npm run dev           # http://localhost:3000
 ```
 
+## ล็อกอินและสมาชิก
+
+- เปิดเว็บครั้งแรกจะพาไปหน้า `/setup` เพื่อสร้างบัญชี **แอดมินคนแรก** (มีได้ครั้งเดียว ตอนยังไม่มีผู้ใช้)
+- แอดมินสร้างบัญชีให้สมาชิกที่หน้า `/admin` (ชื่อผู้ใช้ + รหัสผ่านชั่วคราว + สิทธิ์) สมาชิกล็อกอินครั้งแรกจะถูกบังคับตั้งรหัสใหม่
+- ปิดใช้งานบัญชี = session ทั้งหมดของคนนั้นถูกยกเลิกทันที เปิดกลับได้ · ลบ = ถาวร · ต้องเหลือแอดมินที่เปิดใช้งานอย่างน้อย 1 คนเสมอ
+- ฐานข้อมูล: ตั้ง `DATABASE_URL` (Postgres เช่น Neon) ใน `.env.local` หรือ Vercel env · ถ้าไม่ตั้ง จะใช้ **PGlite** (Postgres ฝังตัว) เก็บที่ `.data/pglite` สำหรับพัฒนาบนเครื่อง · ตารางถูกสร้างอัตโนมัติ ไม่ต้องรัน migration
+- รหัสผ่านเก็บแบบ bcrypt, session เป็น cookie httpOnly อายุ 30 วัน, ล็อกอินผิด 10 ครั้งใน 15 นาทีจะถูกพักชั่วคราว
+
 ## โครงสร้าง
 
 | ที่ | หน้าที่ |
 |---|---|
 | `scripts/import-bdocodex.mjs` | นำเข้าสูตรแปรธาตุ/ทำอาหารจาก bdocodex (รวมกลุ่มวัตถุดิบที่ใช้แทนกันได้) และชื่อไอเท็มไทย/อังกฤษจาก bdolytics → `src/data/*.json` + `public/icons/items/` |
 | `src/lib/engine/` | engine คำนวณต้นทุนซ้อนชั้น (ซื้อ/ทำเอง/ของในคลัง) กำไร ROI พร้อม unit test (`npm test`) |
-| `src/lib/market/` | ตัวดึงราคาตลาด Asia: API ทางการ Pearl Abyss เป็นหลัก, arsha.io เป็น fallback, cache 10 นาที |
+| `src/lib/market/` | ตัวดึงราคาตลาด Asia: API ทางการ Pearl Abyss เป็นหลัก, arsha.io เป็น fallback, cache 5 นาที |
+| `src/lib/db/` | Drizzle schema (`users`, `sessions`) และตัวเชื่อมต่อ Neon / PGlite |
+| `src/lib/auth/` | บริการบัญชี/session (มี test), server actions ล็อกอิน/แอดมิน, cookie helpers |
+| `src/app/login`, `/setup`, `/admin`, `/account` | หน้าล็อกอิน ตั้งค่าครั้งแรก จัดการสมาชิก เปลี่ยนรหัสผ่าน |
 | `src/app/api/prices` | `GET /api/prices?ids=all` ราคาปัจจุบันของทุกไอเท็มในฐานสูตร |
 | `src/app/api/market/[id]` | ราคาย้อนหลัง 90 วัน + order book ของไอเท็ม |
 | `src/components/Studio.tsx` | หน้าหลัก: จัดอันดับกำไร ค้นหา กรอง กดแถวดูรายละเอียดวัตถุดิบและตลาด |

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchHistory, fetchOrderBook } from "@/lib/market/client";
+import { getCurrentUser } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +9,7 @@ const TTL_MS = 5 * 60 * 1000;
 
 /** GET /api/market/:id -> { history: number[] (90 days, oldest first), orders: [{price, sellers, buyers}] } */
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  if (!(await getCurrentUser())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id: idStr } = await ctx.params;
   const id = Number(idStr);
   if (!Number.isFinite(id) || id <= 0) return NextResponse.json({ error: "bad id" }, { status: 400 });

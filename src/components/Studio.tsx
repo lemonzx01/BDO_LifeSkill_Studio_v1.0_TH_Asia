@@ -9,6 +9,7 @@ import { useInventory } from "@/lib/inventory";
 import { ItemIcon } from "./ItemIcon";
 import { RecipeDetail } from "./RecipeDetail";
 import { SettingsPanel } from "./SettingsPanel";
+import { UserMenu, type SessionUser } from "./auth/UserMenu";
 
 type Tab = "all" | RecipeType;
 type SortKey = "profitPerHour" | "profitPerUnit" | "profitPerCraft" | "roi" | "unitCost";
@@ -40,7 +41,17 @@ interface PricesResponse {
   source: "official" | "arsha" | null;
 }
 
-export function Studio({ recipes, items, importedAt }: { recipes: Recipe[]; items: Record<ItemId, Item>; importedAt: string }) {
+export function Studio({
+  recipes,
+  items,
+  importedAt,
+  user,
+}: {
+  recipes: Recipe[];
+  items: Record<ItemId, Item>;
+  importedAt: string;
+  user: SessionUser;
+}) {
   const [settings, setSettings] = useSettings();
   const [prices, setPrices] = useState<Record<ItemId, MarketPrice>>({});
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
@@ -123,7 +134,8 @@ export function Studio({ recipes, items, importedAt }: { recipes: Recipe[]; item
             {source && <span> · แหล่ง {source === "official" ? "Pearl Abyss" : "arsha.io"}</span>}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <UserMenu user={user} />
           <button
             onClick={() => load(true)}
             disabled={loading}

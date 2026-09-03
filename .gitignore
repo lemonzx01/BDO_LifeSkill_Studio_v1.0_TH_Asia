@@ -45,3 +45,7 @@ scripts/.cache/
 
 # local logs
 scripts/.*.log
+
+# local PGlite database
+.data/
+!.env.example
