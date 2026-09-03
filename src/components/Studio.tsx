@@ -9,7 +9,8 @@ import { useInventory } from "@/lib/inventory";
 import { ItemIcon } from "./ItemIcon";
 import { RecipeDetail } from "./RecipeDetail";
 import { SettingsPanel } from "./SettingsPanel";
-import { UserMenu, type SessionUser } from "./auth/UserMenu";
+import type { SessionUser } from "./auth/UserMenu";
+import { TopNav } from "./TopNav";
 
 type Tab = "all" | RecipeType;
 type SortKey = "profitPerHour" | "profitPerUnit" | "profitPerCraft" | "roi" | "unitCost";
@@ -34,11 +35,16 @@ const SORTS: { key: SortKey; label: string }[] = [
   { key: "unitCost", label: "ต้นทุนต่ำสุด" },
 ];
 const PAGE = 100;
+const SOURCE_LABEL: Record<string, string> = {
+  snapshot: "ฐานข้อมูลตลาด (อัปเดตทุก 10 นาที)",
+  official: "Pearl Abyss",
+  arsha: "arsha.io",
+};
 
 interface PricesResponse {
   prices: Record<ItemId, MarketPrice>;
   fetchedAt: number | null;
-  source: "official" | "arsha" | null;
+  source: "official" | "arsha" | "snapshot" | null;
 }
 
 export function Studio({
@@ -126,16 +132,13 @@ export function Studio({
 
   return (
     <main className="mx-auto w-full max-w-7xl px-3 py-4 md:px-6">
-      <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-accent md:text-2xl">BDO LifeSkill Studio</h1>
-          <p className="text-xs text-muted md:text-sm">
-            ตลาดกลาง Asia · ราคาอัปเดต {loading ? "กำลังโหลด…" : timeAgo(fetchedAt)}
-            {source && <span> · แหล่ง {source === "official" ? "Pearl Abyss" : "arsha.io"}</span>}
-          </p>
-        </div>
+      <TopNav
+        user={user}
+        subtitle={`ตลาดกลาง Asia · ราคาอัปเดต ${loading ? "กำลังโหลด…" : timeAgo(fetchedAt)}${source ? ` · แหล่ง ${SOURCE_LABEL[source] ?? source}` : ""}`}
+      />
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-base font-semibold">จัดอันดับกำไรสูตรแปรธาตุ / ทำอาหาร</h2>
         <div className="flex flex-wrap items-center gap-2">
-          <UserMenu user={user} />
           <button
             onClick={() => load(true)}
             disabled={loading}
@@ -150,7 +153,7 @@ export function Studio({
             ตั้งค่า
           </button>
         </div>
-      </header>
+      </div>
 
       {error && (
         <div className="mb-3 rounded border border-bad/40 bg-bad/10 px-3 py-2 text-sm text-bad">

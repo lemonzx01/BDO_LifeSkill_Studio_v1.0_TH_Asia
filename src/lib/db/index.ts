@@ -32,11 +32,49 @@ const SCHEMA_SQL = [
     user_agent TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id)`,
+  `CREATE TABLE IF NOT EXISTS market_items (
+    id INTEGER PRIMARY KEY,
+    name_th TEXT NOT NULL,
+    name_en TEXT,
+    icon TEXT,
+    grade INTEGER NOT NULL DEFAULT 0,
+    cat TEXT,
+    sub TEXT,
+    price BIGINT NOT NULL DEFAULT 0,
+    stock INTEGER NOT NULL DEFAULT 0,
+    total_trades BIGINT NOT NULL DEFAULT 0,
+    volume_14d INTEGER,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    history_fetched_at TIMESTAMPTZ
+  )`,
+  `CREATE TABLE IF NOT EXISTS market_daily (
+    item_id INTEGER NOT NULL,
+    day DATE NOT NULL,
+    price BIGINT NOT NULL,
+    stock INTEGER,
+    total_trades BIGINT,
+    PRIMARY KEY (item_id, day)
+  )`,
+  `CREATE INDEX IF NOT EXISTS market_daily_day_idx ON market_daily(day)`,
+  `CREATE TABLE IF NOT EXISTS market_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
 ];
 
 declare global {
   // cached across hot reloads in dev and across requests in one serverless instance
   var __blsDb: Promise<Db> | undefined;
+  var __blsSchemaVersion: string | undefined;
+}
+
+// changes whenever SCHEMA_SQL changes, so a cached connection re-applies new tables
+const SCHEMA_VERSION = String(SCHEMA_SQL.join("\n").length) + ":" + SCHEMA_SQL.length;
+
+async function ensureSchema(db: Db) {
+  for (const stmt of SCHEMA_SQL) await db.execute(sql.raw(stmt));
+  globalThis.__blsSchemaVersion = SCHEMA_VERSION;
 }
 
 async function connect(): Promise<Db> {
@@ -57,18 +95,20 @@ async function connect(): Promise<Db> {
     const client = dataDir ? new PGlite(dataDir) : new PGlite();
     db = drizzle({ client, schema }) as unknown as Db;
   }
-  for (const stmt of SCHEMA_SQL) await db.execute(sql.raw(stmt));
+  await ensureSchema(db);
   return db;
 }
 
-export function getDb(): Promise<Db> {
+export async function getDb(): Promise<Db> {
   if (!globalThis.__blsDb) {
     globalThis.__blsDb = connect().catch((e) => {
       globalThis.__blsDb = undefined; // let the next call retry
       throw e;
     });
   }
-  return globalThis.__blsDb;
+  const db = await globalThis.__blsDb;
+  if (globalThis.__blsSchemaVersion !== SCHEMA_VERSION) await ensureSchema(db);
+  return db;
 }
 
 export function isUsingEmbeddedDb(): boolean {
@@ -78,4 +118,5 @@ export function isUsingEmbeddedDb(): boolean {
 /** Test helper: drop the cached connection so the next getDb() starts fresh. */
 export function resetDbCache() {
   globalThis.__blsDb = undefined;
+  globalThis.__blsSchemaVersion = undefined;
 }

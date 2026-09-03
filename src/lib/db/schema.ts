@@ -1,4 +1,4 @@
-import { boolean, index, integer, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { bigint, boolean, date, index, integer, pgTable, primaryKey, serial, text, timestamp } from "drizzle-orm/pg-core";
 
 export type Role = "admin" | "member";
 
@@ -30,6 +30,47 @@ export const sessions = pgTable(
   },
   (t) => [index("sessions_user_id_idx").on(t.userId)],
 );
+
+/** Latest central-market state for every item (one row per item id, enhancement level 0). */
+export const marketItems = pgTable("market_items", {
+  id: integer("id").primaryKey(),
+  nameTh: text("name_th").notNull(),
+  nameEn: text("name_en"),
+  icon: text("icon"),
+  grade: integer("grade").notNull().default(0),
+  cat: text("cat"),
+  sub: text("sub"),
+  price: bigint("price", { mode: "number" }).notNull().default(0),
+  stock: integer("stock").notNull().default(0),
+  totalTrades: bigint("total_trades", { mode: "number" }).notNull().default(0),
+  /** units traded in the last 14 days (bdolytics), null when unknown */
+  volume14d: integer("volume_14d"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  /** when the official 90-day history was last merged into market_daily */
+  historyFetchedAt: timestamp("history_fetched_at", { withTimezone: true }),
+});
+
+/** One row per item per day: our own price history built from snapshots + official backfill. */
+export const marketDaily = pgTable(
+  "market_daily",
+  {
+    itemId: integer("item_id").notNull(),
+    day: date("day").notNull(),
+    price: bigint("price", { mode: "number" }).notNull(),
+    stock: integer("stock"),
+    totalTrades: bigint("total_trades", { mode: "number" }),
+  },
+  (t) => [primaryKey({ columns: [t.itemId, t.day] }), index("market_daily_day_idx").on(t.day)],
+);
+
+export const marketMeta = pgTable("market_meta", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type MarketItem = typeof marketItems.$inferSelect;
+export type MarketDailyRow = typeof marketDaily.$inferSelect;
 
 export type User = typeof users.$inferSelect;
 export type PublicUser = Omit<User, "passwordHash">;

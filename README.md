@@ -21,6 +21,12 @@ npm run dev           # http://localhost:3000
 - ฐานข้อมูล: ตั้ง `DATABASE_URL` (Postgres เช่น Neon) ใน `.env.local` หรือ Vercel env · ถ้าไม่ตั้ง จะใช้ **PGlite** (Postgres ฝังตัว) เก็บที่ `.data/pglite` สำหรับพัฒนาบนเครื่อง · ตารางถูกสร้างอัตโนมัติ ไม่ต้องรัน migration
 - รหัสผ่านเก็บแบบ bcrypt, session เป็น cookie httpOnly อายุ 30 วัน, ล็อกอินผิด 10 ครั้งใน 15 นาทีจะถูกพักชั่วคราว
 
+## สแกนตลาด (`/market`)
+
+- เก็บ snapshot ทั้งตลาด Asia (10,000+ ไอเท็ม พร้อมปริมาณซื้อขาย 14 วัน) ลง DB เมื่อมีคนเปิดหน้าและข้อมูลเก่ากว่า 10 นาที (รีเฟรชเบื้องหลังหลังส่งหน้าแล้ว) + cron รายวันจาก `vercel.json` (ตั้ง `CRON_SECRET` ใน env เพื่อล็อก endpoint)
+- สร้างประวัติราคารายวันของเราเอง และทยอยดึงราคาย้อนหลัง 90 วันจาก API ทางการมาเติม (100 ไอเท็มต่อการเปิดหน้า) → คอลัมน์ "เฉลี่ย 90 วัน / เทียบปกติ / กำไรถ้าขายราคาปกติ / ROI"
+- หน้าคำนวณสูตรใช้ราคาชุดเดียวกันจาก snapshot ถ้า snapshot ยังไม่มีจึงยิง API ตรง
+
 ## โครงสร้าง
 
 | ที่ | หน้าที่ |
@@ -28,7 +34,10 @@ npm run dev           # http://localhost:3000
 | `scripts/import-bdocodex.mjs` | นำเข้าสูตรแปรธาตุ/ทำอาหารจาก bdocodex (รวมกลุ่มวัตถุดิบที่ใช้แทนกันได้) และชื่อไอเท็มไทย/อังกฤษจาก bdolytics → `src/data/*.json` + `public/icons/items/` |
 | `src/lib/engine/` | engine คำนวณต้นทุนซ้อนชั้น (ซื้อ/ทำเอง/ของในคลัง) กำไร ROI พร้อม unit test (`npm test`) |
 | `src/lib/market/` | ตัวดึงราคาตลาด Asia: API ทางการ Pearl Abyss เป็นหลัก, arsha.io เป็น fallback, cache 5 นาที |
-| `src/lib/db/` | Drizzle schema (`users`, `sessions`) และตัวเชื่อมต่อ Neon / PGlite |
+| `src/lib/db/` | Drizzle schema (`users`, `sessions`, `market_items`, `market_daily`, `market_meta`) และตัวเชื่อมต่อ Neon / PGlite (สร้าง/อัปเดตตารางอัตโนมัติ) |
+| `src/lib/market/snapshot.ts` | ingest snapshot ตลาด, ประวัติรายวัน, backfill 90 วัน, aggregate สำหรับหน้าสแกน (มี test) |
+| `src/app/market`, `src/components/market/` | หน้าสแกนตลาด ตาราง/ตัวกรอง/รายละเอียดไอเท็ม |
+| `src/app/api/market/refresh`, `src/app/api/cron/market` | บังคับรีเฟรช snapshot (สมาชิก) / cron รายวัน (Vercel) |
 | `src/lib/auth/` | บริการบัญชี/session (มี test), server actions ล็อกอิน/แอดมิน, cookie helpers |
 | `src/app/login`, `/setup`, `/admin`, `/account` | หน้าล็อกอิน ตั้งค่าครั้งแรก จัดการสมาชิก เปลี่ยนรหัสผ่าน |
 | `src/app/api/prices` | `GET /api/prices?ids=all` ราคาปัจจุบันของทุกไอเท็มในฐานสูตร |

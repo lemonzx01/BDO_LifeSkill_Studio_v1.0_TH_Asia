@@ -82,7 +82,7 @@
 | 0 · Setup | Next.js 16 + Tailwind 4 + vitest · สคริปต์ import bdocodex/bdolytics · ตัวดึงราคา (ทางการ → arsha) + cache 5 นาที | ✅ เสร็จ (ยังไม่มี DB/ล็อกอิน) |
 | 1 · Core calc | Engine + 12 tests (ตรงกับ Excel) · จัดอันดับกำไร แปรธาตุ 209 + ทำอาหาร 321 สูตร · รายละเอียดสูตร (ต้นไม้วัตถุดิบ, ราคาย้อนหลัง 90 วัน, order book) · ตั้งค่า (VP/Fame/แหวน/Mastery) · แผนผลิต + "มีอยู่แล้ว" · ตัวกรองขาดตลาด | ✅ ใช้งานได้ |
 | 1.5 · ล็อกอิน | บัญชีที่แอดมินสร้าง (bcrypt + DB session) · role admin/member · ปิด/ลบ/รีเซ็ตรหัส · บังคับตั้งรหัสใหม่ครั้งแรก · Drizzle + Neon (prod) / PGlite (dev) · 7 tests | ✅ ใช้งานได้ |
-| 2 · ตลาด/เทรด | สแกนตลาดทั้งเกม 10k ไอเท็ม, คะแนนเทรด, volume จาก bdolytics, cron snapshot ลง DB | ⏳ |
+| 2 · ตลาด/เทรด | หน้า `/market`: snapshot 10,040 ไอเท็มลง DB (bdolytics → fallback ทางการ), ประวัติรายวัน + backfill 90 วัน, เทียบราคาปกติ/กำไรหลังภาษี/ROI/ปริมาณ 14 วัน/เทรนด์ 7 วัน, กรองหมวด/ปริมาณ/มีของขาย, cron รายวัน · หน้าสูตรใช้ราคาจาก snapshot เดียวกัน · 4 tests | ✅ ใช้งานได้ |
 | 3 · แปรรูป + คลัง | import mrecipes 7,267 แถว, คลังของฉันแบบเต็ม (ย้ายจาก localStorage ไป DB), import Excel เดิม | ⏳ |
 | 4 · กิล | admin, แชร์แผน/ราคาโน้ตในกิล, export CSV/Excel, PWA | ⏳ |
 
