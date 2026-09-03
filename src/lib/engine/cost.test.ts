@@ -94,6 +94,17 @@ describe("CostEngine recursive cost (Excel sample)", () => {
     expect(engine.costOf(5)).toMatchObject({ unitCost: 200, source: "npc" });
   });
 
+  it("ignores the nominal NPC price of items that are not really vendor-sold", () => {
+    const fake: Record<number, Item> = {
+      ...items,
+      50: item(50, "ของตลาดที่มีราคา NPC ปลอม", true, { npcBuy: 100000 }),
+      51: item(51, "ของหายากที่ไม่มีขาย", false, { npcBuy: 100000 }),
+    };
+    const e = new CostEngine(ctx({ items: fake, prices: { ...prices, 50: price(50, 65000000) } }));
+    expect(e.costOf(50)).toMatchObject({ unitCost: 65000000, source: "market" });
+    expect(e.costOf(51)).toMatchObject({ unknown: true });
+  });
+
   it("computes nested craft costs like the spreadsheet", () => {
     expect(engine.costOf(101).unitCost).toBe(5900); // 3000+2500+200+200
     expect(engine.costOf(102).unitCost).toBe(11400); // 3000+3200+200+5000

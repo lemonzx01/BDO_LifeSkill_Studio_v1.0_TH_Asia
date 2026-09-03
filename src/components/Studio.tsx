@@ -2,30 +2,25 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CostEngine } from "@/lib/engine/cost";
+import { PROCESSING_TYPES, RECIPE_TYPE_TH } from "@/lib/engine/mastery";
 import type { Inventory, Item, ItemId, MarketPrice, Recipe, RecipeEvaluation, RecipeType } from "@/lib/engine/types";
 import { pct, silver, silverShort, timeAgo } from "@/lib/format";
-import { useSettings } from "@/lib/settings";
-import { useInventory } from "@/lib/inventory";
 import { ItemIcon } from "./ItemIcon";
 import { RecipeDetail } from "./RecipeDetail";
 import { SettingsPanel } from "./SettingsPanel";
 import type { SessionUser } from "./auth/UserMenu";
 import { TopNav } from "./TopNav";
+import { useInventory, useSettings } from "./UserDataProvider";
 
-type Tab = "all" | RecipeType;
+type Tab = "all" | "alchemy" | "cooking" | "processing";
 type SortKey = "profitPerHour" | "profitPerUnit" | "profitPerCraft" | "roi" | "unitCost";
 type MarketFilter = "all" | "soldout" | "instock";
-
-const MARKET_FILTERS: { key: MarketFilter; label: string }[] = [
-  { key: "all", label: "สภาพตลาด: ทั้งหมด" },
-  { key: "soldout", label: "ขาดตลาด (ของหมด ขายได้ทันที)" },
-  { key: "instock", label: "มีของค้างขาย" },
-];
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "all", label: "ทั้งหมด" },
   { key: "alchemy", label: "แปรธาตุ" },
   { key: "cooking", label: "ทำอาหาร" },
+  { key: "processing", label: "แปรรูป" },
 ];
 const SORTS: { key: SortKey; label: string }[] = [
   { key: "profitPerUnit", label: "กำไร/ชิ้น" },
@@ -34,9 +29,14 @@ const SORTS: { key: SortKey; label: string }[] = [
   { key: "profitPerHour", label: "กำไร/ชม." },
   { key: "unitCost", label: "ต้นทุนต่ำสุด" },
 ];
+const MARKET_FILTERS: { key: MarketFilter; label: string }[] = [
+  { key: "all", label: "สภาพตลาด: ทั้งหมด" },
+  { key: "soldout", label: "ขาดตลาด (ของหมด ขายได้ทันที)" },
+  { key: "instock", label: "มีของค้างขาย" },
+];
 const PAGE = 100;
 const SOURCE_LABEL: Record<string, string> = {
-  snapshot: "ฐานข้อมูลตลาด (อัปเดตทุก 10 นาที)",
+  snapshot: "ฐานข้อมูลตลาด (อัปเดตทุก 5 นาที)",
   official: "Pearl Abyss",
   arsha: "arsha.io",
 };
@@ -46,19 +46,17 @@ interface PricesResponse {
   fetchedAt: number | null;
   source: "official" | "arsha" | "snapshot" | null;
 }
-
-export function Studio({
-  recipes,
-  items,
-  importedAt,
-  user,
-}: {
+interface DataResponse {
   recipes: Recipe[];
   items: Record<ItemId, Item>;
-  importedAt: string;
-  user: SessionUser;
-}) {
+  meta: { importedAt: string; recipeCount: number; itemCount: number };
+}
+
+export function Studio({ user }: { user: SessionUser }) {
   const [settings, setSettings] = useSettings();
+  const inventory = useInventory();
+  const [data, setData] = useState<DataResponse | null>(null);
+  const [dataError, setDataError] = useState<string | null>(null);
   const [prices, setPrices] = useState<Record<ItemId, MarketPrice>>({});
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [source, setSource] = useState<string | null>(null);
@@ -66,20 +64,20 @@ export function Studio({
   const [error, setError] = useState<string | null>(null);
 
   const [tab, setTab] = useState<Tab>("all");
+  const [method, setMethod] = useState<RecipeType | "all">("all");
   const [query, setQuery] = useState("");
   const [hideIncomplete, setHideIncomplete] = useState(true);
   const [hideSoldOut, setHideSoldOut] = useState(false);
   const [marketFilter, setMarketFilter] = useState<MarketFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("profitPerUnit");
-  // "show more" limit resets automatically whenever the filter key changes
-  const filterKey = JSON.stringify([tab, query, hideIncomplete, hideSoldOut, marketFilter, sortKey]);
+  const filterKey = JSON.stringify([tab, method, query, hideIncomplete, hideSoldOut, marketFilter, sortKey]);
   const [limitState, setLimitState] = useState({ key: filterKey, limit: PAGE });
   const limit = limitState.key === filterKey ? limitState.limit : PAGE;
   const showMore = () => setLimitState({ key: filterKey, limit: limit + PAGE });
   const [expanded, setExpanded] = useState<number | null>(null);
   const [showSettings, setShowSettings] = useState(false);
 
-  // State is only touched inside promise callbacks so the effect body stays pure.
+  // State is only touched inside promise callbacks so the effect bodies stay pure.
   const fetchPrices = useCallback((force: boolean) => {
     return fetch(`/api/prices?ids=all${force ? "&force=1" : ""}`)
       .then((res) => (res.ok ? (res.json() as Promise<PricesResponse>) : Promise.reject(new Error(`HTTP ${res.status}`))))
@@ -95,12 +93,19 @@ export function Studio({
   useEffect(() => {
     void fetchPrices(false);
   }, [fetchPrices]);
+  useEffect(() => {
+    fetch("/api/data", { cache: "no-cache" })
+      .then((res) => (res.ok ? (res.json() as Promise<DataResponse>) : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((json) => setData(json))
+      .catch((e: Error) => setDataError(e.message));
+  }, []);
   const load = (force = false) => {
     setLoading(true);
     void fetchPrices(force);
   };
 
-  const inventory = useInventory();
+  const recipes = useMemo(() => data?.recipes ?? [], [data]);
+  const items = useMemo(() => data?.items ?? ({} as Record<ItemId, Item>), [data]);
   const engine = useMemo(
     () => new CostEngine({ items, recipes, prices, settings, inventory, ownedCostMode: settings.ownedCostMode }),
     [items, recipes, prices, settings, inventory],
@@ -110,7 +115,13 @@ export function Studio({
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = evaluations.filter((ev) => {
-      if (tab !== "all" && ev.recipe.type !== tab) return false;
+      const t = ev.recipe.type;
+      if (tab === "alchemy" && t !== "alchemy") return false;
+      if (tab === "cooking" && t !== "cooking") return false;
+      if (tab === "processing") {
+        if (!PROCESSING_TYPES.includes(t)) return false;
+        if (method !== "all" && t !== method) return false;
+      }
       if (hideIncomplete && (ev.flags.unknownCost || ev.flags.productNoPrice || ev.flags.productNotMarketable || ev.flags.aboveSkill)) return false;
       if (hideSoldOut && ev.flags.materialSoldOut) return false;
       if (marketFilter !== "all") {
@@ -128,7 +139,9 @@ export function Studio({
     });
     list.sort((a, b) => (sortKey === "unitCost" ? a.unitCost - b.unitCost : b[sortKey] - a[sortKey]));
     return list;
-  }, [evaluations, tab, query, hideIncomplete, hideSoldOut, marketFilter, sortKey, items, prices]);
+  }, [evaluations, tab, method, query, hideIncomplete, hideSoldOut, marketFilter, sortKey, items, prices]);
+
+  const busy = loading || !data;
 
   return (
     <main className="mx-auto w-full max-w-7xl px-3 py-4 md:px-6">
@@ -137,13 +150,9 @@ export function Studio({
         subtitle={`ตลาดกลาง Asia · ราคาอัปเดต ${loading ? "กำลังโหลด…" : timeAgo(fetchedAt)}${source ? ` · แหล่ง ${SOURCE_LABEL[source] ?? source}` : ""}`}
       />
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-base font-semibold">จัดอันดับกำไรสูตรแปรธาตุ / ทำอาหาร</h2>
+        <h2 className="text-base font-semibold">จัดอันดับกำไรสูตร แปรธาตุ / ทำอาหาร / แปรรูป</h2>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => load(true)}
-            disabled={loading}
-            className="rounded border border-border bg-panel px-3 py-1.5 text-sm hover:bg-panel-2 disabled:opacity-50"
-          >
+          <button onClick={() => load(true)} disabled={loading} className="rounded border border-border bg-panel px-3 py-1.5 text-sm hover:bg-panel-2 disabled:opacity-50">
             {loading ? "กำลังโหลด…" : "รีเฟรชราคา"}
           </button>
           <button
@@ -156,10 +165,9 @@ export function Studio({
       </div>
 
       {error && (
-        <div className="mb-3 rounded border border-bad/40 bg-bad/10 px-3 py-2 text-sm text-bad">
-          โหลดราคาไม่สำเร็จ: {error} — ตัวเลขที่เห็นอาจไม่ครบ ลองกดรีเฟรชอีกครั้ง
-        </div>
+        <div className="mb-3 rounded border border-bad/40 bg-bad/10 px-3 py-2 text-sm text-bad">โหลดราคาไม่สำเร็จ: {error} — ตัวเลขที่เห็นอาจไม่ครบ ลองกดรีเฟรชอีกครั้ง</div>
       )}
+      {dataError && <div className="mb-3 rounded border border-bad/40 bg-bad/10 px-3 py-2 text-sm text-bad">โหลดฐานข้อมูลสูตรไม่สำเร็จ: {dataError}</div>}
 
       {showSettings && (
         <div className="mb-4">
@@ -170,26 +178,28 @@ export function Studio({
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="flex rounded border border-border bg-panel p-0.5">
           {TABS.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`rounded px-3 py-1 text-sm ${tab === t.key ? "bg-accent text-black" : "text-muted hover:text-foreground"}`}
-            >
+            <button key={t.key} onClick={() => setTab(t.key)} className={`rounded px-3 py-1 text-sm ${tab === t.key ? "bg-accent text-black" : "text-muted hover:text-foreground"}`}>
               {t.label}
             </button>
           ))}
         </div>
+        {tab === "processing" && (
+          <select value={method} onChange={(e) => setMethod(e.target.value as RecipeType | "all")} className="rounded border border-border bg-panel px-2 py-1.5 text-sm">
+            <option value="all">วิธีแปรรูป: ทั้งหมด</option>
+            {PROCESSING_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {RECIPE_TYPE_TH[t]}
+              </option>
+            ))}
+          </select>
+        )}
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="ค้นหาชื่อไอเท็ม (ไทย/อังกฤษ)…"
           className="min-w-[200px] flex-1 rounded border border-border bg-panel px-3 py-1.5 text-sm outline-none focus:border-accent"
         />
-        <select
-          value={sortKey}
-          onChange={(e) => setSortKey(e.target.value as SortKey)}
-          className="rounded border border-border bg-panel px-2 py-1.5 text-sm"
-        >
+        <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)} className="rounded border border-border bg-panel px-2 py-1.5 text-sm">
           {SORTS.map((s) => (
             <option key={s.key} value={s.key}>
               เรียงตาม: {s.label}
@@ -246,7 +256,7 @@ export function Studio({
             {rows.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-3 py-8 text-center text-muted">
-                  {loading ? "กำลังโหลดราคา…" : "ไม่พบสูตรที่ตรงเงื่อนไข"}
+                  {busy ? "กำลังโหลดสูตรและราคา…" : "ไม่พบสูตรที่ตรงเงื่อนไข"}
                 </td>
               </tr>
             )}
@@ -262,7 +272,8 @@ export function Studio({
       )}
 
       <footer className="mt-6 text-xs text-muted">
-        สูตร {recipes.length} รายการ (นำเข้าเมื่อ {new Date(importedAt).toLocaleDateString("th-TH")}) · ราคาจาก Pearl Abyss / arsha.io · ข้อมูลสูตร bdocodex · ชื่อไอเท็ม bdolytics
+        สูตร {silver(recipes.length)} รายการ
+        {data ? ` (นำเข้าเมื่อ ${new Date(data.meta.importedAt).toLocaleDateString("th-TH")})` : ""} · ราคาจาก Pearl Abyss / arsha.io / bdolytics · ข้อมูลสูตร bdocodex
       </footer>
     </main>
   );
@@ -294,7 +305,8 @@ function Row({
             <div className="min-w-0">
               <div className="truncate font-medium">{item?.th ?? ev.recipe.name}</div>
               <div className="truncate text-[11px] text-muted">
-                {ev.recipe.type === "alchemy" ? "แปรธาตุ" : "ทำอาหาร"} · {ev.recipe.skill.display} · ผลผลิต {ev.expectedYield.toFixed(1)}/รอบ
+                {RECIPE_TYPE_TH[ev.recipe.type]}
+                {ev.recipe.skill.sort > 0 ? ` · ${ev.recipe.skill.display}` : ""} · ผลผลิต {ev.expectedYield.toFixed(1)}/รอบ
               </div>
             </div>
           </div>

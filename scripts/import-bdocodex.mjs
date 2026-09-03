@@ -26,7 +26,8 @@ const argVal = (name, def) => {
   const i = args.indexOf(name);
   return i >= 0 ? args[i + 1] : def;
 };
-const TYPES = argVal("--types", "alchemy,cooking").split(",");
+const DEFAULT_TYPES = "alchemy,cooking,heating,grinding,drying,shaking,filtering,chopping,simple-alchemy,simple-cooking";
+const TYPES = argVal("--types", DEFAULT_TYPES).split(",");
 const DOWNLOAD_ICONS = !args.includes("--no-icons");
 const DELAY_MS = Number(argVal("--delay", "150"));
 
@@ -37,13 +38,34 @@ fs.mkdirSync(CACHE_DIR, { recursive: true });
 fs.mkdirSync(DATA_DIR, { recursive: true });
 if (DOWNLOAD_ICONS) fs.mkdirSync(ICON_DIR, { recursive: true });
 
-async function fetchCached(url, { binary = false } = {}) {
+function cachePath(url, binary = false) {
   const key = crypto.createHash("sha1").update(url).digest("hex");
-  const file = path.join(CACHE_DIR, key + (binary ? ".bin" : ".txt"));
+  return path.join(CACHE_DIR, key + (binary ? ".bin" : ".txt"));
+}
+
+/** Cached response text, or null when the URL was never fetched (no network). */
+function readCache(url) {
+  const file = cachePath(url);
+  return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
+}
+
+async function fetchCached(url, { binary = false } = {}) {
+  const file = cachePath(url, binary);
   if (fs.existsSync(file)) return binary ? fs.readFileSync(file) : fs.readFileSync(file, "utf8");
   await sleep(DELAY_MS);
-  const res = await fetch(url, { headers: { "User-Agent": UA } });
-  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+  let res;
+  for (let attempt = 1; ; attempt++) {
+    res = await fetch(url, { headers: { "User-Agent": UA } });
+    if (res.ok) break;
+    // back off politely on rate limits / transient server errors
+    if ((res.status === 429 || res.status >= 500) && attempt < 6) {
+      const wait = Math.min(30000, 2000 * 2 ** (attempt - 1));
+      console.warn(`  ! HTTP ${res.status}, retry ${attempt} in ${wait / 1000}s: ${url.slice(0, 80)}`);
+      await sleep(wait);
+      continue;
+    }
+    throw new Error(`HTTP ${res.status} for ${url}`);
+  }
   if (binary) {
     const buf = Buffer.from(await res.arrayBuffer());
     fs.writeFileSync(file, buf);
@@ -89,25 +111,40 @@ function parseSlots(html) {
   });
 }
 
-// our type name -> bdocodex list type; an unknown bdocodex type silently returns ALL recipes
-const CODEX_TYPE = { alchemy: "alchemy", cooking: "culinary" };
-const TYPE_BY_LABEL = { แปรธาตุ: "alchemy", ทำอาหาร: "cooking" };
+// our type name -> bdocodex list (a=recipes for alchemy/cooking, a=mrecipes for processing);
+// an unknown bdocodex type silently returns ALL recipes, so every entry is verified by its label
+const CODEX_TYPE = {
+  alchemy: { a: "recipes", type: "alchemy", label: "แปรธาตุ" },
+  cooking: { a: "recipes", type: "culinary", label: "ทำอาหาร" },
+  heating: { a: "mrecipes", type: "heating", label: "หลอม" },
+  grinding: { a: "mrecipes", type: "grind", label: "บด" },
+  drying: { a: "mrecipes", type: "dry", label: "ตากแห้ง" },
+  shaking: { a: "mrecipes", type: "shake", label: "เขย่า" },
+  filtering: { a: "mrecipes", type: "thinning", label: "กรอง" },
+  chopping: { a: "mrecipes", type: "woodcutting", label: "ตัดฟืน" },
+  "simple-alchemy": { a: "mrecipes", type: "malchemy", label: "แปรธาตุอย่างง่าย" },
+  "simple-cooking": { a: "mrecipes", type: "mculinary", label: "ทำอาหารอย่างง่าย" },
+};
+// bdocodex recipe ids and mrecipe ids overlap; keep ours unique
+const MRECIPE_ID_OFFSET = 100000;
 
 async function fetchRecipeList(type) {
-  const codexType = CODEX_TYPE[type];
-  if (!codexType) throw new Error(`unknown recipe type ${type}`);
-  const url = `https://bdocodex.com/query.php?a=recipes&type=${codexType}&id=1&l=th`;
+  const codex = CODEX_TYPE[type];
+  if (!codex) throw new Error(`unknown recipe type ${type}`);
+  const url = `https://bdocodex.com/query.php?a=${codex.a}&type=${codex.type}&id=1&l=th`;
   const json = JSON.parse(await fetchCached(url));
   const out = [];
   for (const row of json.aaData) {
-    const id = Number(row[0]);
+    const id = Number(row[0]) + (codex.a === "mrecipes" ? MRECIPE_ID_OFFSET : 0);
     const name = stripTags(row[2]);
-    const rowType = TYPE_BY_LABEL[stripTags(String(row[3]))];
-    if (rowType && rowType !== type) continue; // list was broader than asked (defensive)
+    if (stripTags(String(row[3])) !== codex.label) continue; // list was broader than asked (defensive)
     const skill = row[4] && typeof row[4] === "object" ? row[4] : { display: String(row[4]), sort_value: 0 };
     const sort = Number(skill.sort_value) || 0;
-    const tier = Math.floor(sort / 10);
-    const level = sort % 10;
+    // bdocodex sort_value is not a clean tier*10+level (Guru shows as 70), so read the tier from the label
+    const display = String(skill.display ?? "");
+    const tierIdx = TIERS.findIndex((t) => display.startsWith(t));
+    const tier = tierIdx >= 0 ? tierIdx : Math.min(6, Math.floor(sort / 10));
+    const level = Number((display.match(/Lv\.\s*(\d+)/) || [])[1] ?? sort % 10) || 0;
     const exp = Number(String(row[5]).replace(/[^\d]/g, "")) || 0;
     const materials = parseSlots(row[6]).map((s) => ({
       id: s.id,
@@ -179,14 +216,33 @@ async function fetchBdolyticsMarket(lang) {
   return map;
 }
 
-async function fetchBdolyticsItem(id, lang) {
+function bdolyticsItemUrl(id, lang) {
   const input = encodeURIComponent(JSON.stringify({ id: String(id), language: lang }));
-  const url = `https://bdolytics.com/api/trpc/database.getItem?input=${input}`;
+  return `https://bdolytics.com/api/trpc/database.getItem?input=${input}`;
+}
+
+/** bdolytics item details, but only if already cached (their API rate-limits at ~1 req/s). */
+function cachedBdolyticsItem(id, lang) {
+  const raw = readCache(bdolyticsItemUrl(id, lang));
+  if (!raw) return null;
   try {
-    const json = JSON.parse(await fetchCached(url));
-    return json.result?.data ?? null;
+    return JSON.parse(raw).result?.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Name / grade / icon from the bdocodex tooltip (fast, no rate limit observed). lang: "th" | "us" */
+async function fetchCodexTip(id, lang) {
+  const url = `https://bdocodex.com/tip.php?id=item--${id}&l=${lang}&nf=on`;
+  try {
+    const html = await fetchCached(url);
+    const name = decodeEntities((html.match(/id="item_name"><b>(?:<span[^>]*><\/span>)?\s*([^<]+)<\/b>/) || [])[1] || "").trim();
+    const grade = Number((html.match(/item_title item_grade_(\d)/) || [])[1] || 0);
+    const icon = (html.match(/<img src="([^"]+\.webp)" class="item_icon/) || [])[1] || null;
+    return name ? { name, grade, icon } : null;
   } catch (e) {
-    console.warn(`  ! getItem ${id} ${lang} failed: ${e.message}`);
+    console.warn(`  ! tip ${id} ${lang} failed: ${e.message}`);
     return null;
   }
 }
@@ -253,24 +309,77 @@ async function main() {
   }
   console.log(`Non-market items to resolve via bdolytics getItem: ${missing.length}`);
   n = 0;
-  for (const id of missing) {
-    const th = await fetchBdolyticsItem(id, "th");
-    const en = await fetchBdolyticsItem(id, "en");
-    items[id] = {
-      id,
-      th: th?.name ?? `#${id}`,
-      en: en?.name ?? th?.name ?? `#${id}`,
-      cat: th?.mainCategory ?? null,
-      sub: th?.subCategory ?? null,
-      grade: th?.grade ?? 0,
-      icon: th?.icon || iconById.get(id) || null,
-      market: false,
-      npcBuy: th?.buyPrice ?? null,
-      npcSell: th?.sellPrice ?? null,
-      weight: th?.weight ?? null,
-    };
-    if (++n % 25 === 0) console.log(`  ${n}/${missing.length}`);
-  }
+  const queue = [...missing];
+  const resolveOne = async (id) => {
+    const th = cachedBdolyticsItem(id, "th");
+    if (th) {
+      // resolved on an earlier run (bdolytics has NPC prices and weight)
+      const en = cachedBdolyticsItem(id, "en");
+      items[id] = {
+        id,
+        th: th.name ?? `#${id}`,
+        en: en?.name ?? th.name ?? `#${id}`,
+        cat: th.mainCategory ?? null,
+        sub: th.subCategory ?? null,
+        grade: th.grade ?? 0,
+        icon: th.icon || iconById.get(id) || null,
+        market: false,
+        npcBuy: th.buyPrice ?? null,
+        npcSell: th.sellPrice ?? null,
+        weight: th.weight ?? null,
+      };
+    } else {
+      const [tipTh, tipEn] = await Promise.all([fetchCodexTip(id, "th"), fetchCodexTip(id, "us")]);
+      items[id] = {
+        id,
+        th: tipTh?.name ?? tipEn?.name ?? `#${id}`,
+        en: tipEn?.name ?? tipTh?.name ?? `#${id}`,
+        cat: null,
+        sub: null,
+        grade: tipTh?.grade ?? 0,
+        icon: tipTh?.icon || iconById.get(id) || null,
+        market: false,
+        npcBuy: null,
+        npcSell: null,
+        weight: null,
+      };
+    }
+    if (++n % 50 === 0) console.log(`  ${n}/${missing.length}`);
+  };
+  await Promise.all(
+    Array.from({ length: 6 }, async () => {
+      while (queue.length) await resolveOne(queue.shift());
+    }),
+  );
+
+  // Processing lists include melting/grinding gear (every weapon and armor piece);
+  // those are never a life-skill money maker and would bloat the data, so drop them.
+  const GEAR = new Set(["mainhand", "offhand", "awakening", "armor", "accessories"]);
+  const isGear = (id) => GEAR.has(items[id]?.cat);
+  const before = recipes.length;
+  const kept = recipes.filter(
+    (r) =>
+      r.materials.length > 0 && // some codex rows have no parsable ingredients (would look free)
+      r.products.length > 0 &&
+      (r.type === "alchemy" || r.type === "cooking" || !r.materials.some((m) => isGear(m.id))),
+  );
+  console.log(`Dropped ${before - kept.length} gear-processing / incomplete recipes`);
+
+  // bdocodex sometimes lists the same recipe twice (identical materials and products); keep one
+  const seen = new Set();
+  const unique = kept.filter((r) => {
+    const key = JSON.stringify([
+      r.type,
+      r.products.map((p) => [p.id, p.min, p.max]),
+      r.materials.map((m) => [m.id, m.qty, m.isGroup ? (groups[m.id] || []).map((g) => [g.id, g.value]) : null]),
+    ]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  console.log(`Dropped ${kept.length - unique.length} duplicate recipes`);
+  recipes.length = 0;
+  recipes.push(...unique);
 
   // Write data first so the app can start while icons are still downloading
   writeData(recipes, groups, items);

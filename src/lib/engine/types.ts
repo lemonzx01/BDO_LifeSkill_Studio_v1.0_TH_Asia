@@ -3,10 +3,17 @@ export type ItemId = number;
 export type RecipeType =
   | "alchemy"
   | "cooking"
-  | "processing"
+  | "heating"
+  | "grinding"
+  | "drying"
+  | "shaking"
+  | "filtering"
+  | "chopping"
   | "simple-alchemy"
-  | "simple-cooking"
-  | "manufacture";
+  | "simple-cooking";
+
+/** Settings (mastery, speed, skill tier) are kept per skill group, not per recipe type. */
+export type SkillGroup = "alchemy" | "cooking" | "processing";
 
 export interface Item {
   id: ItemId;
@@ -81,6 +88,9 @@ export interface MarketPrice {
 
 export type PriceBook = Record<ItemId, MarketPrice | undefined>;
 
+/** How owned stock is valued when it is used as an ingredient. */
+export type OwnedCostMode = "market" | "zero" | "avg";
+
 export interface Settings {
   valuePack: boolean;
   /** family fame bonus as a fraction: 0, 0.005, 0.01 or 0.015 */
@@ -88,30 +98,27 @@ export interface Settings {
   merchantRing: boolean;
   /** any other additive bonus as a fraction */
   extraBonus: number;
-  /** your life skill mastery per recipe type (drives the max-quantity proc chance) */
-  mastery: Partial<Record<RecipeType, number>>;
+  /** your life skill mastery per skill group */
+  mastery: Partial<Record<SkillGroup, number>>;
   /** extra multiplier on top of the mastery-based yield (advanced; 1 = none) */
-  yieldMultiplier: Partial<Record<RecipeType, number>>;
-  /** crafts per hour, per recipe type (for profit/hour) */
-  craftsPerHour: Partial<Record<RecipeType, number>>;
-  /** skill tier you have reached per recipe type (0 = beginner .. 6 = guru); recipes above are flagged */
-  skillTier: Partial<Record<RecipeType, number>>;
+  yieldMultiplier: Partial<Record<SkillGroup, number>>;
+  /** crafts per hour, per skill group (for profit/hour) */
+  craftsPerHour: Partial<Record<SkillGroup, number>>;
+  /** skill tier you have reached per skill group (0 = beginner .. 6 = guru); recipes above are flagged */
+  skillTier: Partial<Record<SkillGroup, number>>;
   /** how items already in your inventory are valued when used as ingredients */
   ownedCostMode: OwnedCostMode;
 }
-
-/** How owned stock is valued when it is used as an ingredient. */
-export type OwnedCostMode = "market" | "zero" | "avg";
 
 export const DEFAULT_SETTINGS: Settings = {
   valuePack: true,
   familyFame: 0,
   merchantRing: false,
   extraBonus: 0,
-  mastery: { alchemy: 0, cooking: 0 },
-  yieldMultiplier: { alchemy: 1, cooking: 1 },
-  craftsPerHour: { alchemy: 900, cooking: 900 },
-  skillTier: { alchemy: 6, cooking: 6 },
+  mastery: { alchemy: 0, cooking: 0, processing: 0 },
+  yieldMultiplier: { alchemy: 1, cooking: 1, processing: 1 },
+  craftsPerHour: { alchemy: 900, cooking: 900, processing: 3000 },
+  skillTier: { alchemy: 6, cooking: 6, processing: 6 },
   ownedCostMode: "market",
 };
 

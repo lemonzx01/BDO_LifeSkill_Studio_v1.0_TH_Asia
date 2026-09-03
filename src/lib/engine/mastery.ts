@@ -1,4 +1,46 @@
-import type { RecipeType } from "./types";
+import type { RecipeType, SkillGroup } from "./types";
+
+/** Which settings group (mastery, speed, tier) a recipe type belongs to. */
+export function skillGroup(type: RecipeType): SkillGroup {
+  if (type === "alchemy") return "alchemy";
+  if (type === "cooking") return "cooking";
+  return "processing";
+}
+
+export const RECIPE_TYPE_TH: Record<RecipeType, string> = {
+  alchemy: "แปรธาตุ",
+  cooking: "ทำอาหาร",
+  heating: "หลอม",
+  grinding: "บด",
+  drying: "ตากแห้ง",
+  shaking: "เขย่า",
+  filtering: "กรอง",
+  chopping: "ตัดฟืน",
+  "simple-alchemy": "แปรธาตุอย่างง่าย",
+  "simple-cooking": "ทำอาหารอย่างง่าย",
+};
+
+export const PROCESSING_TYPES: RecipeType[] = ["heating", "grinding", "drying", "shaking", "filtering", "chopping", "simple-alchemy", "simple-cooking"];
+
+/** Processing mastery only raises how many batches one action handles (mass processing), not the yield per batch. */
+const PROCESSING_MASS: [number, number][] = [
+  [0, 10], [20, 11], [40, 12], [60, 13], [80, 14], [100, 15], [120, 16], [140, 17], [160, 18], [180, 19], [200, 20],
+  [220, 21], [240, 22], [260, 23], [280, 24], [300, 25], [320, 26], [340, 27], [360, 28], [380, 29], [400, 30],
+  [420, 31], [440, 32], [460, 33], [480, 34], [500, 35], [520, 36], [540, 37], [560, 38], [580, 39], [600, 40],
+  [620, 41], [640, 42], [660, 43], [680, 45], [700, 47], [720, 49], [740, 51], [760, 53], [780, 57], [810, 60],
+  [840, 64], [870, 68], [900, 72], [930, 76], [960, 80], [990, 85], [1020, 90], [1060, 96], [1100, 112], [1140, 118],
+  [1180, 124], [1220, 130], [1260, 137], [1300, 144], [1350, 154], [1400, 162], [1450, 170], [1500, 178], [1550, 186],
+  [1600, 194], [1650, 203], [1700, 212], [1800, 222], [1900, 235], [2000, 250], [2100, 260], [2200, 270], [2300, 280],
+  [2400, 285], [2500, 290], [2600, 295], [2700, 300], [2800, 305], [2900, 310], [3000, 315],
+];
+
+/** Batches processed per mass-processing action at the given processing mastery. */
+export function massProcessCount(mastery: number): number {
+  const m = Math.max(0, Math.min(3000, mastery));
+  let best = PROCESSING_MASS[0][1];
+  for (const [x, y] of PROCESSING_MASS) if (m >= x) best = y;
+  return best;
+}
 
 /**
  * Life Skill Mastery -> chance to obtain the maximum quantity per craft.
@@ -31,7 +73,7 @@ const COOKING_MAX_DISHES: Point[] = [
   [2850, 0.7415], [2900, 0.7492], [2950, 0.7568], [3000, 0.7645],
 ];
 
-const TABLES: Partial<Record<RecipeType, Point[]>> = {
+const TABLES: Partial<Record<SkillGroup, Point[]>> = {
   alchemy: ALCHEMY_MAX_PROC,
   cooking: COOKING_MAX_DISHES,
 };
@@ -50,9 +92,9 @@ function interpolate(points: Point[], x: number): number {
   return points[points.length - 1][1];
 }
 
-/** Chance (0..1) to receive the maximum quantity of the main product per craft. */
-export function maxQuantityChance(type: RecipeType, mastery: number): number {
-  const table = TABLES[type];
+/** Chance (0..1) to receive the maximum quantity of the main product per craft (0 for processing). */
+export function maxQuantityChance(group: SkillGroup, mastery: number): number {
+  const table = TABLES[group];
   if (!table) return 0;
   return interpolate(table, Math.max(0, Math.min(MASTERY_MAX, mastery)));
 }

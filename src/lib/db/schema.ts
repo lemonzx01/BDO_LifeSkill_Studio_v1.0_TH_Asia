@@ -69,6 +69,30 @@ export const marketMeta = pgTable("market_meta", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** Per-account calculator settings (JSON) */
+export const userSettings = pgTable("user_settings", {
+  userId: integer("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  data: text("data").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Per-account inventory: what the member already owns */
+export const userInventory = pgTable(
+  "user_inventory",
+  {
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    itemId: integer("item_id").notNull(),
+    qty: integer("qty").notNull(),
+    avgCost: bigint("avg_cost", { mode: "number" }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.itemId] })],
+);
+
 export type MarketItem = typeof marketItems.$inferSelect;
 export type MarketDailyRow = typeof marketDaily.$inferSelect;
 

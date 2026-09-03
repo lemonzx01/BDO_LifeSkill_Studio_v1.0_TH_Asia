@@ -1,4 +1,4 @@
-import { expectedUnits, maxQuantityChance } from "./mastery";
+import { expectedUnits, maxQuantityChance, skillGroup } from "./mastery";
 import type {
   CostChild,
   CostContext,
@@ -12,6 +12,13 @@ import type {
 } from "./types";
 
 const MAX_DEPTH = 12;
+/**
+ * Every item in the game data carries a nominal "buy price" even when no NPC
+ * actually sells it. Real vendor materials (salt, sugar, olive oil, cooking
+ * wine, leavening agent, ...) are cheap and never listed on the market, so an
+ * NPC purchase is only considered for non-market items under this price.
+ */
+const MAX_NPC_PRICE = 10_000;
 
 /** Fraction of the listed price you actually receive after market tax and bonuses. */
 export function netRate(s: Settings): number {
@@ -34,9 +41,10 @@ export function baseYield(recipe: Recipe): number {
 export function expectedYield(recipe: Recipe, settings: Settings): number {
   const p = mainProduct(recipe);
   if (!p) return 1;
-  const mastery = settings.mastery?.[recipe.type] ?? 0;
-  const units = expectedUnits(p.min, p.max, maxQuantityChance(recipe.type, mastery));
-  const mult = settings.yieldMultiplier?.[recipe.type] ?? 1;
+  const group = skillGroup(recipe.type);
+  const mastery = settings.mastery?.[group] ?? 0;
+  const units = expectedUnits(p.min, p.max, maxQuantityChance(group, mastery));
+  const mult = settings.yieldMultiplier?.[group] ?? 1;
   return Math.max(0.0001, units * mult);
 }
 
@@ -117,7 +125,7 @@ export class CostEngine {
         node: base({ unitCost: mp.price, source: "market", soldOut, hasSoldOut: soldOut }),
         rank: 0,
       });
-    } else if (item && item.npcBuy && item.npcBuy > 0) {
+    } else if (item && !item.market && item.npcBuy && item.npcBuy > 0 && item.npcBuy <= MAX_NPC_PRICE) {
       candidates.push({ node: base({ unitCost: item.npcBuy, source: "npc" }), rank: 0 });
     }
 
@@ -238,8 +246,9 @@ export class CostEngine {
     const netPerUnit = sellPrice * rate;
     const profitPerUnit = netPerUnit - unitCost;
     const profitPerCraft = profitPerUnit * yieldPerCraft;
-    const cph = settings.craftsPerHour?.[recipe.type] ?? 0;
-    const skillTier = settings.skillTier?.[recipe.type];
+    const group = skillGroup(recipe.type);
+    const cph = settings.craftsPerHour?.[group] ?? 0;
+    const skillTier = settings.skillTier?.[group];
     const tree: CostNode = {
       id: product.id,
       unitCost,

@@ -4,8 +4,8 @@ import { useMemo, useState } from "react";
 import { flattenRequirements } from "@/lib/engine/cost";
 import type { Inventory, Item, ItemId, MarketPrice, RecipeEvaluation } from "@/lib/engine/types";
 import { silver } from "@/lib/format";
-import { setOwned } from "@/lib/inventory";
 import { ItemIcon } from "./ItemIcon";
+import { useUserData } from "./UserDataProvider";
 
 /**
  * "I want N of this" -> crafts needed, every raw material across all recipe
@@ -22,6 +22,7 @@ export function ProductionPlan({
   prices: Record<ItemId, MarketPrice>;
   inventory: Inventory;
 }) {
+  const { setOwned } = useUserData();
   const [qty, setQty] = useState(100);
   const rounds = Math.max(0, Math.ceil(qty / ev.expectedYield));
 
@@ -127,7 +128,7 @@ export function ProductionPlan({
         <Stat label="กำไรเทียบต้นทุนเต็ม" value={silver(fullProfit)} tone={fullProfit >= 0 ? "good" : "bad"} />
       </div>
       <p className="mt-2 text-[11px] text-muted">
-        ช่อง &ldquo;มีอยู่แล้ว&rdquo; จำอยู่ในเบราว์เซอร์นี้และใช้ร่วมกันทุกสูตร · ต้นทุนของของที่มีอยู่ตั้งได้ในตั้งค่า (คิด 0 หรือคิดตามราคาตลาด)
+        ช่อง &ldquo;มีอยู่แล้ว&rdquo; บันทึกไว้กับบัญชีของคุณ ใช้ร่วมกันทุกสูตรและทุกเครื่อง (ดู/แก้รวมได้ที่หน้า &ldquo;คลังของ&rdquo;) · ต้นทุนของของที่มีอยู่ตั้งได้ในตั้งค่า
       </p>
     </section>
   );

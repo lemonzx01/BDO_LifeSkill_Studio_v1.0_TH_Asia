@@ -1,6 +1,8 @@
 import { after } from "next/server";
 import { MarketScanner } from "@/components/market/MarketScanner";
+import { UserDataProvider } from "@/components/UserDataProvider";
 import { requireUser } from "@/lib/auth/session";
+import { getUserSettings } from "@/lib/user-data";
 import { backfillHistoryThrottled, countItemsWithoutHistory, getLastRefresh, getMarketScan, isSnapshotStale, refreshMarket } from "@/lib/market/snapshot";
 
 export const dynamic = "force-dynamic";
@@ -26,14 +28,16 @@ export default async function MarketPage() {
     after(() => backfillHistoryThrottled(100).catch((e) => console.error("background history backfill failed:", e)));
   }
 
-  const scan = await getMarketScan();
+  const [scan, settings] = await Promise.all([getMarketScan(), getUserSettings(user.id)]);
   return (
-    <MarketScanner
-      rows={scan.rows}
-      refreshedAt={scan.refreshedAt ? scan.refreshedAt.toISOString() : null}
-      source={scan.source}
-      refreshError={refreshError}
-      user={{ username: user.username, displayName: user.displayName, role: user.role }}
-    />
+    <UserDataProvider initialSettings={settings} initialInventory={{}}>
+      <MarketScanner
+        rows={scan.rows}
+        refreshedAt={scan.refreshedAt ? scan.refreshedAt.toISOString() : null}
+        source={scan.source}
+        refreshError={refreshError}
+        user={{ username: user.username, displayName: user.displayName, role: user.role }}
+      />
+    </UserDataProvider>
   );
 }

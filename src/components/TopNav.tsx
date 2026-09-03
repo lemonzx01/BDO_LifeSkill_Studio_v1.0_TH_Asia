@@ -7,6 +7,7 @@ import { UserMenu, type SessionUser } from "./auth/UserMenu";
 const LINKS = [
   { href: "/", label: "คำนวณสูตร" },
   { href: "/market", label: "สแกนตลาด" },
+  { href: "/inventory", label: "คลังของ" },
 ];
 
 export function TopNav({ user, subtitle }: { user: SessionUser; subtitle?: string }) {

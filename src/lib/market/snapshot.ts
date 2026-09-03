@@ -14,7 +14,7 @@ import { fetchHistory, fetchPricesOfficial } from "./client";
  * 90-day history so "price vs usual" has data from day one.
  */
 
-export const SNAPSHOT_TTL_MS = 10 * 60 * 1000;
+export const SNAPSHOT_TTL_MS = 5 * 60 * 1000;
 const HISTORY_REFRESH_MS = 3 * 24 * 60 * 60 * 1000;
 const CHUNK = 500;
 
