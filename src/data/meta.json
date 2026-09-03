@@ -1,0 +1,13 @@
+{
+  "importedAt": "2026-09-03T22:03:03.728Z",
+  "types": [
+    "alchemy",
+    "cooking"
+  ],
+  "recipeCount": 530,
+  "itemCount": 925,
+  "sources": {
+    "recipes": "bdocodex.com (query.php recipes, tip.php substitute groups)",
+    "items": "bdolytics.com (market snapshot ASIA th/en, database.getItem)"
+  }
+}
