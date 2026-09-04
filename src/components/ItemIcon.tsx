@@ -12,7 +12,10 @@ const GRADE_RING: Record<number, string> = {
 };
 
 export function ItemIcon({ id, grade = 0, size = 32, alt = "" }: { id: number; grade?: number; size?: number; alt?: string }) {
-  const [failed, setFailed] = useState(false);
+  // one retry with a cache-busting query before giving up: a flaky connection while
+  // hundreds of icons lazy-load should not leave a permanent "?"
+  const [attempt, setAttempt] = useState(0);
+  const failed = attempt >= 2;
   const ring = GRADE_RING[grade] ?? GRADE_RING[0];
   if (failed) {
     return (
@@ -27,12 +30,13 @@ export function ItemIcon({ id, grade = 0, size = 32, alt = "" }: { id: number; g
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={`/icons/items/${id}.webp`}
+      key={attempt}
+      src={attempt === 0 ? `/icons/items/${id}.webp` : `/icons/items/${id}.webp?retry=${attempt}`}
       alt={alt}
       width={size}
       height={size}
       loading="lazy"
-      onError={() => setFailed(true)}
+      onError={() => setAttempt((a) => a + 1)}
       className={`rounded bg-panel-2 ring-1 ${ring}`}
       style={{ width: size, height: size }}
     />
