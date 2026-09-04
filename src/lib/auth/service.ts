@@ -191,6 +191,24 @@ export async function adminResetPassword(userId: number, newPassword: string) {
   await deleteUserSessions(userId);
 }
 
+/** User changes their own login name and display name; the current password confirms it is really them. */
+export async function changeOwnProfile(userId: number, input: { username: string; displayName: string; currentPassword: string }): Promise<PublicUser> {
+  const username = normalizeUsername(input.username);
+  const uErr = validateUsername(username);
+  if (uErr) throw new AuthError(uErr);
+  const db = await getDb();
+  const [row] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!row) throw new AuthError("ไม่พบผู้ใช้");
+  if (!(await verifyPassword(input.currentPassword, row.passwordHash))) throw new AuthError("รหัสผ่านปัจจุบันไม่ถูกต้อง");
+  if (username !== row.username) {
+    const [exists] = await db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1);
+    if (exists) throw new AuthError("ชื่อผู้ใช้นี้มีอยู่แล้ว");
+  }
+  const displayName = input.displayName.trim() || username;
+  const [updated] = await db.update(users).set({ username, displayName }).where(eq(users.id, userId)).returning();
+  return toPublic(updated);
+}
+
 /** User changes their own password; other sessions are revoked, the current one is kept. */
 export async function changeOwnPassword(userId: number, currentPassword: string, newPassword: string, keepToken?: string) {
   const pErr = validatePassword(newPassword);

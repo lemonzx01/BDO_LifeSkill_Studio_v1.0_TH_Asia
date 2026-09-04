@@ -6,6 +6,7 @@ import {
   assertCanAssign,
   assertCanManage,
   changeOwnPassword,
+  changeOwnProfile,
   countUsers,
   createSession,
   createUser,
@@ -114,6 +115,18 @@ describe("auth service", () => {
     expect(after.find((u) => u.id === owner.id)?.role).toBe("admin");
     await transferOwnership(heir.id, owner.id); // hand it back for the remaining tests
     await deleteUser(heir.id);
+  });
+
+  it("lets a user rename themselves once they prove the password", async () => {
+    const u = await createUser({ username: "oldname", displayName: "Old", password: "secret123" });
+    await expect(changeOwnProfile(u.id, { username: "newname", displayName: "New", currentPassword: "wrong" })).rejects.toThrow(/ปัจจุบัน/);
+    await expect(changeOwnProfile(u.id, { username: "boss", displayName: "New", currentPassword: "secret123" })).rejects.toThrow(/มีอยู่แล้ว/);
+    await expect(changeOwnProfile(u.id, { username: "x", displayName: "New", currentPassword: "secret123" })).rejects.toThrow();
+    const renamed = await changeOwnProfile(u.id, { username: "NewName", displayName: "  ", currentPassword: "secret123" });
+    expect(renamed.username).toBe("newname");
+    expect(renamed.displayName).toBe("newname"); // blank display name falls back to the login name
+    expect((await verifyCredentials("newname", "secret123")).ok).toBe(true);
+    await deleteUser(u.id);
   });
 
   it("deletes a member", async () => {

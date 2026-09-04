@@ -11,6 +11,7 @@ import {
   assertCanAssign,
   assertCanManage,
   changeOwnPassword,
+  changeOwnProfile,
   countUsers,
   createSession,
   createUser,
@@ -171,6 +172,17 @@ export async function adminResetPasswordAction(_prev: ActionState, fd: FormData)
     await adminResetPassword(num(fd, "id"), str(fd, "password"));
     revalidatePath("/admin");
     return { ok: true, message: "ตั้งรหัสผ่านชั่วคราวแล้ว ผู้ใช้ต้องล็อกอินใหม่และตั้งรหัสเอง" };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function changeProfileAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  const me = await requireUser();
+  try {
+    const user = await changeOwnProfile(me.id, { username: str(fd, "username"), displayName: str(fd, "displayName"), currentPassword: str(fd, "current") });
+    revalidatePath("/", "layout");
+    return { ok: true, message: `บันทึกแล้ว ชื่อผู้ใช้สำหรับล็อกอินคือ @${user.username}` };
   } catch (e) {
     return fail(e);
   }
