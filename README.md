@@ -62,6 +62,8 @@ npm run dev           # http://localhost:3000
 | ที่ | หน้าที่ |
 |---|---|
 | `scripts/import-bdocodex.mjs` | นำเข้าสูตรแปรธาตุ/ทำอาหารจาก bdocodex (รวมกลุ่มวัตถุดิบที่ใช้แทนกันได้) และชื่อไอเท็มไทย/อังกฤษจาก bdolytics → `src/data/*.json` + `public/icons/items/` |
+| `scripts/fetch-recipe-icons.mjs` | ดาวน์โหลดรูปให้ไอเทมในฐานข้อมูลสูตรที่ยังไม่มีรูป (ของที่ไม่ได้ขายในตลาด) รันหลัง import สูตรใหม่ |
+| `scripts/admin-tools.mjs` | กู้บัญชีจากคอมมานด์ไลน์เมื่อไม่มีใครล็อกอินเป็นแอดมินใหญ่ได้: `node --env-file=.env.local scripts/admin-tools.mjs list` / `transfer-owner <user>` / `set-role <user> <owner\|admin\|member>` / `reset-password <user> <รหัสชั่วคราว>` |
 | `src/lib/engine/` | engine คำนวณต้นทุนซ้อนชั้น (ซื้อ/ทำเอง/ของในคลัง) กำไร ROI พร้อม unit test (`npm test`) |
 | `src/lib/market/` | ตัวดึงราคาตลาด Asia: API ทางการ Pearl Abyss เป็นหลัก, arsha.io เป็น fallback, cache 5 นาที |
 | `src/lib/db/` | Drizzle schema (`users`, `sessions`, `market_items`, `market_daily`, `market_meta`) และตัวเชื่อมต่อ Neon / Postgres ทั่วไป (postgres.js) / PGlite (สร้าง/อัปเดตตารางอัตโนมัติ) |
