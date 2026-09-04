@@ -5,6 +5,7 @@ import { flattenRequirements } from "@/lib/engine/cost";
 import type { Inventory, Item, ItemId, MarketPrice, RecipeEvaluation } from "@/lib/engine/types";
 import { silver } from "@/lib/format";
 import { ItemIcon } from "./ItemIcon";
+import { NumberInput } from "./NumberInput";
 import { useUserData } from "./UserDataProvider";
 
 /**
@@ -53,14 +54,7 @@ export function ProductionPlan({
         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">แผนผลิต</h4>
         <label className="flex items-center gap-2 text-sm">
           อยากได้
-          <input
-            type="number"
-            min={0}
-            step={10}
-            value={qty}
-            onChange={(e) => setQty(Math.max(0, Number(e.target.value) || 0))}
-            className="num w-24 rounded border border-border bg-panel-2 px-2 py-1 text-right"
-          />
+          <NumberInput min={0} step={10} value={qty} onChange={(v) => setQty(Math.floor(v))} className="num w-24 rounded border border-border bg-panel-2 px-2 py-1 text-right" />
           ชิ้น
         </label>
         <span className="text-sm text-muted">
@@ -95,12 +89,12 @@ export function ProductionPlan({
                 </td>
                 <td className="num py-1 text-right">{silver(r.need)}</td>
                 <td className="py-1 text-right">
-                  <input
-                    type="number"
+                  <NumberInput
                     min={0}
-                    value={r.owned || ""}
+                    value={r.owned}
+                    blankZero
                     placeholder="0"
-                    onChange={(e) => setOwned(r.id, Math.max(0, Number(e.target.value) || 0))}
+                    onChange={(v) => setOwned(r.id, Math.floor(v))}
                     className="num w-24 rounded border border-border bg-panel-2 px-2 py-0.5 text-right"
                   />
                 </td>

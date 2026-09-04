@@ -4,6 +4,7 @@ import type { Settings, SkillGroup } from "@/lib/engine/types";
 import { netRate } from "@/lib/engine/cost";
 import { imperialBonus, massProcessCount, MASTERY_MAX, maxQuantityChance } from "@/lib/engine/mastery";
 import { pct } from "@/lib/format";
+import { NumberInput } from "./NumberInput";
 
 const TIERS = ["มือใหม่", "ฝึกฝน", "คล่องแคล่ว", "เชี่ยวชาญ", "ช่าง", "ลือชื่อ", "เซียน"];
 const SKILLS: { key: SkillGroup; label: string }[] = [
@@ -59,21 +60,29 @@ export function SettingsPanel({ settings, onChange }: { settings: Settings; onCh
       <section className="rounded-lg border border-border bg-panel p-4">
         <h3 className="mb-3 text-sm font-semibold text-accent">ทักษะและผลผลิต</h3>
         <div className="space-y-3 text-sm">
+          {/* header row once, then one aligned row per skill: every cell is label-less so nothing wraps */}
+          <div className="grid grid-cols-[4.5rem_1fr_1fr_1fr] gap-2 text-xs text-muted">
+            <span />
+            <span>ระดับที่มี</span>
+            <span>Mastery</span>
+            <span>รอบ/ชม.</span>
+          </div>
           {SKILLS.map(({ key, label }) => {
             const mastery = settings.mastery[key] ?? 0;
             const hint =
               key === "processing"
-                ? `ทำได้ครั้งละ ${massProcessCount(mastery)} ชุด`
-                : `ได้เต็ม ${pct(maxQuantityChance(key, mastery), 1)} · ราชวัง +${pct(imperialBonus(mastery))}`;
+                ? `แปรรูปได้ครั้งละ ${massProcessCount(mastery)} ชุด`
+                : `โอกาสได้ผลผลิตเต็ม ${pct(maxQuantityChance(key, mastery), 1)} · โบนัสส่งราชวัง +${pct(imperialBonus(mastery))}`;
+            const control = "num h-9 w-full rounded border border-border bg-panel-2 px-2 text-sm text-foreground";
             return (
-              <div key={key} className="grid grid-cols-[auto_1fr_1fr_1fr] items-center gap-2">
-                <span className="w-16 font-medium">{label}</span>
-                <label className="flex flex-col gap-1 text-xs text-muted">
-                  ระดับที่มี
+              <div key={key} className="grid grid-cols-[4.5rem_1fr_1fr_1fr] items-start gap-2">
+                <span className="pt-2 font-medium">{label}</span>
+                <div>
                   <select
+                    aria-label={`ระดับ${label}`}
                     value={settings.skillTier[key] ?? 6}
                     onChange={(e) => set({ skillTier: { ...settings.skillTier, [key]: Number(e.target.value) } })}
-                    className="rounded border border-border bg-panel-2 px-2 py-1 text-sm text-foreground"
+                    className={control}
                   >
                     {TIERS.map((t, i) => (
                       <option key={t} value={i}>
@@ -81,36 +90,39 @@ export function SettingsPanel({ settings, onChange }: { settings: Settings; onCh
                       </option>
                     ))}
                   </select>
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-muted">
-                  Mastery ({hint})
-                  <input
-                    type="number"
-                    step="50"
-                    min="0"
+                  <div className="mt-0.5 min-h-4 text-[11px] text-muted">ซ่อนสูตรที่เกินระดับ</div>
+                </div>
+                <div>
+                  <NumberInput
+                    aria-label={`Mastery ${label}`}
+                    step={50}
+                    min={0}
                     max={MASTERY_MAX}
                     value={mastery}
-                    onChange={(e) => set({ mastery: { ...settings.mastery, [key]: Math.max(0, Math.min(MASTERY_MAX, Number(e.target.value) || 0)) } })}
-                    className="num w-full rounded border border-border bg-panel-2 px-2 py-1 text-sm text-foreground"
+                    onChange={(v) => set({ mastery: { ...settings.mastery, [key]: v } })}
+                    className={control}
                   />
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-muted">
-                  รอบ/ชม.
-                  <input
-                    type="number"
-                    step="50"
-                    min="0"
+                  <div className="mt-0.5 min-h-4 truncate text-[11px] text-muted" title={hint}>
+                    {hint}
+                  </div>
+                </div>
+                <div>
+                  <NumberInput
+                    aria-label={`รอบต่อชั่วโมง ${label}`}
+                    step={50}
+                    min={0}
                     value={settings.craftsPerHour[key] ?? 0}
-                    onChange={(e) => set({ craftsPerHour: { ...settings.craftsPerHour, [key]: Number(e.target.value) || 0 } })}
-                    className="num w-full rounded border border-border bg-panel-2 px-2 py-1 text-sm text-foreground"
+                    onChange={(v) => set({ craftsPerHour: { ...settings.craftsPerHour, [key]: v } })}
+                    className={control}
                   />
-                </label>
+                  <div className="mt-0.5 min-h-4 text-[11px] text-muted">ใช้คิดกำไร/ชม.</div>
+                </div>
               </div>
             );
           })}
           <p className="text-xs text-muted">
-            แปรธาตุ/ทำอาหาร: Mastery เพิ่มโอกาสได้ผลผลิตเต็มต่อรอบ (เช่น สูตร 1~4 ที่ Mastery 2000 แปรธาตุได้เฉลี่ย 3.25 ชิ้น) · แปรรูป: Mastery
-            ไม่เพิ่มผลผลิตต่อชุด แต่ทำได้หลายชุดต่อครั้ง ให้ปรับ &ldquo;รอบ/ชม.&rdquo; ตามความเร็วจริงของคุณ
+            Mastery คือค่าความชำนาญในเกม (ดูได้ในหน้าต่างทักษะ) · แปรธาตุ/ทำอาหาร: ยิ่งสูง ยิ่งมีโอกาสได้ผลผลิตจำนวนสูงสุดต่อรอบ (เช่น สูตร 1~4 ชิ้น ที่ Mastery 2000
+            จะได้เฉลี่ย 3.25 ชิ้น) และได้เงินจากการส่งกล่องราชวังเพิ่ม · แปรรูป: ไม่เพิ่มผลผลิตต่อชุด แต่ทำได้หลายชุดต่อครั้ง ให้ปรับ &ldquo;รอบ/ชม.&rdquo; ตามความเร็วจริงของคุณ
           </p>
         </div>
       </section>

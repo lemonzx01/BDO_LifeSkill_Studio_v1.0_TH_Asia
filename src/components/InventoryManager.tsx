@@ -6,6 +6,7 @@ import { downloadCsv, parseCsv, toCsv } from "@/lib/csv";
 import { silver } from "@/lib/format";
 import type { SessionUser } from "./auth/UserMenu";
 import { ItemIcon } from "./ItemIcon";
+import { NumberInput } from "./NumberInput";
 import { TopNav } from "./TopNav";
 import { useUserData } from "./UserDataProvider";
 
@@ -194,11 +195,10 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
                     </div>
                   </td>
                   <td className="px-2 py-1.5 text-right">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
                       value={o.qty}
-                      onChange={(e) => setOwned(o.id, Math.max(0, Number(e.target.value) || 0), o.avgCost)}
+                      onChange={(v) => setOwned(o.id, Math.floor(v), o.avgCost)}
                       className="num w-24 rounded border border-border bg-panel-2 px-2 py-0.5 text-right"
                     />
                   </td>

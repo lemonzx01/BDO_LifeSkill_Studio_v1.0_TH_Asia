@@ -9,6 +9,7 @@ import { downloadCsv, toCsv } from "@/lib/csv";
 import { pct, silver, silverShort, timeAgo } from "@/lib/format";
 import type { TreeTools } from "./CostTree";
 import { ItemIcon } from "./ItemIcon";
+import { Loading } from "./Loading";
 import { RecipeDetail } from "./RecipeDetail";
 import { SettingsPanel } from "./SettingsPanel";
 import type { SessionUser } from "./auth/UserMenu";
@@ -319,8 +320,10 @@ export function Studio({ user }: { user: SessionUser }) {
         </label>
       </div>
 
+      {busy && rows.length === 0 && <Loading text={!data ? "กำลังโหลดฐานสูตร…" : "กำลังโหลดราคาตลาด…"} className="mb-3" />}
+
       {/* phones: one card per recipe */}
-      <div className="space-y-2 md:hidden">
+      <div className={`space-y-2 md:hidden ${busy && rows.length === 0 ? "hidden" : ""}`}>
         {rows.slice(0, limit).map((ev) => (
           <RecipeCard
             key={ev.recipe.id}
@@ -344,7 +347,7 @@ export function Studio({ user }: { user: SessionUser }) {
         )}
       </div>
 
-      <div className="hidden overflow-x-auto rounded-lg border border-border bg-panel md:block">
+      <div className={`overflow-x-auto rounded-lg border border-border bg-panel ${busy && rows.length === 0 ? "hidden" : "hidden md:block"}`}>
         <table className="w-full min-w-[760px] text-sm">
           <thead className="bg-panel-2 text-xs text-muted">
             <tr>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { imperialBonus, massProcessCount, MASTERY_MAX, maxQuantityChance } from "@/lib/engine/mastery";
 import type { Settings, SkillGroup } from "@/lib/engine/types";
 import { pct } from "@/lib/format";
+import { NumberInput } from "./NumberInput";
 
 const SKILLS: { key: SkillGroup; label: string }[] = [
   { key: "alchemy", label: "แปรธาตุ" },
@@ -23,17 +24,19 @@ export function OnboardingCard({ settings, onSave, onSkip }: { settings: Setting
       <div className="mt-3 grid gap-3 sm:grid-cols-4">
         {SKILLS.map(({ key, label }) => {
           const m = draft.mastery[key] ?? 0;
-          const hint = key === "processing" ? `ครั้งละ ${massProcessCount(m)} ชุด` : `ได้เต็ม ${pct(maxQuantityChance(key, m), 0)} · ราชวัง +${pct(imperialBonus(m), 0)}`;
+          const hint =
+            key === "processing"
+              ? `แปรรูปได้ครั้งละ ${massProcessCount(m)} ชุด`
+              : `โอกาสได้ผลผลิตเต็ม ${pct(maxQuantityChance(key, m), 0)} · โบนัสส่งราชวัง +${pct(imperialBonus(m), 0)}`;
           return (
             <label key={key} className="flex flex-col gap-1 text-sm">
               <span className="font-medium">Mastery {label}</span>
-              <input
-                type="number"
+              <NumberInput
                 min={0}
                 max={MASTERY_MAX}
                 step={50}
                 value={m}
-                onChange={(e) => setMastery(key, Number(e.target.value))}
+                onChange={(v) => setMastery(key, v)}
                 className="num rounded border border-border bg-panel-2 px-3 py-2 text-base outline-none focus:border-accent"
               />
               <span className="text-[11px] text-muted">{hint}</span>

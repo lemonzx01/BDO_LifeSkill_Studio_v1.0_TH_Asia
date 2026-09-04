@@ -6,6 +6,7 @@ import { tradeMath } from "@/lib/engine/trade";
 import { pct, silver } from "@/lib/format";
 import type { SessionUser } from "./auth/UserMenu";
 import { ItemIcon } from "./ItemIcon";
+import { NumberInput } from "./NumberInput";
 import { TopNav } from "./TopNav";
 import { useSettings } from "./UserDataProvider";
 
@@ -163,7 +164,7 @@ export function TradeCalc({ user }: { user: SessionUser }) {
           <div className="grid gap-3 sm:grid-cols-3">
             <label className={labelCls}>
               <span className="font-medium">จำนวน</span>
-              <input type="number" min={0} value={qty} onChange={(e) => setQty(Math.max(0, Math.floor(Number(e.target.value) || 0)))} className={inputCls} />
+              <NumberInput min={0} step={1} value={qty} onChange={(v) => setQty(Math.floor(v))} className={inputCls} />
             </label>
             <PriceField label="ราคาซื้อ (ต่อชิ้น)" value={buy} onChange={setBuy} rungs={rungs} side="buy" loading={loadingOrders} hint="ใส่ 0 ถ้าไม่ได้ซื้อมา (คิดแค่ภาษี)" />
             <PriceField label="ราคาขาย (ต่อชิ้น)" value={sell} onChange={setSell} rungs={rungs} side="sell" loading={loadingOrders} />
@@ -240,7 +241,7 @@ function PriceField({
   return (
     <div className={`${labelCls} relative`}>
       <span className="font-medium">{label}</span>
-      <input type="number" min={0} value={value || ""} placeholder="0" onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))} className={inputCls} />
+      <NumberInput min={0} value={value} blankZero placeholder="0" onChange={onChange} className={inputCls} />
       {rungs.length > 0 ? (
         <>
           {/* our own list so it always opens downwards (a native <select> flips upwards near the bottom of the screen) */}

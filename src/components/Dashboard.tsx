@@ -8,6 +8,7 @@ import type { Item, ItemId, MarketPrice, Recipe, RecipeEvaluation, RecipeType } 
 import { pct, silverShort, timeAgo } from "@/lib/format";
 import type { SessionUser } from "./auth/UserMenu";
 import { ItemIcon } from "./ItemIcon";
+import { Loading } from "./Loading";
 import { OnboardingCard } from "./OnboardingCard";
 import { TopNav } from "./TopNav";
 import { useInventory, useSettings } from "./UserDataProvider";
@@ -29,6 +30,7 @@ export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSetting
   const [data, setData] = useState<DataResponse | null>(null);
   const [prices, setPrices] = useState<Record<ItemId, MarketPrice>>({});
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
+  const [pricesLoaded, setPricesLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(!hasSettings);
 
@@ -43,7 +45,8 @@ export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSetting
         setPrices(j.prices);
         setFetchedAt(j.fetchedAt);
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setPricesLoaded(true));
   }, []);
 
   const items = useMemo(() => data?.items ?? ({} as Record<ItemId, Item>), [data]);
@@ -116,8 +119,8 @@ export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSetting
         </button>
       </div>
 
-      {!data ? (
-        <div className="rounded-lg border border-border bg-panel px-4 py-10 text-center text-muted">กำลังโหลดสูตรและราคา…</div>
+      {!data || !pricesLoaded ? (
+        <Loading text={!data ? "กำลังโหลดฐานสูตร…" : "กำลังโหลดราคาตลาด…"} />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {sections.map((s) => (
