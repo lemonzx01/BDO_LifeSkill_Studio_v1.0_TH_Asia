@@ -5,6 +5,7 @@ import type { ItemId, MarketPrice } from "@/lib/engine/types";
 import { downloadCsv, parseCsv, toCsv } from "@/lib/csv";
 import { silver } from "@/lib/format";
 import type { SessionUser } from "./auth/UserMenu";
+import { InventoryIdeasPanel } from "./InventoryIdeasPanel";
 import { ItemIcon } from "./ItemIcon";
 import { NumberInput } from "./NumberInput";
 import { TopNav } from "./TopNav";
@@ -50,7 +51,8 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
   }, [query, items, inventory]);
 
   const totalValue = owned.reduce((a, o) => a + o.qty * (prices[o.id]?.price ?? 0), 0);
-  const totalCost = owned.reduce((a, o) => a + o.qty * (o.avgCost ?? 0), 0);
+  const totalCost = owned.reduce((a, o) => a + o.qty * (o.avgCost ?? prices[o.id]?.price ?? 0), 0);
+  const customCount = owned.filter((o) => o.avgCost !== undefined).length;
   const [importMsg, setImportMsg] = useState<string | null>(null);
 
   const exportCsv = () => {
@@ -125,6 +127,17 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
           <button onClick={exportCsv} disabled={owned.length === 0} className="rounded border border-border bg-panel px-3 py-1.5 text-sm hover:bg-panel-2 disabled:opacity-50">
             ส่งออก CSV
           </button>
+          {customCount > 0 && (
+            <button
+              onClick={() => {
+                for (const o of owned) if (o.avgCost !== undefined) setOwned(o.id, o.qty, null);
+              }}
+              className="rounded border border-border bg-panel px-3 py-1.5 text-sm hover:bg-panel-2"
+              title="เปลี่ยนต้นทุนทุกรายการให้ใช้ราคาตลาดปัจจุบันเสมอ"
+            >
+              ต้นทุนทั้งหมดตามตลาด
+            </button>
+          )}
           {owned.length > 0 && (
             <button
               onClick={() => {
@@ -173,7 +186,7 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
             <tr>
               <th className="px-3 py-2 text-left font-medium">ไอเท็ม</th>
               <th className="px-2 py-2 text-right font-medium">จำนวน</th>
-              <th className="px-2 py-2 text-right font-medium">ต้นทุน/ชิ้นที่จ่ายไป</th>
+              <th className="px-2 py-2 text-right font-medium">ต้นทุน/ชิ้น</th>
               <th className="px-2 py-2 text-right font-medium">ราคาตลาดตอนนี้</th>
               <th className="px-2 py-2 text-right font-medium">มูลค่าตลาด</th>
               <th className="px-2 py-2" />
@@ -198,19 +211,37 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
                     <NumberInput
                       min={0}
                       value={o.qty}
+                      commitOnBlur
+                      title="พิมพ์จำนวนแล้วกด Enter หรือคลิกออกจากช่อง · ใส่ 0 = เอาออกจากคลัง"
                       onChange={(v) => setOwned(o.id, Math.floor(v), o.avgCost)}
                       className="num w-24 rounded border border-border bg-panel-2 px-2 py-0.5 text-right"
                     />
                   </td>
                   <td className="px-2 py-1.5 text-right">
-                    <input
-                      type="number"
-                      min={0}
-                      value={o.avgCost ?? ""}
-                      placeholder={price ? silver(price) : "-"}
-                      onChange={(e) => setOwned(o.id, o.qty, e.target.value === "" ? undefined : Math.max(0, Number(e.target.value) || 0))}
-                      className="num w-28 rounded border border-border bg-panel-2 px-2 py-0.5 text-right"
-                    />
+                    {o.avgCost === undefined ? (
+                      <div className="flex items-center justify-end gap-1.5">
+                        <span className="num text-muted">{price ? silver(price) : "-"}</span>
+                        <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-300" title="ใช้ราคาตลาดปัจจุบันเสมอ">
+                          ตามตลาด
+                        </span>
+                        <button onClick={() => setOwned(o.id, o.qty, price || 0)} className="text-[11px] text-muted hover:text-foreground" title="กำหนดต้นทุนที่จ่ายจริงเอง">
+                          กำหนดเอง
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-end gap-1.5">
+                        <NumberInput
+                          min={0}
+                          value={o.avgCost}
+                          commitOnBlur
+                          onChange={(v) => setOwned(o.id, o.qty, v)}
+                          className="num w-28 rounded border border-border bg-panel-2 px-2 py-0.5 text-right"
+                        />
+                        <button onClick={() => setOwned(o.id, o.qty, null)} className="text-[11px] text-muted hover:text-foreground" title="กลับไปใช้ราคาตลาดเสมอ">
+                          ตามตลาด
+                        </button>
+                      </div>
+                    )}
                   </td>
                   <td className="num px-2 py-1.5 text-right text-muted">{price ? silver(price) : it?.market ? "…" : "ไม่มีในตลาด"}</td>
                   <td className="num px-2 py-1.5 text-right font-medium">{silver(o.qty * price)}</td>
@@ -246,8 +277,10 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
         </table>
       </div>
       <p className="mt-3 text-xs text-muted">
-        &ldquo;ต้นทุน/ชิ้นที่จ่ายไป&rdquo; ใช้เมื่อตั้งค่า &ldquo;ของที่มีอยู่แล้ว คิดต้นทุน = ตามที่บันทึก&rdquo; ปล่อยว่างได้ถ้าไม่รู้
+        ต้นทุน/ชิ้น: &ldquo;ตามตลาด&rdquo; = ใช้ราคาตลาดปัจจุบันเสมอ (ค่าเริ่มต้น) · &ldquo;กำหนดเอง&rdquo; = ใส่ราคาที่จ่ายจริง ใช้เมื่อตั้งค่า &ldquo;ของที่มีอยู่แล้ว
+        คิดต้นทุน = ตามที่บันทึก&rdquo; · ช่องจำนวน: พิมพ์แล้วกด Enter หรือคลิกออก
       </p>
+      <InventoryIdeasPanel />
     </main>
   );
 }

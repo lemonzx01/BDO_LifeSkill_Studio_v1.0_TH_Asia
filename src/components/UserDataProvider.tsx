@@ -8,7 +8,8 @@ interface UserData {
   settings: Settings;
   setSettings: (next: Settings) => void;
   inventory: Inventory;
-  setOwned: (id: ItemId, qty: number, avgCost?: number) => void;
+  /** avgCost: number = record that cost, null = follow the market price, undefined = keep as is */
+  setOwned: (id: ItemId, qty: number, avgCost?: number | null) => void;
   clearInventory: () => void;
 }
 
@@ -40,7 +41,7 @@ export function UserDataProvider({
     }, 600);
   }, []);
 
-  const saveItem = useCallback((id: ItemId, qty: number, avgCost?: number) => {
+  const saveItem = useCallback((id: ItemId, qty: number, avgCost?: number | null) => {
     const timers = itemTimers.current;
     const t = timers.get(id);
     if (t) clearTimeout(t);
@@ -66,10 +67,10 @@ export function UserDataProvider({
   );
 
   const setOwned = useCallback(
-    (id: ItemId, qty: number, avgCost?: number) => {
+    (id: ItemId, qty: number, avgCost?: number | null) => {
       setInventory((cur) => {
         const next: Inventory = { ...cur };
-        if (qty > 0) next[id] = { qty, avgCost: avgCost ?? cur[id]?.avgCost };
+        if (qty > 0) next[id] = { qty, avgCost: avgCost === null ? undefined : (avgCost ?? cur[id]?.avgCost) };
         else delete next[id];
         return next;
       });

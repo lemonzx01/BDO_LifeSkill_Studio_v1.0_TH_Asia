@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { CostEngine } from "@/lib/engine/cost";
+import { ideasFromInventory } from "@/lib/engine/ideas";
 import { IMPERIAL_TYPES, PROCESSING_TYPES, RECIPE_TYPE_TH } from "@/lib/engine/mastery";
 import type { Item, ItemId, MarketPrice, Recipe, RecipeEvaluation, RecipeType } from "@/lib/engine/types";
 import { pct, silverShort, timeAgo } from "@/lib/format";
 import type { SessionUser } from "./auth/UserMenu";
+import { InventoryIdeas } from "./InventoryIdeas";
 import { ItemIcon } from "./ItemIcon";
 import { Loading } from "./Loading";
 import { OnboardingCard } from "./OnboardingCard";
@@ -71,6 +73,12 @@ export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSetting
   };
   const top = (pred: (t: RecipeType) => boolean) => dedupe(byProfit(feasible.filter((ev) => pred(ev.recipe.type)))).slice(0, TOP);
 
+  const ideas = useMemo(
+    () => (data && pricesLoaded ? ideasFromInventory({ recipes: data.recipes, items: data.items, prices, inventory, settings }) : []),
+    [data, pricesLoaded, prices, inventory, settings],
+  );
+  const ownedCount = Object.values(inventory).filter((v) => v && v.qty > 0).length;
+
   const sections = useMemo(
     () =>
       data
@@ -123,6 +131,25 @@ export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSetting
         <Loading text={!data ? "กำลังโหลดฐานสูตร…" : "กำลังโหลดราคาตลาด…"} />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <section className="rounded-lg border border-accent/40 bg-panel">
+            <header className="flex items-center justify-between border-b border-border px-4 py-2.5">
+              <h2 className="text-sm font-semibold text-accent">ทำอะไรได้จากของในคลัง</h2>
+              <Link href="/inventory" className="text-xs text-muted hover:text-foreground">
+                คลังของ →
+              </Link>
+            </header>
+            {ownedCount === 0 ? (
+              <p className="px-4 py-6 text-center text-sm text-muted">
+                ยังไม่มีของในคลัง เพิ่มที่หน้า{" "}
+                <Link href="/inventory" className="underline">
+                  คลังของ
+                </Link>{" "}
+                แล้วระบบจะบอกว่าเอาไปทำอะไรได้กำไรสุด
+              </p>
+            ) : (
+              <InventoryIdeas ideas={ideas} items={items} limit={TOP} emptyText="ของที่มีตอนนี้ยังประกอบเป็นสูตรไหนไม่ครบ" />
+            )}
+          </section>
           {sections.map((s) => (
             <section key={s.key} className="rounded-lg border border-border bg-panel">
               <header className="flex items-center justify-between border-b border-border px-4 py-2.5">
