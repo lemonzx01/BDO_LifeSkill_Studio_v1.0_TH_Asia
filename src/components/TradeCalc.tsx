@@ -236,25 +236,55 @@ function PriceField({
   loading: boolean;
   hint?: string;
 }) {
+  const [open, setOpen] = useState(false);
   return (
-    <label className={labelCls}>
+    <div className={`${labelCls} relative`}>
       <span className="font-medium">{label}</span>
       <input type="number" min={0} value={value || ""} placeholder="0" onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))} className={inputCls} />
       {rungs.length > 0 ? (
-        <select value="" onChange={(e) => e.target.value && onChange(Number(e.target.value))} className="rounded border border-border bg-panel-2 px-2 py-1.5 text-sm">
-          <option value="">เลือกจากช่องราคาในตลาด…</option>
-          {rungs.map((r) => (
-            <option key={r.price} value={r.price}>
-              {silver(r.price)} — {side === "buy" ? `มีขาย ${silver(r.sellers)}` : `รอซื้อ ${silver(r.buyers)}`}
-              {side === "buy" && r.buyers > 0 ? ` · รอซื้อ ${silver(r.buyers)}` : ""}
-              {side === "sell" && r.sellers > 0 ? ` · ค้างขาย ${silver(r.sellers)}` : ""}
-            </option>
-          ))}
-        </select>
+        <>
+          {/* our own list so it always opens downwards (a native <select> flips upwards near the bottom of the screen) */}
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="flex items-center justify-between rounded border border-border bg-panel-2 px-2 py-1.5 text-sm text-muted hover:text-foreground"
+          >
+            <span>เลือกจากช่องราคาในตลาด ({rungs.length} ช่อง)</span>
+            <span className="text-xs">{open ? "▴" : "▾"}</span>
+          </button>
+          {open && (
+            <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-72 overflow-y-auto rounded border border-border bg-panel shadow-lg">
+              <div className="sticky top-0 grid grid-cols-[1fr_auto_auto] gap-x-3 border-b border-border bg-panel-2 px-2 py-1 text-[11px] text-muted">
+                <span>ราคา</span>
+                <span className="w-16 text-right">มีขาย</span>
+                <span className="w-16 text-right">รอซื้อ</span>
+              </div>
+              {rungs.map((r) => {
+                const active = r.price === value;
+                const highlight = side === "buy" ? r.sellers > 0 : r.buyers > 0;
+                return (
+                  <button
+                    key={r.price}
+                    type="button"
+                    onClick={() => {
+                      onChange(r.price);
+                      setOpen(false);
+                    }}
+                    className={`grid w-full grid-cols-[1fr_auto_auto] gap-x-3 px-2 py-1.5 text-left text-sm hover:bg-panel-2 ${active ? "bg-accent/10 text-accent" : ""}`}
+                  >
+                    <span className={`num ${highlight ? "font-medium" : "text-muted"}`}>{silver(r.price)}</span>
+                    <span className={`num w-16 text-right ${r.sellers > 0 ? "text-foreground" : "text-muted"}`}>{r.sellers > 0 ? silver(r.sellers) : "-"}</span>
+                    <span className={`num w-16 text-right ${r.buyers > 0 ? "text-good" : "text-muted"}`}>{r.buyers > 0 ? silver(r.buyers) : "-"}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </>
       ) : (
         <span className="text-[11px] text-muted">{loading ? "กำลังโหลดช่องราคา…" : (hint ?? "เลือกไอเท็มด้านบนเพื่อดึงช่องราคาจากตลาด")}</span>
       )}
-    </label>
+    </div>
   );
 }
 
