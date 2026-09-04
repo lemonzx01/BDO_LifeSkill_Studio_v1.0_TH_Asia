@@ -76,12 +76,32 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
   const customCount = owned.filter((o) => o.avgCost !== undefined).length;
   const [importMsg, setImportMsg] = useState<string | null>(null);
 
+  const CSV_HEADER = ["id", "ชื่อไทย", "ชื่ออังกฤษ", "จำนวน", "ต้นทุน/ชิ้น"];
+
   const exportCsv = () => {
     const rows = owned.map((o) => {
       const it = byId.get(o.id);
       return [o.id, it?.th ?? "", it?.en ?? "", o.qty, o.avgCost ?? ""];
     });
-    downloadCsv(`bdo-inventory-${new Date().toISOString().slice(0, 10)}.csv`, toCsv([["id", "ชื่อไทย", "ชื่ออังกฤษ", "จำนวน", "ต้นทุน/ชิ้น"], ...rows]));
+    downloadCsv(`bdo-inventory-${new Date().toISOString().slice(0, 10)}.csv`, toCsv([CSV_HEADER, ...rows]));
+  };
+
+  /** A filled-in example of the import format: id or Thai name is enough, cost is optional. */
+  const downloadTemplate = () => {
+    const example = (id: ItemId, qty: number, cost: number | "") => {
+      const it = byId.get(id);
+      return [id, it?.th ?? "", it?.en ?? "", qty, cost];
+    };
+    downloadCsv(
+      "bdo-inventory-template.csv",
+      toCsv([
+        CSV_HEADER,
+        example(6656, 500, ""), // Purified Water, cost follows the market
+        example(6653, 1000, 300), // Bottle of River Water bought at 300 each
+        example(6651, 200, ""),
+        ["", "ใส่ชื่อไทยแทน id ก็ได้ (ต้องสะกดตรงกับในเว็บ)", "", 10, ""],
+      ]),
+    );
   };
 
   /** Accepts our export, or any CSV with a name/id column plus a quantity column (e.g. the old Excel sheet). */
@@ -147,6 +167,9 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
           </label>
           <button onClick={exportCsv} disabled={owned.length === 0} className="rounded border border-border bg-panel px-3 py-1.5 text-sm hover:bg-panel-2 disabled:opacity-50">
             ส่งออก CSV
+          </button>
+          <button onClick={downloadTemplate} className="rounded border border-border bg-panel px-3 py-1.5 text-sm hover:bg-panel-2" title="ไฟล์ตัวอย่างสำหรับกรอกแล้วนำเข้า">
+            ไฟล์ตัวอย่าง CSV
           </button>
           {customCount > 0 && (
             <button
