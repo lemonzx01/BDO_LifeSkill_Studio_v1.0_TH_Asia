@@ -30,6 +30,11 @@ export function InventoryIdeas({ ideas, items, limit, emptyText }: { ideas: Idea
                   ใช้: {idea.uses.map((u) => `${items[u.id]?.th ?? `#${u.id}`} ×${silver(u.units)}`).join(", ")}
                   {idea.valueIncomplete ? " · (บางอย่างไม่มีราคาตลาด)" : ""}
                 </div>
+                {idea.steps.length > 0 && (
+                  <div className="truncate text-[11px] text-amber-300/90">
+                    ทำของกลางก่อน: {idea.steps.map((s) => `${items[s.id]?.th ?? `#${s.id}`} ×${silver(s.units)} (${silver(s.crafts)} รอบ)`).join(" → ")}
+                  </div>
+                )}
               </div>
               <div className="text-right">
                 <div className={`num font-semibold ${good ? "text-good" : "text-bad"}`}>{good ? "+" : ""}{silverShort(idea.profit)}</div>

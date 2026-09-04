@@ -37,24 +37,37 @@ const prices: PriceBook = { 1: price(1, 1000), 2: price(2, 500), 3: price(3, 900
 const settings = { ...DEFAULT_SETTINGS, valuePack: true };
 
 describe("ideasFromInventory", () => {
-  it("finds what can be crafted from owned stock, using substitutes and NPC items", () => {
+  it("finds direct crafts from owned stock, using substitutes and NPC items", () => {
     // 3 water, 1 high-grade herb (=3 herbs, enough for one craft needing 2), 10 sugar
     const ideas = ideasFromInventory({ recipes, items, prices, inventory: { 1: { qty: 3 }, 3: { qty: 1 }, 5: { qty: 10 } }, settings });
-    expect(ideas).toHaveLength(1);
-    const idea = ideas[0];
-    expect(idea.productId).toBe(101);
-    expect(idea.crafts).toBe(1); // limited by the single high-grade herb
-    expect(idea.uses.map((u) => [u.id, u.units])).toEqual([
+    const reagent = ideas.find((i) => i.productId === 101)!;
+    expect(reagent.crafts).toBe(1); // limited by the single high-grade herb
+    expect(reagent.uses.map((u) => [u.id, u.units])).toEqual([
       [1, 1],
       [3, 1],
       [5, 1],
     ]);
-    expect(idea.materialsValue).toBe(1000 + 900 + 200);
-    expect(idea.revenue).toBeCloseTo(10000 * 0.845);
-    expect(idea.profit).toBeCloseTo(8450 - 2100);
+    expect(reagent.materialsValue).toBe(1000 + 900 + 200);
+    expect(reagent.revenue).toBeCloseTo(10000 * 0.845);
+    expect(reagent.steps).toEqual([]);
   });
 
-  it("returns nothing when an ingredient is missing, and caps crafts", () => {
+  it("chains through intermediates: raw stock -> reagent -> elixir", () => {
+    const ideas = ideasFromInventory({ recipes, items, prices, inventory: { 1: { qty: 3 }, 3: { qty: 3 }, 5: { qty: 10 } }, settings });
+    const elixir = ideas.find((i) => i.productId === 201)!;
+    expect(elixir.crafts).toBe(3); // 3 water / 3 high herbs -> 3 reagents -> 3 elixirs
+    expect(elixir.steps).toEqual([{ id: 101, units: 3, crafts: 3 }]);
+    expect(elixir.uses.map((u) => [u.id, u.units])).toEqual([
+      [1, 3],
+      [3, 3],
+      [5, 3],
+    ]);
+    expect(elixir.revenue).toBeCloseTo(3 * 50000 * 0.845);
+    expect(elixir.materialsValue).toBe(3 * (1000 + 900 + 200));
+    expect(ideas[0].productId).toBe(201); // elixir beats selling reagents
+  });
+
+  it("returns nothing when an ingredient is missing at every level, and caps crafts", () => {
     expect(ideasFromInventory({ recipes, items, prices, inventory: { 1: { qty: 3 }, 5: { qty: 1 } }, settings })).toHaveLength(0);
     const many = ideasFromInventory({ recipes, items, prices, inventory: { 101: { qty: 5000 } }, settings, maxCrafts: 100 });
     expect(many[0].productId).toBe(201);
