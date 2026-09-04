@@ -33,8 +33,17 @@ async function officialPost<T = { resultCode: number; resultMsg: string }>(path:
     }),
   );
   if (!res.ok) throw new Error(`official ${path} HTTP ${res.status}`);
-  return (await res.json()) as T;
+  const text = await res.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    // the market API returns an HTML page instead of JSON when it throttles or is down
+    throw new SourceUnavailableError(`official ${path} answered with ${text.trimStart().startsWith("<") ? "an HTML page" : "non-JSON"} (throttled or down)`);
+  }
 }
+
+/** The upstream is refusing us for now (HTML instead of JSON): callers should back off, not retry item by item. */
+export class SourceUnavailableError extends Error {}
 
 /** Current price/stock for many items in one call (official GetWorldMarketSearchList). */
 export async function fetchPricesOfficial(ids: ItemId[]): Promise<MarketPrice[]> {

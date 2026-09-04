@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-o
 import { getDb } from "@/lib/db";
 import { marketDaily, marketItems, marketMeta } from "@/lib/db/schema";
 import type { ItemId, MarketPrice } from "@/lib/engine/types";
-import { fetchHistory, fetchPricesOfficial } from "./client";
+import { SourceUnavailableError, fetchHistory, fetchPricesOfficial } from "./client";
 
 /**
  * Whole-market snapshot kept in the database.
@@ -274,10 +274,15 @@ async function doRefresh(opts: { force?: boolean; backfill?: number }, deps: Ref
 }
 
 /** Merges the official 90-day price history for the N items whose history is missing or stale. */
+// after the official API refuses us (HTML instead of JSON) leave it alone for a while
+const HISTORY_BACKOFF_MS = 15 * 60 * 1000;
+let historyBackoffUntil = 0;
+
 export async function backfillHistory(limit: number, deps: RefreshDeps = {}): Promise<number> {
   if (limit <= 0) return 0;
   const db = await getDb();
   const now = deps.now ? deps.now() : new Date();
+  if (now.getTime() < historyBackoffUntil) return 0;
   const stale = new Date(now.getTime() - HISTORY_REFRESH_MS);
   const candidates = await db
     .select({ id: marketItems.id })
@@ -287,11 +292,19 @@ export async function backfillHistory(limit: number, deps: RefreshDeps = {}): Pr
     .limit(limit);
   const fetcher = deps.fetchHistory ?? fetchHistory;
   let done = 0;
+  const queue = candidates.map((c) => c.id);
   const worker = async (id: ItemId) => {
     let history: number[];
     try {
       history = await fetcher(id);
     } catch (e) {
+      if (e instanceof SourceUnavailableError) {
+        // one refusal means the next 99 would be refused too: stop the batch and wait
+        console.warn("history backfill paused:", e.message);
+        historyBackoffUntil = now.getTime() + HISTORY_BACKOFF_MS;
+        queue.length = 0;
+        return;
+      }
       console.warn("history backfill failed", id, (e as Error).message);
       return;
     }
@@ -306,8 +319,7 @@ export async function backfillHistory(limit: number, deps: RefreshDeps = {}): Pr
     await db.update(marketItems).set({ historyFetchedAt: now }).where(eq(marketItems.id, id));
     done += 1;
   };
-  const queue = candidates.map((c) => c.id);
-  const concurrency = 4;
+  const concurrency = 2;
   await Promise.all(
     Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
       while (queue.length) {

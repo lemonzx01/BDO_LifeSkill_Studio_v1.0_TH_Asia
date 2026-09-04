@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { resetDbCache } from "@/lib/db";
-import { getDailyHistory, getLastRefresh, getMarketScan, getSnapshotPrices, refreshMarket, type SnapshotItem } from "./snapshot";
+import { SourceUnavailableError } from "./client";
+import { backfillHistory, getDailyHistory, getLastRefresh, getMarketScan, getSnapshotPrices, refreshMarket, type SnapshotItem } from "./snapshot";
 
 const T0 = new Date("2026-09-04T12:00:00Z");
 const day = (d: Date, offset: number) => {
@@ -92,5 +93,20 @@ describe("market snapshot", () => {
     expect(one.vol14).toBe(900); // volume kept when the fallback cannot provide it
     const h1 = await getDailyHistory(1);
     expect(h1[h1.length - 1].price).toBe(160); // today's row updated in place
+  });
+
+  it("stops the history backfill after one refusal from the official API", async () => {
+    let calls = 0;
+    const refusing = async () => {
+      calls += 1;
+      throw new SourceUnavailableError("official GetMarketPriceInfo answered with an HTML page");
+    };
+    const done = await backfillHistory(50, { fetchHistory: refusing, now: () => new Date("2026-09-04T10:00:00Z") });
+    expect(done).toBe(0);
+    expect(calls).toBeLessThanOrEqual(2); // one per worker at most, never the whole batch
+    // cooled down: nothing is even attempted for a while
+    calls = 0;
+    await backfillHistory(50, { fetchHistory: refusing, now: () => new Date("2026-09-04T10:05:00Z") });
+    expect(calls).toBe(0);
   });
 });
