@@ -1,3 +1,4 @@
+import { APP_NAME, APP_SHORT } from "@/lib/brand";
 import type { Metadata, Viewport } from "next";
 import { Noto_Sans_Thai } from "next/font/google";
 import "./globals.css";
@@ -9,11 +10,11 @@ const notoThai = Noto_Sans_Thai({
 });
 
 export const metadata: Metadata = {
-  title: "BDO LifeSkill Studio — คำนวณกำไรแปรธาตุ/ทำอาหาร (Asia)",
+  title: `${APP_NAME} — คำนวณกำไรแปรธาตุ/ทำอาหาร (Asia)`,
   description: "คำนวณต้นทุน กำไร และ ROI ของสูตร Life Skill จากราคาตลาดกลางเซิร์ฟเวอร์ Asia แบบสด ๆ",
   manifest: "/manifest.webmanifest",
-  applicationName: "BDO LifeSkill Studio",
-  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "LifeSkill" },
+  applicationName: APP_NAME,
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: APP_SHORT },
   icons: {
     icon: [{ url: "/icons/app-192.png", sizes: "192x192", type: "image/png" }],
     apple: [{ url: "/icons/app-192.png", sizes: "192x192", type: "image/png" }],

@@ -1,11 +1,12 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { APP_NAME } from "@/lib/brand";
 
 export function AuthCard({ title, subtitle, children, wide = false }: { title: string; subtitle?: string; children: ReactNode; wide?: boolean }) {
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col items-center px-4 py-10">
       <Link href="/" className="mb-6 text-xl font-bold text-accent">
-        BDO LifeSkill Studio
+        {APP_NAME}
       </Link>
       <div className={`w-full rounded-lg border border-border bg-panel p-6 ${wide ? "max-w-6xl" : "max-w-md"}`}>
         <h1 className="text-lg font-semibold">{title}</h1>

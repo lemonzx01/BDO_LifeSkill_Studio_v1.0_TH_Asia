@@ -1,4 +1,4 @@
-# BDO LifeSkill Studio (TH / Asia)
+# BDO Life by BloodMoon TH (Asia)
 
 เว็บคำนวณต้นทุน–กำไร–ROI ของสูตร Life Skill ใน Black Desert Online (เซิร์ฟเวอร์ Asia)
 จากราคาตลาดกลางแบบสด ต่อยอดจากไฟล์ Excel `BDO_LifeSkill_Studio_v2.0_TH_Asia.xlsx`
