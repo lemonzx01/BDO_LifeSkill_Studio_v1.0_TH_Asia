@@ -36,6 +36,9 @@ export function ItemIcon({ id, grade = 0, size = 32, alt = "" }: { id: number; g
       width={size}
       height={size}
       loading="lazy"
+      decoding="async"
+      // icons must never compete with scripts and data for a slow connection
+      fetchPriority="low"
       onError={() => setAttempt((a) => a + 1)}
       className={`rounded bg-panel-2 ring-1 ${ring}`}
       style={{ width: size, height: size }}

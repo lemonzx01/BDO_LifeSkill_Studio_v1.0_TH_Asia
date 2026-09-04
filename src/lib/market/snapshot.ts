@@ -478,7 +478,7 @@ function tradesPerDayFrom(rows: RecentRow[] | undefined): number | null {
   const spanDays = (Date.parse(String(last.day)) - Date.parse(String(first.day))) / 86_400_000;
   if (spanDays < 1) return null;
   const diff = Number(last.total_trades) - Number(first.total_trades);
-  return diff >= 0 ? diff / spanDays : null;
+  return diff >= 0 ? Math.round((diff / spanDays) * 10) / 10 : null;
 }
 
 /** Every priced market item with 7/30/90-day aggregates. Cached for 5 minutes per snapshot. */
@@ -518,6 +518,7 @@ export async function getMarketScan(
     recentDaily(now),
   ]);
   const num = (v: string | number | null | undefined) => (v === null || v === undefined ? null : Number(v));
+  const whole = (v: number | null) => (v === null ? null : Math.round(v));
   const rows: ScanRow[] = items.map((it) => {
     const g90 = a90.get(it.id);
     const g30 = a30.get(it.id);
@@ -534,11 +535,12 @@ export async function getMarketScan(
       stock: it.stock,
       trades: it.totalTrades,
       vol14: it.volume14d,
-      avg90: days >= 2 ? num(g90?.avg) : null,
-      min90: days >= 2 ? num(g90?.min) : null,
-      max90: days >= 2 ? num(g90?.max) : null,
-      avg30: g30 && Number(g30.days) >= 2 ? num(g30.avg) : null,
-      avg7: g7 ? num(g7.avg) : null,
+      // whole silver only: AVG() comes back with a dozen decimals that cost bytes on 2,800 rows and mean nothing
+      avg90: days >= 2 ? whole(num(g90?.avg)) : null,
+      min90: days >= 2 ? whole(num(g90?.min)) : null,
+      max90: days >= 2 ? whole(num(g90?.max)) : null,
+      avg30: g30 && Number(g30.days) >= 2 ? whole(num(g30.avg)) : null,
+      avg7: g7 ? whole(num(g7.avg)) : null,
       days,
       stockHist: (recent.get(it.id) ?? []).map((r) => Number(r.stock ?? 0)),
       tradesPerDay: tradesPerDayFrom(recent.get(it.id)),
