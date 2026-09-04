@@ -9,6 +9,7 @@ import { assessRecovery, sellEvidence, type Assessment, type EvidenceLine } from
 import type { ScanRow } from "@/lib/market/snapshot";
 import type { SessionUser } from "../auth/UserMenu";
 import { ItemIcon } from "../ItemIcon";
+import { PerfBeacon } from "../PerfBeacon";
 import { TimeAgo } from "../TimeAgo";
 import { TopNav } from "../TopNav";
 import { useSettings } from "../UserDataProvider";
@@ -190,6 +191,7 @@ export function MarketScanner({
 
   return (
     <main className="mx-auto w-full max-w-7xl px-3 py-4 md:px-6">
+      <PerfBeacon page="market" rows={rows.length} />
       <TopNav
         user={user}
         subtitle={

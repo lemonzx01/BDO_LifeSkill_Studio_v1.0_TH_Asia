@@ -126,7 +126,7 @@ async function connect(): Promise<Db> {
     // prepare:false — Supabase's transaction pooler (port 6543) rejects prepared statements;
     // small pool — every serverless instance opens its own connections
     // onnotice: "table does not exist, skipping" from DROP TABLE IF EXISTS is not worth a log line
-    const client = postgres(url, { prepare: false, max: 4, idle_timeout: 20, connect_timeout: 15, ssl: local ? false : "require", onnotice: () => {} });
+    const client = postgres(url, { prepare: false, max: 10, idle_timeout: 20, connect_timeout: 15, ssl: local ? false : "require", onnotice: () => {} });
     db = drizzle({ client, schema }) as unknown as Db;
   } else {
     if (process.env.VERCEL) {

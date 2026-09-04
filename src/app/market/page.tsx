@@ -2,14 +2,17 @@ import { after } from "next/server";
 import { MarketScanner } from "@/components/market/MarketScanner";
 import { UserDataProvider } from "@/components/UserDataProvider";
 import { requireUser } from "@/lib/auth/session";
+import { stopwatch } from "@/lib/timing";
 import { getUserSettings } from "@/lib/user-data";
-import { backfillHistoryThrottled, countItemsWithoutHistory, getLastRefresh, getMarketScan, isSnapshotStale, refreshMarket } from "@/lib/market/snapshot";
+import { backfillHistoryThrottled, countItemsWithoutHistory, getLastRefresh, getMarketScan, isSnapshotStale, recordTiming, refreshMarket } from "@/lib/market/snapshot";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export default async function MarketPage() {
+  const clock = stopwatch();
   const user = await requireUser();
+  const authMs = clock.lap();
 
   const last = await getLastRefresh();
   let refreshError: string | null = null;
@@ -28,7 +31,23 @@ export default async function MarketPage() {
     after(() => backfillHistoryThrottled(100).catch((e) => console.error("background history backfill failed:", e)));
   }
 
+  const staleCheckMs = clock.lap();
   const [scan, settings] = await Promise.all([getMarketScan(), getUserSettings(user.id)]);
+  const dataMs = clock.lap();
+  const timing = {
+    at: new Date().toISOString(),
+    user: user.username,
+    authMs,
+    staleCheckMs,
+    dataMs,
+    totalMs: clock.total(),
+    scanCached: scan.cached,
+    rows: scan.rows.length,
+    region: process.env.VERCEL_REGION ?? null,
+  };
+  console.log("market page timing", JSON.stringify(timing));
+  // written after the response so measuring never slows the page itself
+  after(() => recordTiming("timing_market_page", timing).catch(() => {}));
   return (
     <UserDataProvider initialSettings={settings} initialInventory={{}}>
       <MarketScanner

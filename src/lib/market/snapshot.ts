@@ -105,6 +105,21 @@ async function setMeta(key: string, value: string) {
     .onConflictDoUpdate({ target: marketMeta.key, set: { value, updatedAt: new Date() } });
 }
 
+/** Small diagnostic records (page/browser timings) kept in market_meta so /api/health can show them. */
+export async function recordTiming(key: string, data: Record<string, unknown>): Promise<void> {
+  await setMeta(key, JSON.stringify(data).slice(0, 2000));
+}
+
+export async function readTiming(key: string): Promise<Record<string, unknown> | null> {
+  const raw = await getMeta(key);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 export async function getLastRefresh(): Promise<{ at: Date | null; source: string | null }> {
   // one round trip for both keys: this runs on almost every page view
   const db = await getDb();
@@ -155,6 +170,9 @@ export async function getMarketStatus(): Promise<{
   /** rows the scanner page receives (traded items only) and how long this instance took to build them */
   scanRows: number | null;
   scanBuildMs: number | null;
+  /** latest server-side timing of the market page and latest browser-side report (see PerfBeacon) */
+  lastPage: Record<string, unknown> | null;
+  lastClient: Record<string, unknown> | null;
 }> {
   const db = await getDb();
   const last = await getLastRefresh();
@@ -167,6 +185,8 @@ export async function getMarketStatus(): Promise<{
     lastError: err || null,
     scanRows: scanCache?.rows.length ?? null,
     scanBuildMs: lastScanBuildMs,
+    lastPage: await readTiming("timing_market_page"),
+    lastClient: await readTiming("timing_market_client"),
   };
 }
 
@@ -462,12 +482,12 @@ function tradesPerDayFrom(rows: RecentRow[] | undefined): number | null {
 /** Every priced market item with 7/30/90-day aggregates. Cached for 5 minutes per snapshot. */
 export async function getMarketScan(
   deps: { now?: () => Date } = {},
-): Promise<{ rows: ScanRow[]; totalItems: number; refreshedAt: Date | null; source: string | null }> {
+): Promise<{ rows: ScanRow[]; totalItems: number; refreshedAt: Date | null; source: string | null; cached: boolean }> {
   const now = deps.now ? deps.now() : new Date();
   const last = await getLastRefresh();
   const key = last.at?.toISOString() ?? "none";
   if (scanCache && scanCache.key === key) {
-    return { rows: scanCache.rows, totalItems: scanCache.totalItems, refreshedAt: last.at, source: last.source };
+    return { rows: scanCache.rows, totalItems: scanCache.totalItems, refreshedAt: last.at, source: last.source, cached: true };
   }
   const db = await getDb();
   const buildStart = performance.now();
@@ -525,7 +545,7 @@ export async function getMarketScan(
   const totalItems = Number(totalRows[0]?.n ?? rows.length);
   lastScanBuildMs = Math.round(performance.now() - buildStart);
   scanCache = { key, rows, totalItems, at: now.getTime() };
-  return { rows, totalItems, refreshedAt: last.at, source: last.source };
+  return { rows, totalItems, refreshedAt: last.at, source: last.source, cached: false };
 }
 
 // the whole priced snapshot, kept per server instance until the snapshot is rebuilt
