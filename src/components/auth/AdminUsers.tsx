@@ -12,7 +12,13 @@ import {
 } from "@/lib/auth/actions";
 import { assignableRoles, canManage, ROLE_TH } from "@/lib/auth/roles";
 import type { Role } from "@/lib/db/schema";
-import { dangerBtn, errorCls, ghostBtn, inputCls, labelCls, okCls, primaryBtn } from "./ui";
+import { errorCls, ghostBtn, inputCls, labelCls, okCls, primaryBtn } from "./ui";
+
+// row controls: one height, never wrapping, quieter than the page-level buttons
+const rowBtn = "h-8 whitespace-nowrap rounded border border-border bg-panel px-2.5 text-xs hover:bg-panel-2 disabled:opacity-50";
+const rowDanger = "h-8 whitespace-nowrap rounded border border-bad/40 bg-bad/10 px-2.5 text-xs text-bad hover:bg-bad/20 disabled:opacity-50";
+const rowSelect = "h-8 rounded border border-border bg-panel px-2 text-xs outline-none focus:border-accent";
+const badge = "inline-block whitespace-nowrap rounded px-1.5 py-0.5 text-xs";
 
 export interface AdminUserRow {
   id: number;
@@ -30,13 +36,13 @@ export function AdminUsers({ users, meId, meRole }: { users: AdminUserRow[]; meI
     <div className="space-y-6">
       <CreateUserForm meRole={meRole} />
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full min-w-[720px] text-sm">
+        <table className="w-full min-w-[900px] text-sm">
           <thead className="bg-panel-2 text-xs text-muted">
             <tr>
-              <th className="px-3 py-2 text-left font-medium">ผู้ใช้</th>
-              <th className="px-3 py-2 text-left font-medium">สิทธิ์</th>
-              <th className="px-3 py-2 text-left font-medium">สถานะ</th>
-              <th className="px-3 py-2 text-left font-medium">ล็อกอินล่าสุด</th>
+              <th className="w-[24%] px-3 py-2 text-left font-medium">ผู้ใช้</th>
+              <th className="w-px whitespace-nowrap px-3 py-2 text-left font-medium">สิทธิ์</th>
+              <th className="w-px whitespace-nowrap px-3 py-2 text-left font-medium">สถานะ</th>
+              <th className="w-px whitespace-nowrap px-3 py-2 text-left font-medium">ล็อกอินล่าสุด</th>
               <th className="px-3 py-2 text-left font-medium">จัดการ</th>
             </tr>
           </thead>
@@ -94,9 +100,9 @@ function CreateUserForm({ meRole }: { meRole: Role }) {
 }
 
 function RoleBadge({ role }: { role: Role }) {
-  if (role === "owner") return <span className="rounded bg-accent/15 px-1.5 py-0.5 text-xs text-accent">{ROLE_TH.owner}</span>;
-  if (role === "admin") return <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-xs text-sky-300">{ROLE_TH.admin}</span>;
-  return <span className="text-muted">{ROLE_TH.member}</span>;
+  if (role === "owner") return <span className={`${badge} bg-accent/15 text-accent`}>{ROLE_TH.owner}</span>;
+  if (role === "admin") return <span className={`${badge} bg-sky-500/15 text-sky-300`}>{ROLE_TH.admin}</span>;
+  return <span className={`${badge} text-muted`}>{ROLE_TH.member}</span>;
 }
 
 function UserRow({ u, isMe, meRole }: { u: AdminUserRow; isMe: boolean; meRole: Role }) {
@@ -112,32 +118,25 @@ function UserRow({ u, isMe, meRole }: { u: AdminUserRow; isMe: boolean; meRole: 
           </div>
           <div className="text-xs text-muted">@{u.username}</div>
         </td>
-        <td className="px-3 py-2">
+        <td className="whitespace-nowrap px-3 py-2">
           <RoleBadge role={u.role} />
         </td>
-        <td className="px-3 py-2">
-          {u.isActive ? (
-            <span className="rounded bg-good/15 px-1.5 py-0.5 text-xs text-good">ใช้งานได้</span>
-          ) : (
-            <span className="rounded bg-bad/15 px-1.5 py-0.5 text-xs text-bad">ปิดใช้งาน</span>
-          )}
-          {u.mustChangePassword && <span className="ml-1 rounded bg-warn/15 px-1.5 py-0.5 text-xs text-warn">รอตั้งรหัสใหม่</span>}
+        <td className="whitespace-nowrap px-3 py-2">
+          <div className="flex flex-col items-start gap-1">
+            {u.isActive ? <span className={`${badge} bg-good/15 text-good`}>ใช้งานได้</span> : <span className={`${badge} bg-bad/15 text-bad`}>ปิดใช้งาน</span>}
+            {u.mustChangePassword && <span className={`${badge} bg-warn/15 text-warn`}>รอตั้งรหัสใหม่</span>}
+          </div>
         </td>
-        <td className="px-3 py-2 text-xs text-muted">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString("th-TH") : "ยังไม่เคย"}</td>
+        <td className="whitespace-nowrap px-3 py-2 text-xs text-muted">
+          {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" }) : "ยังไม่เคย"}
+        </td>
         <td className="px-3 py-2">
           {isMe ? (
-            <span className="text-xs text-muted">แก้ไขตัวเองที่หน้า &ldquo;รหัสผ่าน&rdquo;</span>
+            <span className="whitespace-nowrap text-xs text-muted">แก้ไขตัวเองที่หน้า &ldquo;รหัสผ่าน&rdquo;</span>
           ) : !manageable ? (
-            <span className="text-xs text-muted">แอดมินใหญ่เท่านั้นที่จัดการบัญชีนี้ได้</span>
+            <span className="whitespace-nowrap text-xs text-muted">แอดมินใหญ่เท่านั้นที่จัดการบัญชีนี้ได้</span>
           ) : (
-            <div className="flex flex-wrap gap-1.5">
-              <form action={adminSetActiveAction}>
-                <input type="hidden" name="id" value={u.id} />
-                <input type="hidden" name="active" value={u.isActive ? "0" : "1"} />
-                <button type="submit" className={u.isActive ? dangerBtn : ghostBtn}>
-                  {u.isActive ? "ปิดใช้งาน" : "เปิดใช้งาน"}
-                </button>
-              </form>
+            <div className="flex flex-nowrap items-center gap-1.5">
               {roles.length > 1 && (
                 <form action={adminSetRoleAction}>
                   <input type="hidden" name="id" value={u.id} />
@@ -145,7 +144,7 @@ function UserRow({ u, isMe, meRole }: { u: AdminUserRow; isMe: boolean; meRole: 
                     name="role"
                     defaultValue={u.role}
                     onChange={(e) => e.currentTarget.form?.requestSubmit()}
-                    className="rounded border border-border bg-panel px-2 py-1 text-xs"
+                    className={rowSelect}
                     title="เปลี่ยนระดับสิทธิ์"
                   >
                     {roles.map((r) => (
@@ -164,14 +163,22 @@ function UserRow({ u, isMe, meRole }: { u: AdminUserRow; isMe: boolean; meRole: 
                   }}
                 >
                   <input type="hidden" name="id" value={u.id} />
-                  <button type="submit" className={ghostBtn} title="ยกตำแหน่งแอดมินใหญ่ให้บัญชีนี้ แล้วคุณเป็นแอดมินเล็ก">
+                  <button type="submit" className={rowBtn} title="ยกตำแหน่งแอดมินใหญ่ให้บัญชีนี้ แล้วคุณเป็นแอดมินเล็ก">
                     โอนสิทธิ์แอดมินใหญ่
                   </button>
                 </form>
               )}
-              <button type="button" onClick={() => setShowReset((s) => !s)} className={ghostBtn}>
+              <button type="button" onClick={() => setShowReset((s) => !s)} className={rowBtn}>
                 รีเซ็ตรหัส
               </button>
+              <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+              <form action={adminSetActiveAction}>
+                <input type="hidden" name="id" value={u.id} />
+                <input type="hidden" name="active" value={u.isActive ? "0" : "1"} />
+                <button type="submit" className={u.isActive ? rowDanger : rowBtn}>
+                  {u.isActive ? "ปิดใช้งาน" : "เปิดใช้งาน"}
+                </button>
+              </form>
               <form
                 action={adminDeleteUserAction}
                 onSubmit={(e) => {
@@ -179,7 +186,7 @@ function UserRow({ u, isMe, meRole }: { u: AdminUserRow; isMe: boolean; meRole: 
                 }}
               >
                 <input type="hidden" name="id" value={u.id} />
-                <button type="submit" className={dangerBtn}>
+                <button type="submit" className={rowDanger}>
                   ลบ
                 </button>
               </form>
