@@ -66,6 +66,7 @@ npm run dev           # http://localhost:3000
 | `src/lib/db/` | Drizzle schema (`users`, `sessions`, `market_items`, `market_daily`, `market_meta`) และตัวเชื่อมต่อ Neon / Postgres ทั่วไป (postgres.js) / PGlite (สร้าง/อัปเดตตารางอัตโนมัติ) |
 | `src/lib/market/snapshot.ts` | ingest snapshot ตลาด, ประวัติรายวัน, backfill 90 วัน, aggregate สำหรับหน้าสแกน (มี test) |
 | `src/app/market`, `src/components/market/` | หน้าสแกนตลาด ตาราง/ตัวกรอง/รายละเอียดไอเท็ม |
+| `src/app/api/health` | เช็คว่าต่อฐานข้อมูลได้ไหม (เปิด `/api/health` หลัง deploy ถ้าหน้าเว็บขึ้น server error) |
 | `src/app/api/market/refresh`, `src/app/api/cron/market` | บังคับรีเฟรช snapshot (สมาชิก) / cron รายวัน (Vercel) |
 | `src/lib/auth/` | บริการบัญชี/session (มี test), server actions ล็อกอิน/แอดมิน, cookie helpers |
 | `src/app/login`, `/setup`, `/admin`, `/account` | หน้าล็อกอิน ตั้งค่าครั้งแรก จัดการสมาชิก เปลี่ยนรหัสผ่าน |
