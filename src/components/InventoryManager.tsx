@@ -1,5 +1,6 @@
 "use client";
 
+import { rankByName } from "@/lib/search";
 import { useEffect, useMemo, useState } from "react";
 import type { ItemId, MarketPrice } from "@/lib/engine/types";
 import { downloadCsv, parseCsv, toCsv } from "@/lib/csv";
@@ -47,7 +48,7 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (q.length < 2) return [];
-    return items.filter((i) => `${i.th} ${i.en}`.toLowerCase().includes(q) && !inventory[i.id]).slice(0, 12);
+    return rankByName(items, q, 12 + Object.keys(inventory).length).filter((i) => !inventory[i.id]).slice(0, 12);
   }, [query, items, inventory]);
 
   const totalValue = owned.reduce((a, o) => a + o.qty * (prices[o.id]?.price ?? 0), 0);

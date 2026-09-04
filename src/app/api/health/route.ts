@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { getDb, isUsingEmbeddedDb } from "@/lib/db";
+import { getMarketStatus } from "@/lib/market/snapshot";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,9 @@ export async function GET() {
     const db = await getDb();
     const started = Date.now();
     await db.execute(sql`select 1`);
-    return NextResponse.json({ ok: true, db: "ok", latencyMs: Date.now() - started, ...base }, { headers: { "Cache-Control": "no-store" } });
+    const latencyMs = Date.now() - started;
+    const market = await getMarketStatus().catch((e) => ({ error: sanitize(String((e as Error).message)) }));
+    return NextResponse.json({ ok: true, db: "ok", latencyMs, ...base, market }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     const chain = describe(e);
     return NextResponse.json(

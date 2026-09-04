@@ -127,10 +127,29 @@ let inflight: Promise<RefreshResult> | null = null;
 /** Refreshes the snapshot when it is older than the TTL (or when forced). Concurrent calls share one run. */
 export function refreshMarket(opts: { force?: boolean; backfill?: number } = {}, deps: RefreshDeps = {}): Promise<RefreshResult> {
   if (inflight) return inflight;
-  inflight = doRefresh(opts, deps).finally(() => {
-    inflight = null;
-  });
+  inflight = doRefresh(opts, deps)
+    .then(async (r) => {
+      if (r.refreshed) await setMeta("last_error", "").catch(() => {});
+      return r;
+    })
+    .catch(async (e) => {
+      // keep the reason where /api/health can show it — serverless logs are easy to miss
+      await setMeta("last_error", `${new Date().toISOString()} ${(e as Error).message}`.slice(0, 500)).catch(() => {});
+      throw e;
+    })
+    .finally(() => {
+      inflight = null;
+    });
   return inflight;
+}
+
+/** For /api/health: when the snapshot was last built, from where, how big it is, and the last failure if any. */
+export async function getMarketStatus(): Promise<{ lastRefreshAt: string | null; source: string | null; items: number; lastError: string | null }> {
+  const db = await getDb();
+  const last = await getLastRefresh();
+  const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(marketItems);
+  const err = await getMeta("last_error");
+  return { lastRefreshAt: last.at ? last.at.toISOString() : null, source: last.source, items: Number(n), lastError: err || null };
 }
 
 async function doRefresh(opts: { force?: boolean; backfill?: number }, deps: RefreshDeps): Promise<RefreshResult> {
@@ -480,12 +499,19 @@ export async function searchMarketItems(q: string, limit = 12): Promise<{ id: nu
   const term = q.trim().toLowerCase();
   if (term.length < 2) return [];
   const db = await getDb();
-  const pattern = `%${term.replace(/[%_]/g, "")}%`;
+  const safe = term.replace(/[%_]/g, "");
+  const pattern = `%${safe}%`;
+  const prefix = `${safe}%`;
   const rows = await db
     .select({ id: marketItems.id, th: marketItems.nameTh, en: marketItems.nameEn, price: marketItems.price, stock: marketItems.stock, grade: marketItems.grade })
     .from(marketItems)
     .where(sql`(${marketItems.nameTh} ILIKE ${pattern} OR ${marketItems.nameEn} ILIKE ${pattern}) AND ${marketItems.price} > 0`)
-    .orderBy(desc(marketItems.totalTrades))
+    .orderBy(
+      // the item literally named what was typed first, then names starting with it, then the busiest
+      sql`(LOWER(${marketItems.nameTh}) = ${term} OR LOWER(${marketItems.nameEn}) = ${term}) DESC`,
+      sql`(${marketItems.nameTh} ILIKE ${prefix} OR ${marketItems.nameEn} ILIKE ${prefix}) DESC`,
+      desc(marketItems.totalTrades),
+    )
     .limit(limit);
   return rows;
 }
