@@ -4,7 +4,20 @@ import { recordTiming } from "@/lib/market/snapshot";
 
 export const dynamic = "force-dynamic";
 
-const NUMBER_FIELDS = ["rows", "ttfbMs", "responseMs", "domReadyMs", "transferBytes", "decodedBytes", "mountedMs"] as const;
+const NUMBER_FIELDS = [
+  "rows",
+  "ttfbMs",
+  "responseMs",
+  "domReadyMs",
+  "transferBytes",
+  "decodedBytes",
+  "mountedMs",
+  "scriptBytes",
+  "scriptCount",
+  "scriptsDoneMs",
+  "imageBytes",
+  "imageCount",
+] as const;
 
 /** POST { page, ...timings } from PerfBeacon; the latest report per page is shown by /api/health. */
 export async function POST(req: Request) {
