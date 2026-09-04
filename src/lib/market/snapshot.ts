@@ -147,12 +147,27 @@ export function refreshMarket(opts: { force?: boolean; backfill?: number } = {},
 }
 
 /** For /api/health: when the snapshot was last built, from where, how big it is, and the last failure if any. */
-export async function getMarketStatus(): Promise<{ lastRefreshAt: string | null; source: string | null; items: number; lastError: string | null }> {
+export async function getMarketStatus(): Promise<{
+  lastRefreshAt: string | null;
+  source: string | null;
+  items: number;
+  lastError: string | null;
+  /** rows the scanner page receives (traded items only) and how long this instance took to build them */
+  scanRows: number | null;
+  scanBuildMs: number | null;
+}> {
   const db = await getDb();
   const last = await getLastRefresh();
   const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(marketItems);
   const err = await getMeta("last_error");
-  return { lastRefreshAt: last.at ? last.at.toISOString() : null, source: last.source, items: Number(n), lastError: err || null };
+  return {
+    lastRefreshAt: last.at ? last.at.toISOString() : null,
+    source: last.source,
+    items: Number(n),
+    lastError: err || null,
+    scanRows: scanCache?.rows.length ?? null,
+    scanBuildMs: lastScanBuildMs,
+  };
 }
 
 async function doRefresh(opts: { force?: boolean; backfill?: number }, deps: RefreshDeps): Promise<RefreshResult> {
@@ -376,7 +391,9 @@ export interface ScanRow {
   tradesPerDay: number | null;
 }
 
-let scanCache: { key: string; rows: ScanRow[]; at: number } | null = null;
+let scanCache: { key: string; rows: ScanRow[]; totalItems: number; at: number } | null = null;
+/** how long the last cold scan build took on this instance (queries + assembling rows), for /api/health */
+let lastScanBuildMs: number | null = null;
 
 export function invalidateScanCache() {
   priceCache = null;
@@ -443,15 +460,18 @@ function tradesPerDayFrom(rows: RecentRow[] | undefined): number | null {
 }
 
 /** Every priced market item with 7/30/90-day aggregates. Cached for 5 minutes per snapshot. */
-export async function getMarketScan(deps: { now?: () => Date } = {}): Promise<{ rows: ScanRow[]; refreshedAt: Date | null; source: string | null }> {
+export async function getMarketScan(
+  deps: { now?: () => Date } = {},
+): Promise<{ rows: ScanRow[]; totalItems: number; refreshedAt: Date | null; source: string | null }> {
   const now = deps.now ? deps.now() : new Date();
   const last = await getLastRefresh();
   const key = last.at?.toISOString() ?? "none";
   if (scanCache && scanCache.key === key) {
-    return { rows: scanCache.rows, refreshedAt: last.at, source: last.source };
+    return { rows: scanCache.rows, totalItems: scanCache.totalItems, refreshedAt: last.at, source: last.source };
   }
   const db = await getDb();
-  const [items, a90, a30, a7, recent] = await Promise.all([
+  const buildStart = performance.now();
+  const [items, totalRows, a90, a30, a7, recent] = await Promise.all([
     db
       .select({
         id: marketItems.id,
@@ -466,7 +486,10 @@ export async function getMarketScan(deps: { now?: () => Date } = {}): Promise<{ 
         volume14d: marketItems.volume14d,
       })
       .from(marketItems)
-      .where(sql`${marketItems.price} > 0`),
+      // 7 of every 10 listed items have not traded in two weeks: nothing to scan there,
+      // and leaving them out makes the page a third of the size
+      .where(sql`${marketItems.price} > 0 AND (${marketItems.volume14d} IS NULL OR ${marketItems.volume14d} >= 1)`),
+    db.select({ n: sql<number>`count(*)::int` }).from(marketItems).where(sql`${marketItems.price} > 0`),
     aggregate(90, now),
     aggregate(30, now),
     aggregate(7, now),
@@ -499,8 +522,10 @@ export async function getMarketScan(deps: { now?: () => Date } = {}): Promise<{ 
       tradesPerDay: tradesPerDayFrom(recent.get(it.id)),
     };
   });
-  scanCache = { key, rows, at: now.getTime() };
-  return { rows, refreshedAt: last.at, source: last.source };
+  const totalItems = Number(totalRows[0]?.n ?? rows.length);
+  lastScanBuildMs = Math.round(performance.now() - buildStart);
+  scanCache = { key, rows, totalItems, at: now.getTime() };
+  return { rows, totalItems, refreshedAt: last.at, source: last.source };
 }
 
 // the whole priced snapshot, kept per server instance until the snapshot is rebuilt

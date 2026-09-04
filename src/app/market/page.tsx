@@ -33,6 +33,7 @@ export default async function MarketPage() {
     <UserDataProvider initialSettings={settings} initialInventory={{}}>
       <MarketScanner
         rows={scan.rows}
+        totalItems={scan.totalItems}
         refreshedAt={scan.refreshedAt ? scan.refreshedAt.toISOString() : null}
         source={scan.source}
         refreshError={refreshError}

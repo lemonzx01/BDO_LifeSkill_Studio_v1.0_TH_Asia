@@ -73,8 +73,11 @@ export function MarketScanner({
   source,
   refreshError,
   user,
+  totalItems,
 }: {
   rows: ScanRow[];
+  /** every priced item in the snapshot, including the ones with no trades that are not sent */
+  totalItems: number;
   refreshedAt: string | null;
   source: string | null;
   refreshError: string | null;
@@ -191,7 +194,7 @@ export function MarketScanner({
         user={user}
         subtitle={
           <>
-            ตลาดกลาง Asia · {silver(rows.length)} ไอเท็ม · อัปเดต <TimeAgo at={refreshedAt} placeholder="-" />
+            ตลาดกลาง Asia · {silver(rows.length)} ไอเท็มที่มีการซื้อขายใน 14 วัน (จากทั้งหมด {silver(totalItems)}) · อัปเดต <TimeAgo at={refreshedAt} placeholder="-" />
             {source ? ` · แหล่ง ${source}` : ""} · มีประวัติแล้ว {silver(withHistory)} ไอเท็ม
           </>
         }
