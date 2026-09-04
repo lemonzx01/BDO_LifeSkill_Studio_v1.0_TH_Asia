@@ -13,6 +13,9 @@ export default async function MarketPage() {
   const clock = stopwatch();
   const user = await requireUser();
   const authMs = clock.lap();
+  // marker written before the heavy part: if /api/health shows a start without a matching
+  // finish, the request died while building or streaming the page
+  await recordTiming("timing_market_page_start", { at: new Date().toISOString(), user: user.username, authMs, region: process.env.VERCEL_REGION ?? null }).catch(() => {});
 
   const last = await getLastRefresh();
   let refreshError: string | null = null;

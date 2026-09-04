@@ -170,7 +170,8 @@ export async function getMarketStatus(): Promise<{
   /** rows the scanner page receives (traded items only) and how long this instance took to build them */
   scanRows: number | null;
   scanBuildMs: number | null;
-  /** latest server-side timing of the market page and latest browser-side report (see PerfBeacon) */
+  /** latest server-side timing of the market page (start marker, finished render) and latest browser-side report (see PerfBeacon) */
+  lastPageStart: Record<string, unknown> | null;
   lastPage: Record<string, unknown> | null;
   lastClient: Record<string, unknown> | null;
 }> {
@@ -185,6 +186,7 @@ export async function getMarketStatus(): Promise<{
     lastError: err || null,
     scanRows: scanCache?.rows.length ?? null,
     scanBuildMs: lastScanBuildMs,
+    lastPageStart: await readTiming("timing_market_page_start"),
     lastPage: await readTiming("timing_market_page"),
     lastClient: await readTiming("timing_market_client"),
   };
