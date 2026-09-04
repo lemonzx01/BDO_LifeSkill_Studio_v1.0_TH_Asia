@@ -159,8 +159,10 @@ export async function changePasswordAction(_prev: ActionState, fd: FormData): Pr
   if (next !== str(fd, "confirm")) return { error: "รหัสผ่านใหม่ทั้งสองช่องไม่ตรงกัน" };
   try {
     await changeOwnPassword(me.id, str(fd, "current"), next, (await getSessionToken()) ?? undefined);
-    return { ok: true, message: "เปลี่ยนรหัสผ่านแล้ว" };
   } catch (e) {
     return fail(e);
   }
+  // a temporary password from the admin has just been replaced: continue into the app (redirect throws, so it stays outside the try)
+  if (me.mustChangePassword) redirect("/");
+  return { ok: true, message: "เปลี่ยนรหัสผ่านแล้ว" };
 }
