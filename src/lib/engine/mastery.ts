@@ -2,9 +2,15 @@ import type { RecipeType, SkillGroup } from "./types";
 
 /** Which settings group (mastery, speed, tier) a recipe type belongs to. */
 export function skillGroup(type: RecipeType): SkillGroup {
-  if (type === "alchemy") return "alchemy";
-  if (type === "cooking") return "cooking";
+  if (type === "alchemy" || type === "imperial-alchemy") return "alchemy";
+  if (type === "cooking" || type === "imperial-cooking") return "cooking";
   return "processing";
+}
+
+export const IMPERIAL_TYPES: RecipeType[] = ["imperial-cooking", "imperial-alchemy"];
+
+export function isImperial(type: RecipeType): boolean {
+  return type === "imperial-cooking" || type === "imperial-alchemy";
 }
 
 export const RECIPE_TYPE_TH: Record<RecipeType, string> = {
@@ -18,7 +24,34 @@ export const RECIPE_TYPE_TH: Record<RecipeType, string> = {
   chopping: "ตัดฟืน",
   "simple-alchemy": "แปรธาตุอย่างง่าย",
   "simple-cooking": "ทำอาหารอย่างง่าย",
+  "imperial-cooking": "กล่องอาหารราชวัง",
+  "imperial-alchemy": "กล่องแปรธาตุราชวัง",
 };
+
+/** Extra silver from Imperial Delivery per cooking/alchemy mastery (same table for both), every 50 points. */
+const IMPERIAL_BONUS: [number, number][] = [
+  [0, 0], [50, 0.0185], [100, 0.0296], [150, 0.0433], [200, 0.0595], [250, 0.0784], [300, 0.0999], [350, 0.1239],
+  [400, 0.1505], [450, 0.1798], [500, 0.2116], [550, 0.246], [600, 0.283], [650, 0.3226], [700, 0.3648], [750, 0.4096],
+  [800, 0.457], [850, 0.5069], [900, 0.5595], [950, 0.6147], [1000, 0.6724], [1050, 0.7327], [1100, 0.7957],
+  [1150, 0.8612], [1200, 0.9293], [1250, 0.9584], [1300, 0.988], [1350, 1.0181], [1400, 1.0486], [1450, 1.0795],
+  [1500, 1.1109], [1550, 1.1428], [1600, 1.1751], [1650, 1.2078], [1700, 1.241], [1750, 1.2746], [1800, 1.3087],
+  [1850, 1.3433], [1900, 1.3783], [1950, 1.4137], [2000, 1.4496], [2050, 1.4677], [2100, 1.4859], [2150, 1.504],
+  [2200, 1.5221], [2250, 1.5402], [2300, 1.5584], [2350, 1.5765], [2400, 1.5946], [2450, 1.6127], [2500, 1.6309],
+  [2550, 1.649], [2600, 1.6671], [2650, 1.6852], [2700, 1.7034], [2750, 1.7215], [2800, 1.7396], [2850, 1.7577],
+  [2900, 1.7759], [2950, 1.794], [3000, 1.8125],
+];
+
+/** Imperial delivery payout multiplier bonus (0.6724 = +67.24%) at the given cooking/alchemy mastery. */
+export function imperialBonus(mastery: number): number {
+  const m = Math.max(0, Math.min(MASTERY_MAX, mastery));
+  let prev = IMPERIAL_BONUS[0];
+  for (const p of IMPERIAL_BONUS) {
+    if (m === p[0]) return p[1];
+    if (m < p[0]) return prev[1] + ((p[1] - prev[1]) * (m - prev[0])) / (p[0] - prev[0]);
+    prev = p;
+  }
+  return prev[1];
+}
 
 export const PROCESSING_TYPES: RecipeType[] = ["heating", "grinding", "drying", "shaking", "filtering", "chopping", "simple-alchemy", "simple-cooking"];
 

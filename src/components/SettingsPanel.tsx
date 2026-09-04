@@ -2,7 +2,7 @@
 
 import type { Settings, SkillGroup } from "@/lib/engine/types";
 import { netRate } from "@/lib/engine/cost";
-import { massProcessCount, MASTERY_MAX, maxQuantityChance } from "@/lib/engine/mastery";
+import { imperialBonus, massProcessCount, MASTERY_MAX, maxQuantityChance } from "@/lib/engine/mastery";
 import { pct } from "@/lib/format";
 
 const TIERS = ["มือใหม่", "ฝึกฝน", "คล่องแคล่ว", "เชี่ยวชาญ", "ช่าง", "ลือชื่อ", "เซียน"];
@@ -61,7 +61,10 @@ export function SettingsPanel({ settings, onChange }: { settings: Settings; onCh
         <div className="space-y-3 text-sm">
           {SKILLS.map(({ key, label }) => {
             const mastery = settings.mastery[key] ?? 0;
-            const hint = key === "processing" ? `ทำได้ครั้งละ ${massProcessCount(mastery)} ชุด` : `โอกาสได้เต็ม ${pct(maxQuantityChance(key, mastery), 1)}`;
+            const hint =
+              key === "processing"
+                ? `ทำได้ครั้งละ ${massProcessCount(mastery)} ชุด`
+                : `ได้เต็ม ${pct(maxQuantityChance(key, mastery), 1)} · ราชวัง +${pct(imperialBonus(mastery))}`;
             return (
               <div key={key} className="grid grid-cols-[auto_1fr_1fr_1fr] items-center gap-2">
                 <span className="w-16 font-medium">{label}</span>

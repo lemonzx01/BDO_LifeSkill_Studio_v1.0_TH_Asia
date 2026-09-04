@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/", label: "คำนวณสูตร" },
   { href: "/market", label: "สแกนตลาด" },
   { href: "/inventory", label: "คลังของ" },
+  { href: "/plans", label: "แผนกิล" },
 ];
 
 export function TopNav({ user, subtitle }: { user: SessionUser; subtitle?: string }) {

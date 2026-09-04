@@ -59,11 +59,18 @@ export function RecipeDetail({
           <Stat label="ผลผลิต/รอบ" value={ev.expectedYield.toFixed(2)} />
           <Stat label="ต้นทุน/รอบ" value={silver(ev.materialCostPerCraft)} />
           <Stat label="ต้นทุน/ชิ้น" value={silver(ev.unitCost)} />
-          <Stat label={`ได้รับสุทธิ/ชิ้น (${pct(ev.netRate, 1)})`} value={silver(ev.netPerUnit)} />
+          <Stat
+            label={ev.saleChannel === "imperial" ? "ได้จาก NPC ราชวัง/กล่อง (รวมโบนัส Mastery)" : `ได้รับสุทธิ/ชิ้น (${pct(ev.netRate, 1)})`}
+            value={silver(ev.netPerUnit)}
+          />
           <Stat label="กำไร/ชิ้น" value={silver(ev.profitPerUnit)} tone={ev.profitPerUnit >= 0 ? "good" : "bad"} />
           <Stat label="กำไร/รอบ" value={silver(ev.profitPerCraft)} tone={ev.profitPerCraft >= 0 ? "good" : "bad"} />
           <Stat label="ROI" value={pct(ev.roi, 1)} tone={ev.roi >= 0 ? "good" : "bad"} />
-          <Stat label="กำไร/ชม." value={silverShort(ev.profitPerHour)} tone={ev.profitPerHour >= 0 ? "good" : "bad"} />
+          {ev.saleChannel === "imperial" ? (
+            <Stat label="กำไร/ชม." value="- (มีโควตาต่อวัน)" />
+          ) : (
+            <Stat label="กำไร/ชม." value={silverShort(ev.profitPerHour)} tone={ev.profitPerHour >= 0 ? "good" : "bad"} />
+          )}
         </div>
         <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">วัตถุดิบต่อ 1 รอบ (เลือกทางที่ถูกที่สุดให้แล้ว)</h4>
         <div className="mb-1 flex justify-end gap-2 pr-1 text-[11px] text-muted">

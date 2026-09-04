@@ -11,6 +11,13 @@ const notoThai = Noto_Sans_Thai({
 export const metadata: Metadata = {
   title: "BDO LifeSkill Studio — คำนวณกำไรแปรธาตุ/ทำอาหาร (Asia)",
   description: "คำนวณต้นทุน กำไร และ ROI ของสูตร Life Skill จากราคาตลาดกลางเซิร์ฟเวอร์ Asia แบบสด ๆ",
+  manifest: "/manifest.webmanifest",
+  applicationName: "BDO LifeSkill Studio",
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "LifeSkill" },
+  icons: {
+    icon: [{ url: "/icons/app-192.png", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/icons/app-192.png", sizes: "192x192", type: "image/png" }],
+  },
 };
 
 export const viewport: Viewport = {

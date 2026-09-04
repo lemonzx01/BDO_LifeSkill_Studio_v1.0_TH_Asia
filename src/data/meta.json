@@ -1,5 +1,5 @@
 {
-  "importedAt": "2026-09-03T23:19:07.656Z",
+  "importedAt": "2026-09-04T03:38:46.242Z",
   "types": [
     "alchemy",
     "cooking",
@@ -10,10 +10,12 @@
     "filtering",
     "chopping",
     "simple-alchemy",
-    "simple-cooking"
+    "simple-cooking",
+    "imperial-cooking",
+    "imperial-alchemy"
   ],
-  "recipeCount": 3814,
-  "itemCount": 4233,
+  "recipeCount": 4203,
+  "itemCount": 4282,
   "sources": {
     "recipes": "bdocodex.com (query.php recipes, tip.php substitute groups)",
     "items": "bdolytics.com (market snapshot ASIA th/en, database.getItem)"

@@ -26,7 +26,8 @@ const argVal = (name, def) => {
   const i = args.indexOf(name);
   return i >= 0 ? args[i + 1] : def;
 };
-const DEFAULT_TYPES = "alchemy,cooking,heating,grinding,drying,shaking,filtering,chopping,simple-alchemy,simple-cooking";
+const DEFAULT_TYPES =
+  "alchemy,cooking,heating,grinding,drying,shaking,filtering,chopping,simple-alchemy,simple-cooking,imperial-cooking,imperial-alchemy";
 const TYPES = argVal("--types", DEFAULT_TYPES).split(",");
 const DOWNLOAD_ICONS = !args.includes("--no-icons");
 const DELAY_MS = Number(argVal("--delay", "150"));
@@ -124,15 +125,47 @@ const CODEX_TYPE = {
   chopping: { a: "mrecipes", type: "woodcutting", label: "ตัดฟืน" },
   "simple-alchemy": { a: "mrecipes", type: "malchemy", label: "แปรธาตุอย่างง่าย" },
   "simple-cooking": { a: "mrecipes", type: "mculinary", label: "ทำอาหารอย่างง่าย" },
+  // imperial lists are written as "box -> N dishes" (unboxing); we invert them into packing recipes
+  "imperial-cooking": { a: "mrecipes", type: "rcooking", label: "ห่ออาหารราชวัง", imperial: true },
+  "imperial-alchemy": { a: "mrecipes", type: "ralchemy", label: "ห่อแร่แปรธาตุราชวัง", imperial: true },
 };
 // bdocodex recipe ids and mrecipe ids overlap; keep ours unique
 const MRECIPE_ID_OFFSET = 100000;
+
+/** Imperial packing recipes: 1 box <- N of the dish/elixir. Box payout is read from the item page later. */
+function parseImperialList(type, rows) {
+  const out = [];
+  for (const row of rows) {
+    const mats = parseSlots(row[6]);
+    const prods = parseSlots(row[8]);
+    if (mats.length !== 1 || prods.length !== 1) continue; // event / key variants
+    const box = mats[0];
+    const content = prods[0];
+    if (!box.id || !content.id || content.min < 1) continue;
+    const id = Number(row[0]) + MRECIPE_ID_OFFSET;
+    const tierIdx = TIERS.findIndex((t) => stripTags(row[2]).endsWith(t)); // resolved again from the box name below
+    out.push({
+      id,
+      type,
+      name: stripTags(row[2]), // content name; replaced by the box name once items are resolved
+      skill: { display: "", tier: tierIdx, tierName: tierIdx >= 0 ? TIERS[tierIdx] : "", level: 0, sort: 0 },
+      exp: 0,
+      weight: 0,
+      materials: [{ id: content.id, qty: content.min, icon: content.icon, isGroup: false, isFixed: true }],
+      products: [{ id: box.id, min: 1, max: 1, icon: box.icon, kind: "main" }],
+      allMaterialIds: [content.id],
+      imperialBox: box.id,
+    });
+  }
+  return out;
+}
 
 async function fetchRecipeList(type) {
   const codex = CODEX_TYPE[type];
   if (!codex) throw new Error(`unknown recipe type ${type}`);
   const url = `https://bdocodex.com/query.php?a=${codex.a}&type=${codex.type}&id=1&l=th`;
   const json = JSON.parse(await fetchCached(url));
+  if (codex.imperial) return parseImperialList(type, json.aaData.filter((row) => stripTags(String(row[3])) === codex.label));
   const out = [];
   for (const row of json.aaData) {
     const id = Number(row[0]) + (codex.a === "mrecipes" ? MRECIPE_ID_OFFSET : 0);
@@ -352,6 +385,42 @@ async function main() {
     }),
   );
 
+  // Imperial boxes: payout = the "buy price" on the item page; name/tier from the box item
+  const boxes = [...new Set(recipes.filter((r) => r.imperialBox).map((r) => r.imperialBox))];
+  if (boxes.length) {
+    console.log(`Reading ${boxes.length} imperial box prices...`);
+    const q = [...boxes];
+    await Promise.all(
+      Array.from({ length: 4 }, async () => {
+        while (q.length) {
+          const id = q.shift();
+          try {
+            const page = stripTags(await fetchCached(`https://bdocodex.com/th/item/${id}/`));
+            const m = page.match(/ราคาซื้อ\s*:?\s*([\d,]+)/);
+            const price = m ? Number(m[1].replace(/,/g, "")) : 0;
+            if (items[id]) {
+              items[id].imperialPrice = price || null;
+              items[id].npcBuy = null; // never "buy" a box from an NPC
+            }
+          } catch (e) {
+            console.warn(`  ! box ${id}: ${e.message}`);
+          }
+        }
+      }),
+    );
+    for (const r of recipes) {
+      if (!r.imperialBox) continue;
+      const box = items[r.imperialBox];
+      if (box) {
+        r.name = box.th;
+        const tierIdx = TIERS.findIndex((t) => box.th.endsWith(t));
+        if (tierIdx >= 0) r.skill = { display: TIERS[tierIdx], tier: tierIdx, tierName: TIERS[tierIdx], level: 1, sort: tierIdx * 10 + 1 };
+      }
+    }
+    const priced = recipes.filter((r) => r.imperialBox && items[r.imperialBox]?.imperialPrice).length;
+    console.log(`  imperial boxes with a payout: ${priced}/${recipes.filter((r) => r.imperialBox).length}`);
+  }
+
   // Processing lists include melting/grinding gear (every weapon and armor piece);
   // those are never a life-skill money maker and would bloat the data, so drop them.
   const GEAR = new Set(["mainhand", "offhand", "awakening", "armor", "accessories"]);
@@ -361,7 +430,8 @@ async function main() {
     (r) =>
       r.materials.length > 0 && // some codex rows have no parsable ingredients (would look free)
       r.products.length > 0 &&
-      (r.type === "alchemy" || r.type === "cooking" || !r.materials.some((m) => isGear(m.id))),
+      (r.type === "alchemy" || r.type === "cooking" || !r.materials.some((m) => isGear(m.id))) &&
+      (!r.imperialBox || items[r.imperialBox]?.imperialPrice), // drop event boxes without a payout
   );
   console.log(`Dropped ${before - kept.length} gear-processing / incomplete recipes`);
 

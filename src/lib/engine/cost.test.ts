@@ -94,6 +94,29 @@ describe("CostEngine recursive cost (Excel sample)", () => {
     expect(engine.costOf(5)).toMatchObject({ unitCost: 200, source: "npc" });
   });
 
+  it("values imperial boxes at the NPC payout plus mastery bonus, tax-free", () => {
+    const withBox: Record<number, Item> = { ...items, 301: item(301, "กล่องอีลิกเซอร์ป้องกัน - ฝึกฝน", false, { imperialPrice: 100000 }) };
+    const pack: Recipe = {
+      id: 500,
+      type: "imperial-alchemy",
+      name: "กล่องอีลิกเซอร์ป้องกัน - ฝึกฝน",
+      skill: { display: "ฝึกฝน", tier: 1, tierName: "ฝึกฝน", level: 1, sort: 11 },
+      exp: 0,
+      weight: 0,
+      materials: [{ id: 202, qty: 10, fixed: true }],
+      products: [{ id: 301, min: 1, max: 1, kind: "main" }],
+    };
+    const e0 = new CostEngine(ctx({ items: withBox, recipes: [...recipes, pack] }));
+    const ev0 = e0.evaluate(pack)!;
+    expect(ev0.saleChannel).toBe("imperial");
+    expect(ev0.unitCost).toBe(284000); // 10 x ELX002 (28,400 each, crafted)
+    expect(ev0.sellPrice).toBe(100000);
+    expect(ev0.netRate).toBe(1);
+    expect(ev0.flags.productNotMarketable).toBe(false);
+    const e1 = new CostEngine(ctx({ items: withBox, recipes: [...recipes, pack], settings: { ...settings, mastery: { alchemy: 1000 } } }));
+    expect(e1.evaluate(pack)!.sellPrice).toBeCloseTo(167240); // +67.24%
+  });
+
   it("ignores the nominal NPC price of items that are not really vendor-sold", () => {
     const fake: Record<number, Item> = {
       ...items,

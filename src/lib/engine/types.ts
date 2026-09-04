@@ -10,7 +10,9 @@ export type RecipeType =
   | "filtering"
   | "chopping"
   | "simple-alchemy"
-  | "simple-cooking";
+  | "simple-cooking"
+  | "imperial-cooking"
+  | "imperial-alchemy";
 
 /** Settings (mastery, speed, skill tier) are kept per skill group, not per recipe type. */
 export type SkillGroup = "alchemy" | "cooking" | "processing";
@@ -29,6 +31,8 @@ export interface Item {
   npcBuy?: number | null;
   npcSell?: number | null;
   weight?: number | null;
+  /** silver paid by the Imperial Delivery NPC for one box (before mastery bonus) */
+  imperialPrice?: number | null;
 }
 
 export interface GroupMember {
@@ -193,6 +197,8 @@ export interface RecipeEvaluation {
   roi: number;
   /** cost tree for one craft */
   tree: CostNode;
+  /** where the product is sold: central market (taxed) or the imperial delivery NPC (tax-free, daily quota) */
+  saleChannel: "market" | "imperial";
   flags: {
     unknownCost: boolean;
     materialSoldOut: boolean;

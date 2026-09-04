@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ItemId, MarketPrice } from "@/lib/engine/types";
+import { downloadCsv, parseCsv, toCsv } from "@/lib/csv";
 import { silver } from "@/lib/format";
 import type { SessionUser } from "./auth/UserMenu";
 import { ItemIcon } from "./ItemIcon";
@@ -49,23 +50,93 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
 
   const totalValue = owned.reduce((a, o) => a + o.qty * (prices[o.id]?.price ?? 0), 0);
   const totalCost = owned.reduce((a, o) => a + o.qty * (o.avgCost ?? 0), 0);
+  const [importMsg, setImportMsg] = useState<string | null>(null);
+
+  const exportCsv = () => {
+    const rows = owned.map((o) => {
+      const it = byId.get(o.id);
+      return [o.id, it?.th ?? "", it?.en ?? "", o.qty, o.avgCost ?? ""];
+    });
+    downloadCsv(`bdo-inventory-${new Date().toISOString().slice(0, 10)}.csv`, toCsv([["id", "ชื่อไทย", "ชื่ออังกฤษ", "จำนวน", "ต้นทุน/ชิ้น"], ...rows]));
+  };
+
+  /** Accepts our export, or any CSV with a name/id column plus a quantity column (e.g. the old Excel sheet). */
+  const importCsv = async (file: File) => {
+    const rows = parseCsv(await file.text());
+    if (rows.length < 2) {
+      setImportMsg("ไฟล์ว่างหรืออ่านไม่ได้");
+      return;
+    }
+    const header = rows[0].map((h) => h.trim().toLowerCase());
+    const col = (...names: string[]) => header.findIndex((h) => names.some((n) => h === n || h.includes(n)));
+    const idCol = col("id", "รหัส");
+    const nameCol = col("ชื่อไทย", "ชื่อไอเท็ม", "ชื่อ", "name");
+    const enCol = col("ชื่ออังกฤษ", "english");
+    const qtyCol = col("จำนวน", "qty", "quantity");
+    const costCol = col("ต้นทุน", "cost", "avg");
+    if (qtyCol < 0 || (idCol < 0 && nameCol < 0)) {
+      setImportMsg("ต้องมีคอลัมน์ จำนวน และ id หรือ ชื่อไอเท็ม");
+      return;
+    }
+    const byTh = new Map(items.map((i) => [i.th.trim().toLowerCase(), i.id]));
+    const byEn = new Map(items.map((i) => [i.en.trim().toLowerCase(), i.id]));
+    let ok = 0;
+    const missing: string[] = [];
+    for (const r of rows.slice(1)) {
+      const qty = Number(String(r[qtyCol] ?? "").replace(/[^\d.]/g, ""));
+      if (!Number.isFinite(qty)) continue;
+      let id = idCol >= 0 ? Number(r[idCol]) : NaN;
+      if (!Number.isInteger(id) || !byId.has(id)) {
+        const th = nameCol >= 0 ? String(r[nameCol] ?? "").trim().toLowerCase() : "";
+        const en = enCol >= 0 ? String(r[enCol] ?? "").trim().toLowerCase() : "";
+        id = byTh.get(th) ?? byEn.get(en) ?? byEn.get(th) ?? NaN;
+      }
+      if (!Number.isInteger(id)) {
+        if (nameCol >= 0 && r[nameCol]) missing.push(String(r[nameCol]));
+        continue;
+      }
+      const cost = costCol >= 0 ? Number(String(r[costCol] ?? "").replace(/[^\d.]/g, "")) : NaN;
+      setOwned(id, Math.max(0, Math.floor(qty)), Number.isFinite(cost) && cost > 0 ? cost : undefined);
+      ok += 1;
+    }
+    setImportMsg(`นำเข้า ${ok} รายการ${missing.length ? ` · ไม่พบชื่อ ${missing.length} รายการ: ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? "…" : ""}` : ""}`);
+  };
 
   return (
     <main className="mx-auto w-full max-w-5xl px-3 py-4 md:px-6">
       <TopNav user={user} subtitle="ของที่มีอยู่ ใช้หักออกจากวัตถุดิบที่ต้องซื้อในแผนผลิต และคิดต้นทุนตามที่ตั้งค่า" />
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold">คลังของ ({owned.length} รายการ)</h2>
-        {owned.length > 0 && (
-          <button
-            onClick={() => {
-              if (confirm("ล้างคลังทั้งหมด?")) clearInventory();
-            }}
-            className="rounded border border-bad/40 bg-bad/10 px-3 py-1.5 text-sm text-bad hover:bg-bad/20"
-          >
-            ล้างทั้งหมด
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="cursor-pointer rounded border border-border bg-panel px-3 py-1.5 text-sm hover:bg-panel-2">
+            นำเข้า CSV
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void importCsv(f);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <button onClick={exportCsv} disabled={owned.length === 0} className="rounded border border-border bg-panel px-3 py-1.5 text-sm hover:bg-panel-2 disabled:opacity-50">
+            ส่งออก CSV
           </button>
-        )}
+          {owned.length > 0 && (
+            <button
+              onClick={() => {
+                if (confirm("ล้างคลังทั้งหมด?")) clearInventory();
+              }}
+              className="rounded border border-bad/40 bg-bad/10 px-3 py-1.5 text-sm text-bad hover:bg-bad/20"
+            >
+              ล้างทั้งหมด
+            </button>
+          )}
+        </div>
       </div>
+      {importMsg && <div className="mb-3 rounded border border-border bg-panel px-3 py-2 text-sm text-muted">{importMsg}</div>}
 
       <div className="relative mb-4">
         <input

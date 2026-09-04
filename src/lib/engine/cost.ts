@@ -1,4 +1,4 @@
-import { expectedUnits, maxQuantityChance, skillGroup } from "./mastery";
+import { expectedUnits, imperialBonus, isImperial, maxQuantityChance, skillGroup } from "./mastery";
 import type {
   CostChild,
   CostContext,
@@ -241,13 +241,19 @@ export class CostEngine {
     const unitCost = craft.total / yieldPerCraft;
     const item = this.item(product.id);
     const mp = prices[product.id];
-    const sellPrice = item?.market && mp && mp.price > 0 ? mp.price : 0;
-    const rate = netRate(settings);
+    const group = skillGroup(recipe.type);
+    const imperial = isImperial(recipe.type);
+    // imperial boxes are handed to the delivery NPC: fixed payout + mastery bonus, no market tax
+    const sellPrice = imperial
+      ? (item?.imperialPrice ?? 0) * (1 + imperialBonus(settings.mastery?.[group] ?? 0))
+      : item?.market && mp && mp.price > 0
+        ? mp.price
+        : 0;
+    const rate = imperial ? 1 : netRate(settings);
     const netPerUnit = sellPrice * rate;
     const profitPerUnit = netPerUnit - unitCost;
     const profitPerCraft = profitPerUnit * yieldPerCraft;
-    const group = skillGroup(recipe.type);
-    const cph = settings.craftsPerHour?.[group] ?? 0;
+    const cph = imperial ? 0 : (settings.craftsPerHour?.[group] ?? 0);
     const skillTier = settings.skillTier?.[group];
     const tree: CostNode = {
       id: product.id,
@@ -274,11 +280,12 @@ export class CostEngine {
       profitPerHour: profitPerCraft * cph,
       roi: unitCost > 0 ? profitPerUnit / unitCost : 0,
       tree,
+      saleChannel: imperial ? "imperial" : "market",
       flags: {
         unknownCost: craft.hasUnknown,
         materialSoldOut: craft.hasSoldOut,
         productNoPrice: sellPrice <= 0,
-        productNotMarketable: !item?.market,
+        productNotMarketable: imperial ? false : !item?.market,
         aboveSkill: skillTier !== undefined && recipe.skill.tier > skillTier,
       },
     };

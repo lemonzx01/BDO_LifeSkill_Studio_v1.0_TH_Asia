@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CostEngine } from "@/lib/engine/cost";
-import { PROCESSING_TYPES, RECIPE_TYPE_TH } from "@/lib/engine/mastery";
+import { IMPERIAL_TYPES, PROCESSING_TYPES, RECIPE_TYPE_TH } from "@/lib/engine/mastery";
 import type { Inventory, Item, ItemId, MarketPrice, Recipe, RecipeEvaluation, RecipeType } from "@/lib/engine/types";
+import { downloadCsv, toCsv } from "@/lib/csv";
 import { pct, silver, silverShort, timeAgo } from "@/lib/format";
 import { ItemIcon } from "./ItemIcon";
 import { RecipeDetail } from "./RecipeDetail";
@@ -12,7 +13,7 @@ import type { SessionUser } from "./auth/UserMenu";
 import { TopNav } from "./TopNav";
 import { useInventory, useSettings } from "./UserDataProvider";
 
-type Tab = "all" | "alchemy" | "cooking" | "processing";
+type Tab = "all" | "alchemy" | "cooking" | "processing" | "imperial";
 type SortKey = "profitPerHour" | "profitPerUnit" | "profitPerCraft" | "roi" | "unitCost";
 type MarketFilter = "all" | "soldout" | "instock";
 
@@ -21,6 +22,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "alchemy", label: "แปรธาตุ" },
   { key: "cooking", label: "ทำอาหาร" },
   { key: "processing", label: "แปรรูป" },
+  { key: "imperial", label: "ราชวัง" },
 ];
 const SORTS: { key: SortKey; label: string }[] = [
   { key: "profitPerUnit", label: "กำไร/ชิ้น" },
@@ -122,6 +124,7 @@ export function Studio({ user }: { user: SessionUser }) {
         if (!PROCESSING_TYPES.includes(t)) return false;
         if (method !== "all" && t !== method) return false;
       }
+      if (tab === "imperial" && !IMPERIAL_TYPES.includes(t)) return false;
       if (hideIncomplete && (ev.flags.unknownCost || ev.flags.productNoPrice || ev.flags.productNotMarketable || ev.flags.aboveSkill)) return false;
       if (hideSoldOut && ev.flags.materialSoldOut) return false;
       if (marketFilter !== "all") {
@@ -143,6 +146,32 @@ export function Studio({ user }: { user: SessionUser }) {
 
   const busy = loading || !data;
 
+  const exportCsv = () => {
+    const header = ["สูตร", "ประเภท", "ระดับทักษะ", "ผลผลิต/รอบ", "ต้นทุน/ชิ้น", "ราคาขาย", "ได้รับสุทธิ/ชิ้น", "กำไร/ชิ้น", "ROI %", "กำไร/รอบ", "กำไร/ชม.", "สถานะ"];
+    const body = rows.map((ev) => [
+      items[ev.productId]?.th ?? ev.recipe.name,
+      RECIPE_TYPE_TH[ev.recipe.type],
+      ev.recipe.skill.display,
+      ev.expectedYield.toFixed(2),
+      Math.round(ev.unitCost),
+      Math.round(ev.sellPrice),
+      Math.round(ev.netPerUnit),
+      Math.round(ev.profitPerUnit),
+      (ev.roi * 100).toFixed(1),
+      Math.round(ev.profitPerCraft),
+      ev.saleChannel === "imperial" ? "" : Math.round(ev.profitPerHour),
+      [
+        ev.flags.unknownCost ? "ต้นทุนไม่ครบ" : "",
+        ev.flags.materialSoldOut ? "วัตถุดิบหมด" : "",
+        ev.flags.productNoPrice ? "ไม่มีราคาขาย" : "",
+        ev.saleChannel === "imperial" ? "ส่งราชวัง" : "",
+      ]
+        .filter(Boolean)
+        .join(" / "),
+    ]);
+    downloadCsv(`bdo-profit-${new Date().toISOString().slice(0, 10)}.csv`, toCsv([header, ...body]));
+  };
+
   return (
     <main className="mx-auto w-full max-w-7xl px-3 py-4 md:px-6">
       <TopNav
@@ -154,6 +183,9 @@ export function Studio({ user }: { user: SessionUser }) {
         <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => load(true)} disabled={loading} className="rounded border border-border bg-panel px-3 py-1.5 text-sm hover:bg-panel-2 disabled:opacity-50">
             {loading ? "กำลังโหลด…" : "รีเฟรชราคา"}
+          </button>
+          <button onClick={exportCsv} disabled={busy || rows.length === 0} className="rounded border border-border bg-panel px-3 py-1.5 text-sm hover:bg-panel-2 disabled:opacity-50">
+            ส่งออก CSV
           </button>
           <button
             onClick={() => setShowSettings((s) => !s)}
@@ -270,6 +302,12 @@ export function Studio({ user }: { user: SessionUser }) {
           </button>
         </div>
       )}
+      {tab === "imperial" && (
+        <p className="mt-3 text-xs text-muted">
+          กล่องราชวังขายให้ NPC ส่งของราชวังเท่านั้น: &ldquo;ราคาขาย&rdquo; คือเงินที่ได้ต่อกล่อง รวมโบนัส Mastery แปรธาตุ/ทำอาหารแล้ว ไม่หักภาษีตลาด
+          · แต่ละกล่องมีโควตารับซื้อจำกัดต่อรอบ และส่งได้จำกัดต่อวันต่อครอบครัว จึงไม่แสดงกำไร/ชม.
+        </p>
+      )}
 
       <footer className="mt-6 text-xs text-muted">
         สูตร {silver(recipes.length)} รายการ
@@ -316,7 +354,9 @@ function Row({
         <td className={`num px-2 py-1.5 text-right font-semibold ${good ? "text-good" : "text-bad"}`}>{silver(ev.profitPerUnit)}</td>
         <td className={`num px-2 py-1.5 text-right ${good ? "text-good" : "text-bad"}`}>{pct(ev.roi)}</td>
         <td className="num px-2 py-1.5 text-right">{silverShort(ev.profitPerCraft)}</td>
-        <td className={`num px-2 py-1.5 text-right font-semibold ${good ? "text-good" : "text-bad"}`}>{silverShort(ev.profitPerHour)}</td>
+        <td className={`num px-2 py-1.5 text-right font-semibold ${good ? "text-good" : "text-bad"}`}>
+          {ev.saleChannel === "imperial" ? <span className="text-muted">-</span> : silverShort(ev.profitPerHour)}
+        </td>
         <td className="px-2 py-1.5">
           <Flags ev={ev} stock={prices[ev.productId]?.stock} />
         </td>
@@ -335,12 +375,13 @@ function Row({
 function Flags({ ev, stock }: { ev: RecipeEvaluation; stock?: number }) {
   const f = ev.flags;
   const chips: { text: string; cls: string }[] = [];
-  if (f.productNotMarketable) chips.push({ text: "ขายตลาดไม่ได้", cls: "bg-zinc-500/20 text-zinc-300" });
+  if (ev.saleChannel === "imperial") chips.push({ text: "ส่งราชวัง ไม่หักภาษี", cls: "bg-accent/15 text-accent" });
+  else if (f.productNotMarketable) chips.push({ text: "ขายตลาดไม่ได้", cls: "bg-zinc-500/20 text-zinc-300" });
   else if (f.productNoPrice) chips.push({ text: "ไม่มีราคาขาย", cls: "bg-zinc-500/20 text-zinc-300" });
   if (f.unknownCost) chips.push({ text: "ต้นทุนไม่ครบ", cls: "bg-rose-500/15 text-rose-300" });
   if (f.materialSoldOut) chips.push({ text: "วัตถุดิบหมด", cls: "bg-warn/15 text-warn" });
   if (f.aboveSkill) chips.push({ text: "เกินระดับ", cls: "bg-violet-500/15 text-violet-300" });
-  if (!f.productNotMarketable && !f.productNoPrice && stock !== undefined) {
+  if (ev.saleChannel === "market" && !f.productNotMarketable && !f.productNoPrice && stock !== undefined) {
     if (stock > 0) chips.push({ text: `ค้างขาย ${silverShort(stock)}`, cls: "bg-sky-500/10 text-sky-300" });
     else chips.push({ text: "ขาดตลาด", cls: "bg-good/15 text-good" });
   }

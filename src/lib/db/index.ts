@@ -66,6 +66,17 @@ const SCHEMA_SQL = [
     data TEXT NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
+  `CREATE TABLE IF NOT EXISTS plans (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    recipe_id INTEGER NOT NULL,
+    product_id INTEGER NOT NULL,
+    qty INTEGER NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    unit_cost BIGINT,
+    profit_per_unit BIGINT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
   `CREATE TABLE IF NOT EXISTS user_inventory (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     item_id INTEGER NOT NULL,
