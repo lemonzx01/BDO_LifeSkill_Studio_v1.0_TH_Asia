@@ -3,10 +3,11 @@ import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "./schema";
 
 /**
- * One Postgres dialect, two drivers:
- *  - DATABASE_URL set  -> Neon serverless (HTTP) for Vercel / any Postgres-over-Neon
- *  - DATABASE_URL unset -> PGlite, an embedded Postgres stored under .data/pglite
- *                          (in-memory when NODE_ENV=test)
+ * One Postgres dialect, three drivers:
+ *  - DATABASE_URL (or POSTGRES_URL) pointing at Neon -> Neon serverless (HTTP)
+ *  - any other Postgres URL (Supabase, Railway, self-hosted…) -> postgres.js over TCP
+ *  - nothing set -> PGlite, an embedded Postgres stored under .data/pglite
+ *                   (in-memory when NODE_ENV=test)
  * The schema is created idempotently on first use so no migration step is
  * needed for a fresh deployment.
  */
@@ -91,16 +92,29 @@ async function ensureSchema(db: Db) {
   globalThis.__blsSchemaVersion = SCHEMA_VERSION;
 }
 
+/** Connection string from the env, accepting the names Vercel's Neon and Supabase integrations inject. */
+function databaseUrl(): string | undefined {
+  return process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL || undefined;
+}
+
 async function connect(): Promise<Db> {
-  const url = process.env.DATABASE_URL;
+  const url = databaseUrl();
   let db: Db;
-  if (url) {
+  if (url && /\.neon\.tech[/:]/.test(url)) {
     const { neon } = await import("@neondatabase/serverless");
     const { drizzle } = await import("drizzle-orm/neon-http");
     db = drizzle({ client: neon(url), schema }) as unknown as Db;
+  } else if (url) {
+    const postgres = (await import("postgres")).default;
+    const { drizzle } = await import("drizzle-orm/postgres-js");
+    const local = /@(localhost|127\.0\.0\.1)[:/]/.test(url);
+    // prepare:false — Supabase's transaction pooler (port 6543) rejects prepared statements;
+    // small pool — every serverless instance opens its own connections
+    const client = postgres(url, { prepare: false, max: 4, idle_timeout: 20, connect_timeout: 15, ssl: local ? false : "require" });
+    db = drizzle({ client, schema }) as unknown as Db;
   } else {
     if (process.env.VERCEL) {
-      throw new Error("DATABASE_URL is not set: connect a Postgres database (Storage → Neon) to this Vercel project and redeploy");
+      throw new Error("DATABASE_URL is not set: add a Postgres connection string (Neon, Supabase…) to this Vercel project and redeploy");
     }
     const { PGlite } = await import("@electric-sql/pglite");
     const { drizzle } = await import("drizzle-orm/pglite");
@@ -129,7 +143,7 @@ export async function getDb(): Promise<Db> {
 }
 
 export function isUsingEmbeddedDb(): boolean {
-  return !process.env.DATABASE_URL;
+  return !databaseUrl();
 }
 
 /** Test helper: drop the cached connection so the next getDb() starts fresh. */
