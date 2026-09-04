@@ -6,7 +6,22 @@ export const dynamic = "force-dynamic";
 
 /** Anything that looks like credentials inside a connection string is masked before it leaves the server. */
 function sanitize(message: string): string {
-  return message.replace(/\/\/[^@\s]*@/g, "//***@").slice(0, 300);
+  return message
+    .replace(/\/\/[^@\s]*@/g, "//***@")
+    .replace(/^Failed query: [\s\S]*$/, "Failed query (see cause)")
+    .slice(0, 300);
+}
+
+/** The error plus its `cause` chain, innermost last — Drizzle wraps driver errors, and the driver error is the useful one. */
+function describe(e: unknown): { code: string | null; message: string }[] {
+  const chain: { code: string | null; message: string }[] = [];
+  let cur: unknown = e;
+  for (let depth = 0; cur && depth < 4; depth++) {
+    const err = cur as { code?: unknown; message?: unknown; cause?: unknown };
+    chain.push({ code: typeof err.code === "string" ? err.code : null, message: sanitize(String(err.message ?? cur)) });
+    cur = err.cause;
+  }
+  return chain;
 }
 
 function driverName(): string {
@@ -29,9 +44,9 @@ export async function GET() {
     await db.execute(sql`select 1`);
     return NextResponse.json({ ok: true, db: "ok", latencyMs: Date.now() - started, ...base }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
-    const err = e as { code?: string; message?: string };
+    const chain = describe(e);
     return NextResponse.json(
-      { ok: false, db: "error", ...base, error: { code: err.code ?? null, message: sanitize(String(err.message ?? e)) } },
+      { ok: false, db: "error", ...base, error: chain[chain.length - 1], chain },
       { status: 503, headers: { "Cache-Control": "no-store" } },
     );
   }
