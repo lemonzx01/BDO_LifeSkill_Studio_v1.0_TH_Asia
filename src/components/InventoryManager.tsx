@@ -1,5 +1,6 @@
 "use client";
 
+import { mergeImportRows, type ImportMode, type ImportRow } from "@/lib/inventory-import";
 import { rankByName } from "@/lib/search";
 import { useEffect, useMemo, useState } from "react";
 import type { ItemId, MarketPrice } from "@/lib/engine/types";
@@ -75,6 +76,8 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
   const totalCost = owned.reduce((a, o) => a + o.qty * (o.avgCost ?? prices[o.id]?.price ?? 0), 0);
   const customCount = owned.filter((o) => o.avgCost !== undefined).length;
   const [importMsg, setImportMsg] = useState<string | null>(null);
+  // "add" lets one CSV per in-game storage be imported one after another and summed up
+  const [importMode, setImportMode] = useState<ImportMode>("replace");
 
   const CSV_HEADER = ["id", "ชื่อไทย", "ชื่ออังกฤษ", "จำนวน", "ต้นทุน/ชิ้น"];
 
@@ -126,6 +129,7 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
     const byEn = new Map(items.map((i) => [i.en.trim().toLowerCase(), i.id]));
     let ok = 0;
     const missing: string[] = [];
+    const parsed: ImportRow[] = [];
     for (const r of rows.slice(1)) {
       const qty = Number(String(r[qtyCol] ?? "").replace(/[^\d.]/g, ""));
       if (!Number.isFinite(qty)) continue;
@@ -140,10 +144,13 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
         continue;
       }
       const cost = costCol >= 0 ? Number(String(r[costCol] ?? "").replace(/[^\d.]/g, "")) : NaN;
-      setOwned(id, Math.max(0, Math.floor(qty)), Number.isFinite(cost) && cost > 0 ? cost : undefined);
+      parsed.push({ id, qty, cost: Number.isFinite(cost) && cost > 0 ? cost : undefined });
       ok += 1;
     }
-    setImportMsg(`นำเข้า ${ok} รายการ${missing.length ? ` · ไม่พบชื่อ ${missing.length} รายการ: ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? "…" : ""}` : ""}`);
+    for (const [id, t] of mergeImportRows(parsed, importMode, inventory)) setOwned(id, t.qty, t.cost);
+    setImportMsg(
+      `นำเข้า ${ok} รายการ (${importMode === "add" ? "บวกเพิ่มจากที่มี" : "ทับจำนวนเดิม"})${missing.length ? ` · ไม่พบชื่อ ${missing.length} รายการ: ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? "…" : ""}` : ""}`,
+    );
   };
 
   return (
@@ -152,6 +159,15 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold">คลังของ ({owned.length} รายการ)</h2>
         <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={importMode}
+            onChange={(e) => setImportMode(e.target.value as ImportMode)}
+            className="rounded border border-border bg-panel px-2 py-1.5 text-sm"
+            title="ของที่ซ้ำกับในคลัง: ทับด้วยตัวเลขในไฟล์ หรือบวกเพิ่มจากที่มี (ใช้เมื่อนำเข้าทีละคลังในเกม)"
+          >
+            <option value="replace">ไฟล์ทับจำนวนเดิม</option>
+            <option value="add">ไฟล์บวกเพิ่มจากที่มี</option>
+          </select>
           <label className="cursor-pointer rounded border border-border bg-panel px-3 py-1.5 text-sm hover:bg-panel-2">
             นำเข้า CSV
             <input
