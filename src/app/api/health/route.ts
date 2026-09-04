@@ -37,7 +37,14 @@ function driverName(): string {
  */
 export async function GET() {
   const envSet = !isUsingEmbeddedDb();
-  const base = { driver: driverName(), envSet, vercel: Boolean(process.env.VERCEL) };
+  const base = {
+    driver: driverName(),
+    envSet,
+    vercel: Boolean(process.env.VERCEL),
+    // which build is answering — tells apart "env edited but not redeployed" from "still wrong"
+    deployment: process.env.VERCEL_DEPLOYMENT_ID ?? null,
+    commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
+  };
   try {
     const db = await getDb();
     const started = Date.now();
