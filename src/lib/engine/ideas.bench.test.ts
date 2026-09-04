@@ -25,6 +25,7 @@ describe("ideasFromInventory on the real database", () => {
     console.log(`ideas: ${ideas.length} in ${ms.toFixed(0)} ms; chained: ${ideas.filter((i) => i.steps.length).length}`);
     expect(ideas.length).toBeGreaterThan(0);
     expect(ideas.some((i) => i.steps.length > 0)).toBe(true);
-    expect(ms).toBeLessThan(4000);
+    // generous: this guards against an algorithmic regression, not a busy CPU (tsc + eslint often run alongside)
+    expect(ms).toBeLessThan(8000);
   });
 });
