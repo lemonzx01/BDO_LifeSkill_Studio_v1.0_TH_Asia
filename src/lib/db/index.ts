@@ -99,6 +99,9 @@ async function connect(): Promise<Db> {
     const { drizzle } = await import("drizzle-orm/neon-http");
     db = drizzle({ client: neon(url), schema }) as unknown as Db;
   } else {
+    if (process.env.VERCEL) {
+      throw new Error("DATABASE_URL is not set: connect a Postgres database (Storage → Neon) to this Vercel project and redeploy");
+    }
     const { PGlite } = await import("@electric-sql/pglite");
     const { drizzle } = await import("drizzle-orm/pglite");
     const dataDir = process.env.NODE_ENV === "test" ? undefined : (process.env.PGLITE_DATA_DIR ?? ".data/pglite");
