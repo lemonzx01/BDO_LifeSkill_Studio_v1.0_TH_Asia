@@ -522,9 +522,14 @@ function Detail({ c, rate }: { c: Computed; rate: number }) {
           </p>
         </div>
 
-        <p className="text-xs">
-          ซื้อขายสะสม {silver(r.trades)} ครั้ง{r.tradesPerDay !== null ? ` (วันละ ~${silver(r.tradesPerDay)})` : ""}
-          {r.en ? ` · ${r.en}` : ""} · id {r.id}
+        <p className="flex flex-wrap items-center gap-2 text-xs">
+          <span>
+            ซื้อขายสะสม {silver(r.trades)} ครั้ง{r.tradesPerDay !== null ? ` (วันละ ~${silver(r.tradesPerDay)})` : ""}
+            {r.en ? ` · ${r.en}` : ""} · id {r.id}
+          </span>
+          <a href={`/calc?item=${r.id}&name=${encodeURIComponent(r.th)}&price=${r.price}`} className="rounded border border-border bg-panel px-2 py-1 text-foreground hover:bg-panel-2">
+            คิดกำไรเทรดของนี้ →
+          </a>
         </p>
       </div>
       <MarketPanel id={r.id} name={r.th} price={r.price} stock={r.stock} market />

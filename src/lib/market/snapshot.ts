@@ -475,6 +475,21 @@ export async function getSnapshotPrices(ids: ItemId[]): Promise<{ prices: Record
   return { prices: out, at: last.at };
 }
 
+/** Name search over the whole market snapshot (Thai or English, case-insensitive). */
+export async function searchMarketItems(q: string, limit = 12): Promise<{ id: number; th: string; en: string | null; price: number; stock: number; grade: number }[]> {
+  const term = q.trim().toLowerCase();
+  if (term.length < 2) return [];
+  const db = await getDb();
+  const pattern = `%${term.replace(/[%_]/g, "")}%`;
+  const rows = await db
+    .select({ id: marketItems.id, th: marketItems.nameTh, en: marketItems.nameEn, price: marketItems.price, stock: marketItems.stock, grade: marketItems.grade })
+    .from(marketItems)
+    .where(sql`(${marketItems.nameTh} ILIKE ${pattern} OR ${marketItems.nameEn} ILIKE ${pattern}) AND ${marketItems.price} > 0`)
+    .orderBy(desc(marketItems.totalTrades))
+    .limit(limit);
+  return rows;
+}
+
 /** Our own daily history for one item (oldest first). */
 export async function getDailyHistory(id: ItemId, daysBack = 90): Promise<{ day: string; price: number }[]> {
   const db = await getDb();

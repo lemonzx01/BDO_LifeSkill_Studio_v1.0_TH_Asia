@@ -1,5 +1,5 @@
 {
-  "importedAt": "2026-09-04T03:38:46.242Z",
+  "importedAt": "2026-09-04T04:32:00.549Z",
   "types": [
     "alchemy",
     "cooking",
@@ -14,7 +14,7 @@
     "imperial-cooking",
     "imperial-alchemy"
   ],
-  "recipeCount": 4203,
+  "recipeCount": 4204,
   "itemCount": 4282,
   "sources": {
     "recipes": "bdocodex.com (query.php recipes, tip.php substitute groups)",

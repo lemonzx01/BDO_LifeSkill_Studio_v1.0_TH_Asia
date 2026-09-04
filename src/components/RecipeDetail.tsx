@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Inventory, Item, ItemId, MarketPrice, RecipeEvaluation } from "@/lib/engine/types";
 import { pct, silver, silverShort } from "@/lib/format";
-import { CostTree } from "./CostTree";
+import { CostTree, type TreeTools } from "./CostTree";
 import { ProductionPlan } from "./ProductionPlan";
 
 interface MarketDetail {
@@ -16,11 +16,19 @@ export function RecipeDetail({
   items,
   prices,
   inventory,
+  alternatives = [],
+  onPick,
+  tools,
 }: {
   ev: RecipeEvaluation;
   items: Record<ItemId, Item>;
   prices: Record<ItemId, MarketPrice>;
   inventory: Inventory;
+  /** every recipe that makes this product (including `ev`), best first */
+  alternatives?: RecipeEvaluation[];
+  onPick?: (recipeId: number) => void;
+  /** lets the cost tree peek into bought materials and force buy/craft per item */
+  tools?: TreeTools;
 }) {
   // The parent keys this component by product id, so state resets per product.
   const [state, setState] = useState<{ status: "loading" | "done" | "error"; detail: MarketDetail | null }>({ status: "loading", detail: null });
@@ -55,6 +63,32 @@ export function RecipeDetail({
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
       <div>
+        {alternatives.length > 1 && (
+          <div className="mb-3 rounded-lg border border-border bg-panel p-2">
+            <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">ของชิ้นนี้ทำได้ {alternatives.length} สูตร (เลือกดู)</div>
+            <div className="flex flex-wrap gap-1.5">
+              {alternatives.map((alt) => {
+                const active = alt.recipe.id === ev.recipe.id;
+                const mats = alt.recipe.materials.map((m) => `${items[m.id]?.th ?? `#${m.id}`} ×${m.qty}`).join(" + ");
+                return (
+                  <button
+                    key={alt.recipe.id}
+                    onClick={() => onPick?.(alt.recipe.id)}
+                    title={mats}
+                    className={`max-w-full truncate rounded border px-2 py-1 text-left text-xs ${active ? "border-accent bg-accent/10 text-accent" : "border-border bg-panel-2 text-muted hover:text-foreground"}`}
+                  >
+                    {alt.flags.unknownCost ? "ต้นทุนไม่ครบ" : `ต้นทุน ${silverShort(alt.unitCost)}/ชิ้น`} · ผลผลิต {alt.expectedYield.toFixed(1)} · {mats}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {ev.flags.unknownCost && (
+          <div className="mb-3 rounded border border-bad/40 bg-bad/10 px-3 py-2 text-sm text-bad">
+            ต้นทุนไม่ครบ: วัตถุดิบบางตัวไม่มีราคาในตลาดและไม่มีสูตรทำ (ดูแถวที่ขึ้น &ldquo;ไม่ทราบราคา&rdquo; ด้านล่าง) ตัวเลขกำไรของสูตรนี้จึงเชื่อไม่ได้
+          </div>
+        )}
         <div className="mb-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
           <Stat label="ผลผลิต/รอบ" value={ev.expectedYield.toFixed(2)} />
           <Stat label="ต้นทุน/รอบ" value={silver(ev.materialCostPerCraft)} />
@@ -79,7 +113,12 @@ export function RecipeDetail({
           <span className="w-24 text-right">ราคา/ชิ้น</span>
           <span className="w-28 text-right">รวม</span>
         </div>
-        {ev.tree.children && <CostTree items={items}>{ev.tree.children}</CostTree>}
+        {ev.tree.children && (
+          <CostTree items={items} tools={tools}>
+            {ev.tree.children}
+          </CostTree>
+        )}
+        {tools && <p className="mt-1 text-[11px] text-muted">กดชื่อวัตถุดิบเพื่อดูว่าทำเองต้องใช้อะไร และกดปุ่มเพื่อบังคับซื้อ/ทำเองต่อชั้น (มีผลทั้งหน้าจนกว่าจะรีเฟรช)</p>}
         <ProductionPlan ev={ev} items={items} prices={prices} inventory={inventory} />
       </div>
 

@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/recipes", label: "คำนวณสูตร" },
   { href: "/market", label: "สแกนตลาด" },
   { href: "/inventory", label: "คลังของ" },
+  { href: "/calc", label: "คิดภาษี" },
 ];
 
 export function TopNav({ user, subtitle }: { user: SessionUser; subtitle?: ReactNode }) {

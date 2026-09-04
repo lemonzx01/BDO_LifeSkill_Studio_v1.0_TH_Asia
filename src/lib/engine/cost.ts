@@ -171,6 +171,44 @@ export class CostEngine {
     return { node: candidates[0].node, cycleHit };
   }
 
+  /**
+   * Every way to craft `id` yourself, cheapest first — regardless of whether
+   * buying was chosen for it. Used by the UI to "peek inside" a bought material.
+   */
+  craftOptions(id: ItemId): { recipe: Recipe; node: CostNode }[] {
+    const out: { recipe: Recipe; node: CostNode }[] = [];
+    for (const recipe of this.recipesFor(id)) {
+      const stack = new Set<ItemId>([id]);
+      const res = this.craftCost(recipe, stack, 1);
+      const yieldPerCraft = expectedYield(recipe, this.ctx.settings);
+      out.push({
+        recipe,
+        node: {
+          id,
+          unitCost: res.total / yieldPerCraft,
+          source: "craft",
+          recipeId: recipe.id,
+          unknown: false,
+          hasUnknown: res.hasUnknown,
+          soldOut: false,
+          hasSoldOut: res.hasSoldOut,
+          children: res.children,
+        },
+      });
+    }
+    out.sort((a, b) => Number(a.node.hasUnknown) - Number(b.node.hasUnknown) || a.node.unitCost - b.node.unitCost);
+    return out;
+  }
+
+  /** Market/NPC purchase price for one unit, or null when it cannot be bought. */
+  buyPrice(id: ItemId): number | null {
+    const item = this.item(id);
+    const mp = this.ctx.prices[id];
+    if (item?.market && mp && mp.price > 0) return mp.price;
+    if (item && !item.market && item.npcBuy && item.npcBuy > 0 && item.npcBuy <= MAX_NPC_PRICE) return item.npcBuy;
+    return null;
+  }
+
   /** Total material cost for one craft of `recipe`, choosing the cheapest substitute per slot. */
   craftCost(
     recipe: Recipe,

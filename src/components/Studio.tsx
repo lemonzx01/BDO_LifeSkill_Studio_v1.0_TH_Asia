@@ -4,9 +4,10 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CostEngine } from "@/lib/engine/cost";
 import { IMPERIAL_TYPES, PROCESSING_TYPES, RECIPE_TYPE_TH } from "@/lib/engine/mastery";
-import type { Inventory, Item, ItemId, MarketPrice, Recipe, RecipeEvaluation, RecipeType } from "@/lib/engine/types";
+import type { Inventory, Item, ItemId, MarketPrice, Overrides, Recipe, RecipeEvaluation, RecipeType } from "@/lib/engine/types";
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { pct, silver, silverShort, timeAgo } from "@/lib/format";
+import type { TreeTools } from "./CostTree";
 import { ItemIcon } from "./ItemIcon";
 import { RecipeDetail } from "./RecipeDetail";
 import { SettingsPanel } from "./SettingsPanel";
@@ -129,9 +130,25 @@ export function Studio({ user }: { user: SessionUser }) {
 
   const recipes = useMemo(() => data?.recipes ?? [], [data]);
   const items = useMemo(() => data?.items ?? ({} as Record<ItemId, Item>), [data]);
+  // per-item "force buy" / "force craft" chosen in the cost tree (page-local, not saved)
+  const [overrides, setOverrides] = useState<Overrides>({});
   const engine = useMemo(
-    () => new CostEngine({ items, recipes, prices, settings, inventory, ownedCostMode: settings.ownedCostMode }),
-    [items, recipes, prices, settings, inventory],
+    () => new CostEngine({ items, recipes, prices, settings, inventory, ownedCostMode: settings.ownedCostMode, overrides }),
+    [items, recipes, prices, settings, inventory, overrides],
+  );
+  const tools = useMemo<TreeTools>(
+    () => ({
+      engine,
+      overrides,
+      onOverride: (id, mode) =>
+        setOverrides((prev) => {
+          const next: Overrides = { ...prev };
+          if (mode) next[id] = { mode };
+          else delete next[id];
+          return next;
+        }),
+    }),
+    [engine, overrides],
   );
   const evaluations = useMemo(() => engine.evaluateAll(), [engine]);
 
@@ -161,25 +178,31 @@ export function Studio({ user }: { user: SessionUser }) {
       }
       return true;
     });
-    list.sort((a, b) => (sortKey === "unitCost" ? a.unitCost - b.unitCost : b[sortKey] - a[sortKey]));
-    // the game often has a x1 and a x10 version of the same recipe (same cost per unit): show one row
+    // recipes whose cost is incomplete (an ingredient has no price) can never rank by profit: always last
+    const cmp = (a: RecipeEvaluation, b: RecipeEvaluation) => (sortKey === "unitCost" ? a.unitCost - b.unitCost : b[sortKey] - a[sortKey]);
+    list.sort((a, b) => (a.flags.unknownCost === b.flags.unknownCost ? cmp(a, b) : a.flags.unknownCost ? 1 : -1));
+    // one row per product: the best recipe leads, the other recipes for the same item are reachable from its detail
     const seen = new Map<string, RecipeEvaluation>();
-    const alts = new Map<number, number>();
+    const alts = new Map<number, RecipeEvaluation[]>();
     const out: RecipeEvaluation[] = [];
     for (const ev of list) {
       const key = `${ev.recipe.type}:${ev.productId}`;
       const prev = seen.get(key);
-      if (prev && Math.abs(prev.unitCost - ev.unitCost) <= Math.max(1, prev.unitCost * 0.005)) {
-        alts.set(prev.recipe.id, (alts.get(prev.recipe.id) ?? 0) + 1);
+      if (prev) {
+        alts.get(prev.recipe.id)!.push(ev);
         continue;
       }
-      if (!prev) seen.set(key, ev);
+      seen.set(key, ev);
+      alts.set(ev.recipe.id, []);
       out.push(ev);
     }
     return { rows: out, alts };
   }, [evaluations, tab, method, query, hideIncomplete, hideSoldOut, marketFilter, sortKey, items, prices]);
   const rows = rowsAndAlts.rows;
   const alts = rowsAndAlts.alts;
+  const evById = useMemo(() => new Map(evaluations.map((ev) => [ev.recipe.id, ev])), [evaluations]);
+  // which recipe's detail is shown inside the expanded row (a row can switch to one of its alternatives)
+  const [detailId, setDetailId] = useState<number | null>(null);
 
   const busy = loading || !data;
 
@@ -305,9 +328,15 @@ export function Studio({ user }: { user: SessionUser }) {
             items={items}
             prices={prices}
             inventory={inventory}
-            alt={alts.get(ev.recipe.id) ?? 0}
+            tools={tools}
+            alts={alts.get(ev.recipe.id) ?? []}
+            detail={(detailId !== null && expanded === ev.recipe.id ? evById.get(detailId) : undefined) ?? ev}
+            onPickDetail={setDetailId}
             open={expanded === ev.recipe.id}
-            onToggle={() => setExpanded(expanded === ev.recipe.id ? null : ev.recipe.id)}
+            onToggle={() => {
+              setDetailId(null);
+              setExpanded(expanded === ev.recipe.id ? null : ev.recipe.id);
+            }}
           />
         ))}
         {rows.length === 0 && (
@@ -337,9 +366,15 @@ export function Studio({ user }: { user: SessionUser }) {
                 items={items}
                 prices={prices}
                 inventory={inventory}
-                alt={alts.get(ev.recipe.id) ?? 0}
+                tools={tools}
+                alts={alts.get(ev.recipe.id) ?? []}
+                detail={(detailId !== null && expanded === ev.recipe.id ? evById.get(detailId) : undefined) ?? ev}
+                onPickDetail={setDetailId}
                 open={expanded === ev.recipe.id}
-                onToggle={() => setExpanded(expanded === ev.recipe.id ? null : ev.recipe.id)}
+                onToggle={() => {
+                  setDetailId(null);
+                  setExpanded(expanded === ev.recipe.id ? null : ev.recipe.id);
+                }}
               />
             ))}
             {rows.length === 0 && (
@@ -379,7 +414,10 @@ function Row({
   items,
   prices,
   inventory,
-  alt = 0,
+  tools,
+  alts,
+  detail,
+  onPickDetail,
   open,
   onToggle,
 }: {
@@ -387,12 +425,17 @@ function Row({
   items: Record<ItemId, Item>;
   prices: Record<ItemId, MarketPrice>;
   inventory: Inventory;
-  alt?: number;
+  tools: TreeTools;
+  alts: RecipeEvaluation[];
+  detail: RecipeEvaluation;
+  onPickDetail: (id: number) => void;
   open: boolean;
   onToggle: () => void;
 }) {
   const item = items[ev.productId];
   const good = ev.profitPerUnit > 0;
+  const unk = ev.flags.unknownCost;
+  const alt = alts.length;
   return (
     <>
       <tr onClick={onToggle} className={`cursor-pointer border-t border-border hover:bg-panel-2/60 ${open ? "bg-panel-2/40" : ""}`}>
@@ -404,18 +447,18 @@ function Row({
               <div className="truncate text-[11px] text-muted">
                 {RECIPE_TYPE_TH[ev.recipe.type]}
                 {ev.recipe.skill.sort > 0 ? ` · ${ev.recipe.skill.display}` : ""} · ผลผลิต {ev.expectedYield.toFixed(1)}/รอบ
-                {alt > 0 ? ` · มีสูตรทำทีละมากอีก ${alt} แบบ (ต้นทุน/ชิ้นเท่ากัน)` : ""}
+                {alt > 0 ? ` · มีสูตรอื่นอีก ${alt} แบบ (ดูในรายละเอียด)` : ""}
               </div>
             </div>
           </div>
         </td>
-        <td className="num px-2 py-1.5 text-right">{silver(ev.unitCost)}</td>
+        <td className="num px-2 py-1.5 text-right">{unk ? <span className="text-muted">? ({silverShort(ev.unitCost)}+)</span> : silver(ev.unitCost)}</td>
         <td className="num px-2 py-1.5 text-right">{ev.sellPrice ? silver(ev.sellPrice) : "-"}</td>
-        <td className={`num px-2 py-1.5 text-right font-semibold ${good ? "text-good" : "text-bad"}`}>{silver(ev.profitPerUnit)}</td>
-        <td className={`num px-2 py-1.5 text-right ${good ? "text-good" : "text-bad"}`}>{pct(ev.roi)}</td>
-        <td className="num px-2 py-1.5 text-right">{silverShort(ev.profitPerCraft)}</td>
-        <td className={`num px-2 py-1.5 text-right font-semibold ${good ? "text-good" : "text-bad"}`}>
-          {ev.saleChannel === "imperial" ? <span className="text-muted">-</span> : silverShort(ev.profitPerHour)}
+        <td className={`num px-2 py-1.5 text-right font-semibold ${unk ? "text-muted" : good ? "text-good" : "text-bad"}`}>{unk ? "?" : silver(ev.profitPerUnit)}</td>
+        <td className={`num px-2 py-1.5 text-right ${unk ? "text-muted" : good ? "text-good" : "text-bad"}`}>{unk ? "?" : pct(ev.roi)}</td>
+        <td className="num px-2 py-1.5 text-right">{unk ? <span className="text-muted">?</span> : silverShort(ev.profitPerCraft)}</td>
+        <td className={`num px-2 py-1.5 text-right font-semibold ${unk ? "text-muted" : good ? "text-good" : "text-bad"}`}>
+          {ev.saleChannel === "imperial" || unk ? <span className="text-muted">{unk ? "?" : "-"}</span> : silverShort(ev.profitPerHour)}
         </td>
         <td className="px-2 py-1.5">
           <Flags ev={ev} stock={prices[ev.productId]?.stock} />
@@ -424,7 +467,7 @@ function Row({
       {open && (
         <tr className="border-t border-border bg-background/40">
           <td colSpan={8} className="px-3 py-3">
-            <RecipeDetail key={ev.productId} ev={ev} items={items} prices={prices} inventory={inventory} />
+            <RecipeDetail key={detail.recipe.id} ev={detail} items={items} prices={prices} inventory={inventory} alternatives={[ev, ...alts]} onPick={onPickDetail} tools={tools} />
           </td>
         </tr>
       )}
@@ -437,7 +480,10 @@ function RecipeCard({
   items,
   prices,
   inventory,
-  alt = 0,
+  tools,
+  alts,
+  detail,
+  onPickDetail,
   open,
   onToggle,
 }: {
@@ -445,12 +491,17 @@ function RecipeCard({
   items: Record<ItemId, Item>;
   prices: Record<ItemId, MarketPrice>;
   inventory: Inventory;
-  alt?: number;
+  tools: TreeTools;
+  alts: RecipeEvaluation[];
+  detail: RecipeEvaluation;
+  onPickDetail: (id: number) => void;
   open: boolean;
   onToggle: () => void;
 }) {
   const item = items[ev.productId];
   const good = ev.profitPerUnit > 0;
+  const unk = ev.flags.unknownCost;
+  const alt = alts.length;
   return (
     <div className={`rounded-lg border bg-panel ${open ? "border-accent/60" : "border-border"}`}>
       <button onClick={onToggle} className="flex w-full items-center gap-3 px-3 py-3 text-left">
@@ -459,23 +510,23 @@ function RecipeCard({
           <div className="truncate font-medium">{item?.th ?? ev.recipe.name}</div>
           <div className="truncate text-[11px] text-muted">
             {RECIPE_TYPE_TH[ev.recipe.type]}
-            {ev.recipe.skill.sort > 0 ? ` · ${ev.recipe.skill.display}` : ""} · ต้นทุน {silverShort(ev.unitCost)} → {ev.saleChannel === "imperial" ? "ส่ง" : "ขาย"}{" "}
+            {ev.recipe.skill.sort > 0 ? ` · ${ev.recipe.skill.display}` : ""} · ต้นทุน {unk ? "?" : silverShort(ev.unitCost)} → {ev.saleChannel === "imperial" ? "ส่ง" : "ขาย"}{" "}
             {ev.sellPrice ? silverShort(ev.sellPrice) : "-"}
-            {alt > 0 ? ` · +${alt} สูตรทำทีละมาก` : ""}
+            {alt > 0 ? ` · +${alt} สูตรอื่น` : ""}
           </div>
           <div className="mt-1">
             <Flags ev={ev} stock={prices[ev.productId]?.stock} />
           </div>
         </div>
         <div className="text-right">
-          <div className={`num text-base font-semibold ${good ? "text-good" : "text-bad"}`}>{silverShort(ev.profitPerUnit)}</div>
-          <div className={`num text-[11px] ${good ? "text-good" : "text-bad"}`}>ROI {pct(ev.roi)}</div>
+          <div className={`num text-base font-semibold ${unk ? "text-muted" : good ? "text-good" : "text-bad"}`}>{unk ? "?" : silverShort(ev.profitPerUnit)}</div>
+          <div className={`num text-[11px] ${unk ? "text-muted" : good ? "text-good" : "text-bad"}`}>{unk ? "ต้นทุนไม่ครบ" : `ROI ${pct(ev.roi)}`}</div>
           <div className="num text-[11px] text-muted">/ชิ้น</div>
         </div>
       </button>
       {open && (
         <div className="border-t border-border px-3 py-3">
-          <RecipeDetail key={ev.productId} ev={ev} items={items} prices={prices} inventory={inventory} />
+          <RecipeDetail key={detail.recipe.id} ev={detail} items={items} prices={prices} inventory={inventory} alternatives={[ev, ...alts]} onPick={onPickDetail} tools={tools} />
         </div>
       )}
     </div>

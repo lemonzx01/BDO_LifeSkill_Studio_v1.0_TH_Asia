@@ -139,22 +139,24 @@ function parseImperialList(type, rows) {
     const mats = parseSlots(row[6]);
     const prods = parseSlots(row[8]);
     if (mats.length !== 1 || prods.length !== 1) continue; // event / key variants
-    const box = mats[0];
-    const content = prods[0];
-    if (!box.id || !content.id || content.min < 1) continue;
+    // bdocodex lists both directions (box -> N dishes, and N dishes -> box); which side is the
+    // box is decided later from the item names, so keep both sides for now
+    const a = mats[0];
+    const b = prods[0];
+    if (!a.id || !b.id) continue;
     const id = Number(row[0]) + MRECIPE_ID_OFFSET;
-    const tierIdx = TIERS.findIndex((t) => stripTags(row[2]).endsWith(t)); // resolved again from the box name below
     out.push({
       id,
       type,
-      name: stripTags(row[2]), // content name; replaced by the box name once items are resolved
-      skill: { display: "", tier: tierIdx, tierName: tierIdx >= 0 ? TIERS[tierIdx] : "", level: 0, sort: 0 },
+      name: stripTags(row[2]),
+      skill: { display: "", tier: 0, tierName: "", level: 0, sort: 0 },
       exp: 0,
       weight: 0,
-      materials: [{ id: content.id, qty: content.min, icon: content.icon, isGroup: false, isFixed: true }],
-      products: [{ id: box.id, min: 1, max: 1, icon: box.icon, kind: "main" }],
-      allMaterialIds: [content.id],
-      imperialBox: box.id,
+      materials: [{ id: b.id, qty: b.min, icon: b.icon, isGroup: false, isFixed: true }],
+      products: [{ id: a.id, min: 1, max: 1, icon: a.icon, kind: "main" }],
+      allMaterialIds: [a.id, b.id],
+      imperialPair: { a: { id: a.id, qty: a.min, icon: a.icon }, b: { id: b.id, qty: b.min, icon: b.icon } },
+      imperialBox: a.id, // provisional
     });
   }
   return out;
@@ -385,7 +387,21 @@ async function main() {
     }),
   );
 
-  // Imperial boxes: payout = the "buy price" on the item page; name/tier from the box item
+  // Imperial boxes: decide which side is the box from the item name, then read the payout
+  const isBoxName = (id) => /^(กล่อง|ห่อ)/.test(items[id]?.th ?? "");
+  for (const r of recipes) {
+    if (!r.imperialPair) continue;
+    const { a, b } = r.imperialPair;
+    const boxSide = isBoxName(a.id) && !isBoxName(b.id) ? a : isBoxName(b.id) && !isBoxName(a.id) ? b : null;
+    if (!boxSide) {
+      r.imperialBox = null; // ambiguous (event boxes etc.) -> dropped below
+      continue;
+    }
+    const content = boxSide === a ? b : a;
+    r.materials = [{ id: content.id, qty: Math.max(1, content.qty), icon: content.icon, isGroup: false, isFixed: true }];
+    r.products = [{ id: boxSide.id, min: 1, max: 1, icon: boxSide.icon, kind: "main" }];
+    r.imperialBox = boxSide.id;
+  }
   const boxes = [...new Set(recipes.filter((r) => r.imperialBox).map((r) => r.imperialBox))];
   if (boxes.length) {
     console.log(`Reading ${boxes.length} imperial box prices...`);
@@ -431,7 +447,7 @@ async function main() {
       r.materials.length > 0 && // some codex rows have no parsable ingredients (would look free)
       r.products.length > 0 &&
       (r.type === "alchemy" || r.type === "cooking" || !r.materials.some((m) => isGear(m.id))) &&
-      (!r.imperialBox || items[r.imperialBox]?.imperialPrice), // drop event boxes without a payout
+      (!r.imperialPair || (r.imperialBox && items[r.imperialBox]?.imperialPrice)), // drop event/ambiguous boxes without a payout
   );
   console.log(`Dropped ${before - kept.length} gear-processing / incomplete recipes`);
 
