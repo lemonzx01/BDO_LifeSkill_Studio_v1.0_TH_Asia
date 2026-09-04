@@ -6,8 +6,10 @@ import { revalidatePath } from "next/cache";
 import type { Role } from "@/lib/db/schema";
 import { clearFailures, isThrottled, recordFailure } from "./ratelimit";
 import {
-  adminResetPassword,
   AuthError,
+  adminResetPassword,
+  assertCanAssign,
+  assertCanManage,
   changeOwnPassword,
   countUsers,
   createSession,
@@ -16,8 +18,10 @@ import {
   deleteUser,
   setUserActive,
   setUserRole,
+  transferOwnership,
   verifyCredentials,
 } from "./service";
+import { parseRole } from "./roles";
 import { clearSessionCookie, getSessionToken, requireAdmin, requireUser, setSessionCookie } from "./session";
 
 export interface ActionState {
@@ -75,7 +79,7 @@ export async function setupAdminAction(_prev: ActionState, fd: FormData): Promis
       username: str(fd, "username"),
       displayName: str(fd, "displayName"),
       password,
-      role: "admin",
+      role: "owner", // the first account is แอดมินใหญ่
       mustChangePassword: false,
     });
     const token = await createSession(user.id, (await headers()).get("user-agent"));
@@ -87,9 +91,10 @@ export async function setupAdminAction(_prev: ActionState, fd: FormData): Promis
 }
 
 export async function adminCreateUserAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
-  await requireAdmin();
+  const me = await requireAdmin();
   try {
-    const role: Role = str(fd, "role") === "admin" ? "admin" : "member";
+    const role: Role = parseRole(str(fd, "role"));
+    assertCanAssign(me.role, role);
     const user = await createUser({
       username: str(fd, "username"),
       displayName: str(fd, "displayName"),
@@ -110,6 +115,7 @@ export async function adminSetActiveAction(fd: FormData): Promise<void> {
   const active = str(fd, "active") === "1";
   if (id === me.id && !active) return;
   try {
+    await assertCanManage(me.role, id);
     await setUserActive(id, active);
   } catch (e) {
     console.error(e);
@@ -120,9 +126,11 @@ export async function adminSetActiveAction(fd: FormData): Promise<void> {
 export async function adminSetRoleAction(fd: FormData): Promise<void> {
   const me = await requireAdmin();
   const id = num(fd, "id");
-  const role: Role = str(fd, "role") === "admin" ? "admin" : "member";
+  const role: Role = parseRole(str(fd, "role"));
   if (id === me.id) return;
   try {
+    await assertCanManage(me.role, id);
+    assertCanAssign(me.role, role);
     await setUserRole(id, role);
   } catch (e) {
     console.error(e);
@@ -135,6 +143,7 @@ export async function adminDeleteUserAction(fd: FormData): Promise<void> {
   const id = num(fd, "id");
   if (id === me.id) return;
   try {
+    await assertCanManage(me.role, id);
     await deleteUser(id);
   } catch (e) {
     console.error(e);
@@ -142,9 +151,23 @@ export async function adminDeleteUserAction(fd: FormData): Promise<void> {
   revalidatePath("/admin");
 }
 
-export async function adminResetPasswordAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
-  await requireAdmin();
+/** แอดมินใหญ่ hands the top role to someone else and steps down to แอดมินเล็ก. */
+export async function adminTransferOwnerAction(fd: FormData): Promise<void> {
+  const me = await requireAdmin();
+  const id = num(fd, "id");
+  if (me.role !== "owner" || id === me.id) return;
   try {
+    await transferOwnership(me.id, id);
+  } catch (e) {
+    console.error(e);
+  }
+  revalidatePath("/admin");
+}
+
+export async function adminResetPasswordAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  const me = await requireAdmin();
+  try {
+    await assertCanManage(me.role, num(fd, "id"));
     await adminResetPassword(num(fd, "id"), str(fd, "password"));
     revalidatePath("/admin");
     return { ok: true, message: "ตั้งรหัสผ่านชั่วคราวแล้ว ผู้ใช้ต้องล็อกอินใหม่และตั้งรหัสเอง" };

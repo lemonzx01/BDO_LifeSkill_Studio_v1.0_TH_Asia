@@ -1,7 +1,10 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { resetDbCache } from "@/lib/db";
+import { assignableRoles, canManage } from "./roles";
 import {
   adminResetPassword,
+  assertCanAssign,
+  assertCanManage,
   changeOwnPassword,
   countUsers,
   createSession,
@@ -11,6 +14,7 @@ import {
   listUsers,
   setUserActive,
   setUserRole,
+  transferOwnership,
   verifyCredentials,
 } from "./service";
 
@@ -21,11 +25,11 @@ beforeAll(() => {
 });
 
 describe("auth service", () => {
-  it("starts empty and creates an admin", async () => {
+  it("starts empty and creates the owner", async () => {
     expect(await countUsers()).toBe(0);
-    const admin = await createUser({ username: "Boss", password: "secret123", role: "admin", mustChangePassword: false });
-    expect(admin.username).toBe("boss"); // normalised
-    expect(admin.role).toBe("admin");
+    const owner = await createUser({ username: "Boss", password: "secret123", role: "owner", mustChangePassword: false });
+    expect(owner.username).toBe("boss"); // normalised
+    expect(owner.role).toBe("owner");
     expect(await countUsers()).toBe(1);
   });
 
@@ -56,11 +60,32 @@ describe("auth service", () => {
     expect((await verifyCredentials("member1", "temp-pass-1")).ok).toBe(true);
   });
 
-  it("keeps at least one active admin", async () => {
-    const [admin] = (await listUsers()).filter((u) => u.role === "admin");
-    await expect(setUserActive(admin.id, false)).rejects.toThrow(/แอดมิน/);
-    await expect(setUserRole(admin.id, "member")).rejects.toThrow(/แอดมิน/);
-    await expect(deleteUser(admin.id)).rejects.toThrow(/แอดมิน/);
+  it("keeps at least one active แอดมินใหญ่", async () => {
+    const [owner] = (await listUsers()).filter((u) => u.role === "owner");
+    await expect(setUserActive(owner.id, false)).rejects.toThrow(/แอดมินใหญ่/);
+    await expect(setUserRole(owner.id, "admin")).rejects.toThrow(/แอดมินใหญ่/);
+    await expect(deleteUser(owner.id)).rejects.toThrow(/แอดมินใหญ่/);
+    // a second owner makes the first one demotable again
+    const second = await createUser({ username: "boss2", password: "secret123", role: "owner" });
+    await setUserRole(owner.id, "admin");
+    expect((await listUsers()).find((u) => u.id === owner.id)?.role).toBe("admin");
+    await setUserRole(owner.id, "owner");
+    await deleteUser(second.id);
+  });
+
+  it("แอดมินเล็ก manages members only, แอดมินใหญ่ manages everyone", async () => {
+    const small = await createUser({ username: "small-admin", password: "secret123", role: "admin" });
+    const member = await createUser({ username: "member0", password: "secret123" });
+    await expect(assertCanManage("admin", member.id)).resolves.toMatchObject({ username: "member0" });
+    await expect(assertCanManage("admin", small.id)).rejects.toThrow(/สมาชิก/);
+    await expect(assertCanManage("owner", small.id)).resolves.toMatchObject({ role: "admin" });
+    await expect(assertCanManage("owner", 999_999)).rejects.toThrow(/ไม่พบ/);
+    expect(() => assertCanAssign("admin", "admin")).toThrow();
+    expect(() => assertCanAssign("owner", "owner")).not.toThrow();
+    expect(assignableRoles("admin")).toEqual(["member"]);
+    expect(canManage("member", "member")).toBe(false);
+    await deleteUser(small.id);
+    await deleteUser(member.id);
   });
 
   it("changes and resets passwords, keeping only the current session", async () => {
@@ -77,6 +102,18 @@ describe("auth service", () => {
     expect(await getUserBySessionToken(keep)).toBeNull();
     const r = await verifyCredentials("member2", "reset-pass-9");
     expect(r.ok && r.user.mustChangePassword).toBe(true);
+  });
+
+  it("transfers แอดมินใหญ่ to another account and steps down", async () => {
+    const [owner] = (await listUsers()).filter((u) => u.role === "owner");
+    const heir = await createUser({ username: "heir", password: "secret123" });
+    await expect(transferOwnership(heir.id, owner.id)).rejects.toThrow(/แอดมินใหญ่/);
+    await transferOwnership(owner.id, heir.id);
+    const after = await listUsers();
+    expect(after.find((u) => u.id === heir.id)?.role).toBe("owner");
+    expect(after.find((u) => u.id === owner.id)?.role).toBe("admin");
+    await transferOwnership(heir.id, owner.id); // hand it back for the remaining tests
+    await deleteUser(heir.id);
   });
 
   it("deletes a member", async () => {

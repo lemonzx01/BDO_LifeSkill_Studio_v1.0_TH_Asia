@@ -1,4 +1,5 @@
 import "server-only";
+import { isAdmin } from "./roles";
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -33,7 +34,7 @@ export async function requireUser(): Promise<PublicUser> {
 
 export async function requireAdmin(): Promise<PublicUser> {
   const user = await requireUser();
-  if (user.role !== "admin") redirect("/");
+  if (!isAdmin(user.role)) redirect("/");
   return user;
 }
 

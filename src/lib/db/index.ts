@@ -76,6 +76,11 @@ const SCHEMA_SQL = [
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (user_id, item_id)
   )`,
+  // roles grew a tier: the earliest admin becomes แอดมินใหญ่ once, when none exists yet
+  `UPDATE users SET role = 'owner'
+    WHERE role = 'admin'
+      AND id = (SELECT MIN(id) FROM users WHERE role = 'admin')
+      AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'owner')`,
 ];
 
 declare global {

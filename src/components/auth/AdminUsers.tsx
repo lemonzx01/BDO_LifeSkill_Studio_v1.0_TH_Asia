@@ -7,25 +7,28 @@ import {
   adminResetPasswordAction,
   adminSetActiveAction,
   adminSetRoleAction,
+  adminTransferOwnerAction,
   type ActionState,
 } from "@/lib/auth/actions";
+import { assignableRoles, canManage, ROLE_TH } from "@/lib/auth/roles";
+import type { Role } from "@/lib/db/schema";
 import { dangerBtn, errorCls, ghostBtn, inputCls, labelCls, okCls, primaryBtn } from "./ui";
 
 export interface AdminUserRow {
   id: number;
   username: string;
   displayName: string;
-  role: "admin" | "member";
+  role: Role;
   isActive: boolean;
   mustChangePassword: boolean;
   createdAt: string;
   lastLoginAt: string | null;
 }
 
-export function AdminUsers({ users, meId }: { users: AdminUserRow[]; meId: number }) {
+export function AdminUsers({ users, meId, meRole }: { users: AdminUserRow[]; meId: number; meRole: Role }) {
   return (
     <div className="space-y-6">
-      <CreateUserForm />
+      <CreateUserForm meRole={meRole} />
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full min-w-[720px] text-sm">
           <thead className="bg-panel-2 text-xs text-muted">
@@ -39,17 +42,21 @@ export function AdminUsers({ users, meId }: { users: AdminUserRow[]; meId: numbe
           </thead>
           <tbody>
             {users.map((u) => (
-              <UserRow key={u.id} u={u} isMe={u.id === meId} />
+              <UserRow key={u.id} u={u} isMe={u.id === meId} meRole={meRole} />
             ))}
           </tbody>
         </table>
       </div>
+      <p className="text-xs text-muted">
+        แอดมินใหญ่ จัดการได้ทุกบัญชี ตั้งระดับให้ใครก็ได้ และโอนตำแหน่งให้คนอื่นได้ · แอดมินเล็ก สร้าง/ปิด/ลบ/รีเซ็ตรหัสได้เฉพาะสมาชิก · ต้องมีแอดมินใหญ่ที่เปิดใช้งานอย่างน้อย 1 คนเสมอ
+      </p>
     </div>
   );
 }
 
-function CreateUserForm() {
+function CreateUserForm({ meRole }: { meRole: Role }) {
   const [state, formAction, pending] = useActionState<ActionState, FormData>(adminCreateUserAction, {});
+  const roles = assignableRoles(meRole);
   return (
     <form action={formAction} className="rounded-lg border border-border bg-panel p-4">
       <h2 className="mb-3 text-sm font-semibold text-accent">สร้างบัญชีให้สมาชิก</h2>
@@ -68,9 +75,12 @@ function CreateUserForm() {
         </label>
         <label className={labelCls}>
           สิทธิ์
-          <select name="role" className={inputCls} defaultValue="member">
-            <option value="member">สมาชิก</option>
-            <option value="admin">แอดมิน</option>
+          <select name="role" className={inputCls} defaultValue="member" disabled={roles.length <= 1}>
+            {roles.map((r) => (
+              <option key={r} value={r}>
+                {ROLE_TH[r]}
+              </option>
+            ))}
           </select>
         </label>
       </div>
@@ -83,8 +93,16 @@ function CreateUserForm() {
   );
 }
 
-function UserRow({ u, isMe }: { u: AdminUserRow; isMe: boolean }) {
+function RoleBadge({ role }: { role: Role }) {
+  if (role === "owner") return <span className="rounded bg-accent/15 px-1.5 py-0.5 text-xs text-accent">{ROLE_TH.owner}</span>;
+  if (role === "admin") return <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-xs text-sky-300">{ROLE_TH.admin}</span>;
+  return <span className="text-muted">{ROLE_TH.member}</span>;
+}
+
+function UserRow({ u, isMe, meRole }: { u: AdminUserRow; isMe: boolean; meRole: Role }) {
   const [showReset, setShowReset] = useState(false);
+  const manageable = !isMe && canManage(meRole, u.role);
+  const roles = assignableRoles(meRole);
   return (
     <>
       <tr className="border-t border-border">
@@ -95,7 +113,7 @@ function UserRow({ u, isMe }: { u: AdminUserRow; isMe: boolean }) {
           <div className="text-xs text-muted">@{u.username}</div>
         </td>
         <td className="px-3 py-2">
-          {u.role === "admin" ? <span className="rounded bg-accent/15 px-1.5 py-0.5 text-xs text-accent">แอดมิน</span> : <span className="text-muted">สมาชิก</span>}
+          <RoleBadge role={u.role} />
         </td>
         <td className="px-3 py-2">
           {u.isActive ? (
@@ -109,6 +127,8 @@ function UserRow({ u, isMe }: { u: AdminUserRow; isMe: boolean }) {
         <td className="px-3 py-2">
           {isMe ? (
             <span className="text-xs text-muted">แก้ไขตัวเองที่หน้า &ldquo;รหัสผ่าน&rdquo;</span>
+          ) : !manageable ? (
+            <span className="text-xs text-muted">แอดมินใหญ่เท่านั้นที่จัดการบัญชีนี้ได้</span>
           ) : (
             <div className="flex flex-wrap gap-1.5">
               <form action={adminSetActiveAction}>
@@ -118,13 +138,37 @@ function UserRow({ u, isMe }: { u: AdminUserRow; isMe: boolean }) {
                   {u.isActive ? "ปิดใช้งาน" : "เปิดใช้งาน"}
                 </button>
               </form>
-              <form action={adminSetRoleAction}>
-                <input type="hidden" name="id" value={u.id} />
-                <input type="hidden" name="role" value={u.role === "admin" ? "member" : "admin"} />
-                <button type="submit" className={ghostBtn}>
-                  {u.role === "admin" ? "ถอดแอดมิน" : "ตั้งเป็นแอดมิน"}
-                </button>
-              </form>
+              {roles.length > 1 && (
+                <form action={adminSetRoleAction}>
+                  <input type="hidden" name="id" value={u.id} />
+                  <select
+                    name="role"
+                    defaultValue={u.role}
+                    onChange={(e) => e.currentTarget.form?.requestSubmit()}
+                    className="rounded border border-border bg-panel px-2 py-1 text-xs"
+                    title="เปลี่ยนระดับสิทธิ์"
+                  >
+                    {roles.map((r) => (
+                      <option key={r} value={r}>
+                        {ROLE_TH[r]}
+                      </option>
+                    ))}
+                  </select>
+                </form>
+              )}
+              {meRole === "owner" && u.role !== "owner" && u.isActive && (
+                <form
+                  action={adminTransferOwnerAction}
+                  onSubmit={(e) => {
+                    if (!confirm(`โอนสิทธิ์แอดมินใหญ่ให้ @${u.username}? คุณจะกลายเป็นแอดมินเล็ก`)) e.preventDefault();
+                  }}
+                >
+                  <input type="hidden" name="id" value={u.id} />
+                  <button type="submit" className={ghostBtn} title="ยกตำแหน่งแอดมินใหญ่ให้บัญชีนี้ แล้วคุณเป็นแอดมินเล็ก">
+                    โอนสิทธิ์แอดมินใหญ่
+                  </button>
+                </form>
+              )}
               <button type="button" onClick={() => setShowReset((s) => !s)} className={ghostBtn}>
                 รีเซ็ตรหัส
               </button>

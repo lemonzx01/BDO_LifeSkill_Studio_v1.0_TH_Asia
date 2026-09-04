@@ -1,6 +1,7 @@
 import { bigint, boolean, date, index, integer, pgTable, primaryKey, serial, text, timestamp } from "drizzle-orm/pg-core";
 
-export type Role = "admin" | "member";
+/** owner = แอดมินใหญ่ (manages everyone, at least one must stay active), admin = แอดมินเล็ก (manages members only) */
+export type Role = "owner" | "admin" | "member";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),

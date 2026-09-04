@@ -19,7 +19,7 @@ export default async function AdminPage() {
   }));
   return (
     <AuthCard title="จัดการสมาชิก" subtitle="ปิดใช้งานแล้วผู้ใช้จะหลุดจากระบบทันที เปิดกลับได้ภายหลัง ลบคือถาวร" wide>
-      <AdminUsers users={users} meId={me.id} />
+      <AdminUsers users={users} meId={me.id} meRole={me.role} />
     </AuthCard>
   );
 }

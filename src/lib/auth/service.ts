@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { getDb } from "@/lib/db";
 import { sessions, users, type PublicUser, type Role, type User } from "@/lib/db/schema";
 import { DUMMY_HASH, hashPassword, normalizeUsername, validatePassword, validateUsername, verifyPassword } from "./password";
+import { assignableRoles, canManage } from "./roles";
 
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -122,33 +123,59 @@ export async function deleteUserSessions(userId: number) {
   await db.delete(sessions).where(eq(sessions.userId, userId));
 }
 
-async function assertNotLastAdmin(db: Awaited<ReturnType<typeof getDb>>, userId: number) {
+async function assertNotLastOwner(db: Awaited<ReturnType<typeof getDb>>, userId: number) {
   const [target] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-  if (!target || target.role !== "admin" || !target.isActive) return;
+  if (!target || target.role !== "owner" || !target.isActive) return;
   const [others] = await db
     .select({ n: count() })
     .from(users)
-    .where(and(eq(users.role, "admin"), eq(users.isActive, true), ne(users.id, userId)));
-  if (Number(others?.n ?? 0) === 0) throw new AuthError("ต้องเหลือแอดมินที่เปิดใช้งานอย่างน้อย 1 คน");
+    .where(and(eq(users.role, "owner"), eq(users.isActive, true), ne(users.id, userId)));
+  if (Number(others?.n ?? 0) === 0) throw new AuthError("ต้องเหลือแอดมินใหญ่ที่เปิดใช้งานอย่างน้อย 1 คน");
+}
+
+/** Throws unless someone with `actorRole` may manage the account `targetId`; returns that account. */
+export async function assertCanManage(actorRole: Role, targetId: number): Promise<PublicUser> {
+  const target = await getUserById(targetId);
+  if (!target) throw new AuthError("ไม่พบผู้ใช้");
+  if (!canManage(actorRole, target.role)) throw new AuthError("แอดมินเล็กจัดการได้เฉพาะบัญชีสมาชิก");
+  return target;
+}
+
+/** Throws unless someone with `actorRole` may hand out `role`. */
+export function assertCanAssign(actorRole: Role, role: Role) {
+  if (!assignableRoles(actorRole).includes(role)) throw new AuthError("ไม่มีสิทธิ์ตั้งระดับนี้");
 }
 
 /** Disabling also revokes every session so the user is locked out immediately. */
 export async function setUserActive(userId: number, active: boolean) {
   const db = await getDb();
-  if (!active) await assertNotLastAdmin(db, userId);
+  if (!active) await assertNotLastOwner(db, userId);
   await db.update(users).set({ isActive: active }).where(eq(users.id, userId));
   if (!active) await deleteUserSessions(userId);
 }
 
 export async function setUserRole(userId: number, role: Role) {
   const db = await getDb();
-  if (role !== "admin") await assertNotLastAdmin(db, userId);
+  if (role !== "owner") await assertNotLastOwner(db, userId);
   await db.update(users).set({ role }).where(eq(users.id, userId));
+}
+
+/** Hands แอดมินใหญ่ to another active account; the giver becomes แอดมินเล็ก. */
+export async function transferOwnership(fromId: number, toId: number) {
+  if (fromId === toId) throw new AuthError("โอนให้ตัวเองไม่ได้");
+  const db = await getDb();
+  const [from] = await db.select().from(users).where(eq(users.id, fromId)).limit(1);
+  const [to] = await db.select().from(users).where(eq(users.id, toId)).limit(1);
+  if (!from || from.role !== "owner") throw new AuthError("เฉพาะแอดมินใหญ่เท่านั้นที่โอนสิทธิ์ได้");
+  if (!to) throw new AuthError("ไม่พบผู้ใช้");
+  if (!to.isActive) throw new AuthError("บัญชีปลายทางถูกปิดใช้งานอยู่");
+  await db.update(users).set({ role: "owner" }).where(eq(users.id, toId));
+  await db.update(users).set({ role: "admin" }).where(eq(users.id, fromId));
 }
 
 export async function deleteUser(userId: number) {
   const db = await getDb();
-  await assertNotLastAdmin(db, userId);
+  await assertNotLastOwner(db, userId);
   await db.delete(users).where(eq(users.id, userId)); // sessions cascade
 }
 

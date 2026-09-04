@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { useState } from "react";
 import { logoutAction } from "@/lib/auth/actions";
+import { isAdmin, ROLE_TH } from "@/lib/auth/roles";
+import type { Role } from "@/lib/db/schema";
 import { ghostBtn } from "./ui";
 
 export interface SessionUser {
   username: string;
   displayName: string;
-  role: "admin" | "member";
+  role: Role;
 }
 
 /** Full menu on desktop; a single avatar button that opens a small menu on phones. */
@@ -16,7 +18,7 @@ export function UserMenu({ user, compact = false }: { user: SessionUser; compact
   const [open, setOpen] = useState(false);
   const links = (
     <>
-      {user.role === "admin" && (
+      {isAdmin(user.role) && (
         <Link href="/admin" className={ghostBtn}>
           สมาชิก
         </Link>
@@ -46,7 +48,7 @@ export function UserMenu({ user, compact = false }: { user: SessionUser; compact
           <div className="absolute right-0 z-20 mt-1 flex w-44 flex-col gap-1 rounded border border-border bg-panel p-2 shadow-lg">
             <span className="px-1 pb-1 text-xs text-muted">
               {user.displayName}
-              {user.role === "admin" ? " · แอดมิน" : ""}
+              {isAdmin(user.role) ? ` · ${ROLE_TH[user.role]}` : ""}
             </span>
             {links}
           </div>
@@ -59,7 +61,7 @@ export function UserMenu({ user, compact = false }: { user: SessionUser; compact
     <div className="flex flex-wrap items-center gap-2 text-sm">
       <span className="text-muted">
         <span className="font-medium text-foreground">{user.displayName}</span>
-        {user.role === "admin" && <span className="ml-1 rounded bg-accent/15 px-1.5 py-0.5 text-[11px] text-accent">แอดมิน</span>}
+        {isAdmin(user.role) && <span className="ml-1 rounded bg-accent/15 px-1.5 py-0.5 text-[11px] text-accent">{ROLE_TH[user.role]}</span>}
       </span>
       {links}
     </div>
