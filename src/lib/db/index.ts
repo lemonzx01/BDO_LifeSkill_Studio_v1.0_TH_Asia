@@ -76,6 +76,12 @@ const SCHEMA_SQL = [
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (user_id, item_id)
   )`,
+  `CREATE TABLE IF NOT EXISTS user_favorites (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    item_id INTEGER NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, item_id)
+  )`,
   // roles grew a tier: the earliest admin becomes แอดมินใหญ่ once, when none exists yet
   `UPDATE users SET role = 'owner'
     WHERE role = 'admin'

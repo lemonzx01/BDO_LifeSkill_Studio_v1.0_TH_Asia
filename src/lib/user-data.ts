@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { userInventory, userSettings } from "@/lib/db/schema";
+import { marketItems, userFavorites, userInventory, userSettings } from "@/lib/db/schema";
 import type { Inventory, ItemId, Settings } from "@/lib/engine/types";
 import { normalizeSettings } from "@/lib/settings";
 
@@ -55,4 +55,37 @@ export async function setUserInventoryItem(userId: number, itemId: ItemId, qty: 
 export async function clearUserInventory(userId: number): Promise<void> {
   const db = await getDb();
   await db.delete(userInventory).where(eq(userInventory.userId, userId));
+}
+
+export interface FavoriteItem {
+  id: ItemId;
+  /** name and price from the market snapshot; null for items the market does not list */
+  th: string | null;
+  grade: number | null;
+  price: number | null;
+  stock: number | null;
+}
+
+export async function getUserFavorites(userId: number): Promise<ItemId[]> {
+  const db = await getDb();
+  const rows = await db.select({ id: userFavorites.itemId }).from(userFavorites).where(eq(userFavorites.userId, userId)).orderBy(userFavorites.createdAt);
+  return rows.map((r) => r.id);
+}
+
+/** Starred items with whatever the market snapshot knows about them (one query). */
+export async function getUserFavoriteDetails(userId: number): Promise<FavoriteItem[]> {
+  const db = await getDb();
+  const rows = await db
+    .select({ id: userFavorites.itemId, th: marketItems.nameTh, grade: marketItems.grade, price: marketItems.price, stock: marketItems.stock })
+    .from(userFavorites)
+    .leftJoin(marketItems, eq(marketItems.id, userFavorites.itemId))
+    .where(eq(userFavorites.userId, userId))
+    .orderBy(userFavorites.createdAt);
+  return rows.map((r) => ({ id: r.id, th: r.th ?? null, grade: r.grade ?? null, price: r.price ?? null, stock: r.stock ?? null }));
+}
+
+export async function setUserFavorite(userId: number, itemId: ItemId, on: boolean): Promise<void> {
+  const db = await getDb();
+  if (on) await db.insert(userFavorites).values({ userId, itemId }).onConflictDoNothing();
+  else await db.delete(userFavorites).where(sql`${userFavorites.userId} = ${userId} AND ${userFavorites.itemId} = ${itemId}`);
 }

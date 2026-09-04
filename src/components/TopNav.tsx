@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { UserMenu, type SessionUser } from "./auth/UserMenu";
+import { QuickSearch } from "./QuickSearch";
 
 const LINKS = [
   { href: "/", label: "หน้าแรก" },
@@ -29,7 +30,7 @@ export function TopNav({ user, subtitle }: { user: SessionUser; subtitle?: React
         </div>
       </div>
       {/* scrolls sideways on phones instead of wrapping into three lines */}
-      <nav className="-mx-3 flex overflow-x-auto px-3 md:mx-0 md:px-0">
+      <nav className="-mx-3 flex items-center gap-2 overflow-x-auto px-3 md:mx-0 md:px-0">
         <div className="flex rounded border border-border bg-panel p-0.5">
           {LINKS.map((l) => {
             const active = pathname === l.href;
@@ -44,6 +45,7 @@ export function TopNav({ user, subtitle }: { user: SessionUser; subtitle?: React
             );
           })}
         </div>
+        <QuickSearch />
       </nav>
       <div className="hidden md:block">
         <UserMenu user={user} />

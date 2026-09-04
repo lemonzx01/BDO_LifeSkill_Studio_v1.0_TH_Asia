@@ -11,6 +11,18 @@ interface UserData {
   /** avgCost: number = record that cost, null = follow the market price, undefined = keep as is */
   setOwned: (id: ItemId, qty: number, avgCost?: number | null) => void;
   clearInventory: () => void;
+  /** starred item ids, and what the market knows about them (for the home page card) */
+  favorites: ItemId[];
+  favoriteItems: FavoriteItem[];
+  toggleFavorite: (id: ItemId) => void;
+}
+
+export interface FavoriteItem {
+  id: ItemId;
+  th: string | null;
+  grade: number | null;
+  price: number | null;
+  stock: number | null;
 }
 
 const Ctx = createContext<UserData | null>(null);
@@ -31,6 +43,39 @@ export function UserDataProvider({
 }) {
   const [settings, setSettingsState] = useState<Settings>(initialSettings ?? DEFAULT_SETTINGS);
   const [inventory, setInventory] = useState<Inventory>(initialInventory);
+  const [favorites, setFavorites] = useState<ItemId[]>([]);
+  const [favoriteItems, setFavoriteItems] = useState<FavoriteItem[]>([]);
+
+  const loadFavorites = useCallback(() => {
+    fetch("/api/user/favorites", { cache: "no-store" })
+      .then((r) => (r.ok ? (r.json() as Promise<{ ids: ItemId[]; items: FavoriteItem[] }>) : null))
+      .then((j) => {
+        if (!j) return;
+        setFavorites(j.ids);
+        setFavoriteItems(j.items);
+      })
+      .catch(() => {});
+  }, []);
+
+  // starred items come from the account, fetched once after mount
+  useEffect(() => {
+    const t = setTimeout(loadFavorites, 0);
+    return () => clearTimeout(t);
+  }, [loadFavorites]);
+
+  const toggleFavorite = useCallback(
+    (id: ItemId) => {
+      let on = false;
+      setFavorites((cur) => {
+        on = !cur.includes(id);
+        return on ? [...cur, id] : cur.filter((x) => x !== id);
+      });
+      fetch("/api/user/favorites", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, on }) })
+        .then(loadFavorites)
+        .catch(() => {});
+    },
+    [loadFavorites],
+  );
   const settingsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const itemTimers = useRef(new Map<ItemId, ReturnType<typeof setTimeout>>());
 
@@ -118,7 +163,7 @@ export function UserDataProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return <Ctx.Provider value={{ settings, setSettings, inventory, setOwned, clearInventory }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ settings, setSettings, inventory, setOwned, clearInventory, favorites, favoriteItems, toggleFavorite }}>{children}</Ctx.Provider>;
 }
 
 export function useUserData(): UserData {

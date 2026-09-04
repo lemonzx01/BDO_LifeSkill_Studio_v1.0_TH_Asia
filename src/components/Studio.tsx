@@ -9,6 +9,7 @@ import type { Inventory, Item, ItemId, MarketPrice, Overrides, Recipe, RecipeEva
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { pct, silver, silverShort, timeAgo } from "@/lib/format";
 import type { TreeTools } from "./CostTree";
+import { FavoriteStar } from "./FavoriteStar";
 import { ItemIcon } from "./ItemIcon";
 import { Loading } from "./Loading";
 import { RecipeDetail } from "./RecipeDetail";
@@ -446,6 +447,7 @@ function Row({
       <tr onClick={onToggle} className={`cursor-pointer border-t border-border hover:bg-panel-2/60 ${open ? "bg-panel-2/40" : ""}`}>
         <td className="px-3 py-1.5">
           <div className="flex items-center gap-2">
+            <FavoriteStar id={ev.productId} />
             <ItemIcon id={ev.productId} grade={item?.grade} size={30} />
             <div className="min-w-0">
               <div className="truncate font-medium">{item?.th ?? ev.recipe.name}</div>

@@ -9,7 +9,8 @@ import { backfillHistoryThrottled, countItemsWithoutHistory, getLastRefresh, get
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-export default async function MarketPage() {
+export default async function MarketPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const { q } = await searchParams;
   const clock = stopwatch();
   const user = await requireUser();
   const authMs = clock.lap();
@@ -56,6 +57,7 @@ export default async function MarketPage() {
       <MarketScanner
         rows={scan.rows}
         totalItems={scan.totalItems}
+        initialQuery={q ?? ""}
         refreshedAt={scan.refreshedAt ? scan.refreshedAt.toISOString() : null}
         source={scan.source}
         refreshError={refreshError}

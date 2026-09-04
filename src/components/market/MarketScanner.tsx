@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { isBoolean, isNumber, oneOf, usePersistentState } from "@/lib/use-persistent";
 import { netRate } from "@/lib/engine/cost";
 import { pct, silver, silverShort } from "@/lib/format";
@@ -9,6 +9,7 @@ import { mainCategoryLabel, subCategoryLabel } from "@/lib/market/categories";
 import { assessRecovery, sellEvidence, type Assessment, type EvidenceLine } from "@/lib/market/evidence";
 import type { ScanRow } from "@/lib/market/snapshot";
 import type { SessionUser } from "../auth/UserMenu";
+import { FavoriteStar } from "../FavoriteStar";
 import { ItemIcon } from "../ItemIcon";
 import { PerfBeacon } from "../PerfBeacon";
 import { TimeAgo } from "../TimeAgo";
@@ -76,8 +77,11 @@ export function MarketScanner({
   refreshError,
   user,
   totalItems,
+  initialQuery = "",
 }: {
   rows: ScanRow[];
+  /** search term from the URL (?q=): show that item even if it fails the default volume/stock filters */
+  initialQuery?: string;
   /** every priced item in the snapshot, including the ones with no trades that are not sent */
   totalItems: number;
   refreshedAt: string | null;
@@ -91,13 +95,23 @@ export function MarketScanner({
 
   // remembered per browser so the page opens the way it was left
   const [mode, setMode] = usePersistentState<Mode>("market.mode", "all", oneOf(["all", "trade", "buy", "sell"] as const));
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [cat, setCat] = usePersistentState<string>("market.cat", "all", (v): v is string => typeof v === "string");
   const [minVol, setMinVol] = usePersistentState<number>("market.minVol", 50, isNumber);
   const [needStock, setNeedStock] = usePersistentState<boolean>("market.needStock", true, isBoolean);
   const [sortKey, setSortKey] = usePersistentState<SortKey>("market.sort", "roi", oneOf(["roi", "cheap", "expensive", "vol", "price", "trades"] as const));
   const [expanded, setExpanded] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // arriving with ?q= means "show me this item": drop the filters that could hide it (after the remembered ones load)
+  useEffect(() => {
+    if (!initialQuery) return;
+    const t = setTimeout(() => {
+      setMode("all");
+      setNeedStock(false);
+      setMinVol(0);
+    }, 0);
+    return () => clearTimeout(t);
+  }, [initialQuery, setMode, setNeedStock, setMinVol]);
   const filterKey = JSON.stringify([mode, query, cat, minVol, needStock, sortKey]);
   const [limitState, setLimitState] = useState({ key: filterKey, limit: PAGE });
   const limit = limitState.key === filterKey ? limitState.limit : PAGE;
@@ -414,6 +428,7 @@ function Row({ c, rate, open, onToggle }: { c: Computed; rate: number; open: boo
       <tr onClick={onToggle} className={`cursor-pointer border-t border-border hover:bg-panel-2/60 ${open ? "bg-panel-2/40" : ""}`}>
         <td className="px-3 py-1.5">
           <div className="flex items-center gap-2">
+            <FavoriteStar id={r.id} />
             <ItemIcon id={r.id} grade={r.grade} size={30} />
             <div className="min-w-0">
               <div className="truncate font-medium">{r.th}</div>

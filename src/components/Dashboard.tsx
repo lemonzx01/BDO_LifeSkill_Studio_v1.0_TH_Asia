@@ -13,7 +13,8 @@ import { ItemIcon } from "./ItemIcon";
 import { Loading } from "./Loading";
 import { OnboardingCard } from "./OnboardingCard";
 import { TopNav } from "./TopNav";
-import { useInventory, useSettings } from "./UserDataProvider";
+import { FavoriteStar } from "./FavoriteStar";
+import { useInventory, useSettings, useUserData } from "./UserDataProvider";
 
 interface DataResponse {
   recipes: Recipe[];
@@ -29,6 +30,7 @@ const TOP = 10;
 export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSettings: boolean }) {
   const [settings, setSettings] = useSettings();
   const inventory = useInventory();
+  const { favorites, favoriteItems } = useUserData();
   const [data, setData] = useState<DataResponse | null>(null);
   const [prices, setPrices] = useState<Record<ItemId, MarketPrice>>({});
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
@@ -99,6 +101,17 @@ export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSetting
     [data, feasible, prices],
   );
 
+  // best profit per unit for each starred product, when a recipe makes it
+  const bestByProduct = useMemo(() => {
+    const m = new Map<ItemId, RecipeEvaluation>();
+    for (const ev of evaluations) {
+      if (!Number.isFinite(ev.profitPerUnit)) continue;
+      const cur = m.get(ev.productId);
+      if (!cur || ev.profitPerUnit > cur.profitPerUnit) m.set(ev.productId, ev);
+    }
+    return m;
+  }, [evaluations]);
+
   return (
     <main className="mx-auto w-full max-w-7xl px-3 py-4 md:px-6">
       <TopNav user={user} subtitle={`สวัสดี ${user.displayName} · ตลาดกลาง Asia · ราคาอัปเดต ${fetchedAt ? timeAgo(fetchedAt) : "กำลังโหลด…"}`} />
@@ -150,6 +163,45 @@ export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSetting
               <InventoryIdeas ideas={ideas} items={items} limit={TOP} emptyText="ของที่มีตอนนี้ยังประกอบเป็นสูตรไหนไม่ครบ" />
             )}
           </section>
+          {favorites.length > 0 && (
+            <section className="rounded-lg border border-border bg-panel">
+              <header className="flex items-center justify-between border-b border-border px-4 py-2.5">
+                <h2 className="text-sm font-semibold text-accent">ของที่ฉันเฝ้า</h2>
+                <span className="text-xs text-muted">กด ★ ในหน้าคำนวณสูตร / สแกนตลาด</span>
+              </header>
+              <ul className="divide-y divide-border">
+                {favorites.map((id) => {
+                  const it = items[id];
+                  const fav = favoriteItems.find((f) => f.id === id);
+                  const name = it?.th ?? fav?.th ?? `#${id}`;
+                  const price = prices[id]?.price ?? fav?.price ?? null;
+                  const stock = prices[id]?.stock ?? fav?.stock ?? null;
+                  const best = bestByProduct.get(id);
+                  return (
+                    <li key={id} className="flex items-center gap-3 px-4 py-2 text-sm">
+                      <ItemIcon id={id} grade={it?.grade ?? fav?.grade ?? 0} size={28} />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium">{name}</div>
+                        <div className="truncate text-[11px] text-muted">
+                          {price ? `ราคา ${silverShort(price)} · ค้างขาย ${silverShort(stock ?? 0)}` : "ไม่มีในตลาด"}
+                          {best ? ` · ทำเองกำไร ${silverShort(best.profitPerUnit)}/ชิ้น` : ""}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Link href={`/market?q=${encodeURIComponent(name)}`} className="rounded border border-border px-2 py-0.5 text-xs hover:bg-panel-2">
+                          ตลาด
+                        </Link>
+                        <Link href={`/recipes?q=${encodeURIComponent(name)}`} className="rounded border border-border px-2 py-0.5 text-xs hover:bg-panel-2">
+                          สูตร
+                        </Link>
+                        <FavoriteStar id={id} />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
           {sections.map((s) => (
             <section key={s.key} className="rounded-lg border border-border bg-panel">
               <header className="flex items-center justify-between border-b border-border px-4 py-2.5">

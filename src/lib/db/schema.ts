@@ -100,3 +100,16 @@ export type MarketDailyRow = typeof marketDaily.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type PublicUser = Omit<User, "passwordHash">;
 export type Session = typeof sessions.$inferSelect;
+
+/** items a member starred: shown on the home page with today's price */
+export const userFavorites = pgTable(
+  "user_favorites",
+  {
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    itemId: integer("item_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.itemId] })],
+);

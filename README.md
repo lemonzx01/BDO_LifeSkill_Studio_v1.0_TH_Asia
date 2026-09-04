@@ -26,6 +26,9 @@ npm run dev           # http://localhost:3000
 
 ตัวกรอง/การเรียง/โหมดของแต่ละหน้าจำไว้ในเบราว์เซอร์ เปิดมาเจอแบบเดิม · หัวตารางติดอยู่ด้านบนตอนเลื่อนบนจอกว้าง
 
+- **ค้นหาด่วน** กด Ctrl+K (หรือปุ่ม "ค้นหา" ในเมนู) จากทุกหน้า พิมพ์ชื่อไอเทม แล้วกระโดดไปดูสูตร / ดูในตลาด / คิดภาษี ได้ทันที
+- **ปักดาว ★** ที่แถวในหน้าคำนวณสูตรหรือสแกนตลาด ของที่ปักจะขึ้นบนหน้าแรกในกล่อง "ของที่ฉันเฝ้า" พร้อมราคาปัจจุบัน ของค้างขาย และกำไรถ้าทำเอง (เก็บกับบัญชี ใช้ได้ทุกเครื่อง)
+
 ทุกหน้าใช้บนมือถือได้: จอแคบจะแสดงเป็นการ์ดแทนตาราง เมนูเลื่อนซ้ายขวา และเพิ่มลงหน้าจอหลักได้ (PWA)
 
 ## ล็อกอินและสมาชิก
@@ -71,7 +74,7 @@ npm run dev           # http://localhost:3000
 | `scripts/admin-tools.mjs` | กู้บัญชีจากคอมมานด์ไลน์เมื่อไม่มีใครล็อกอินเป็นแอดมินใหญ่ได้: `node --env-file=.env.local scripts/admin-tools.mjs list` / `transfer-owner <user>` / `set-role <user> <owner\|admin\|member>` / `reset-password <user> <รหัสชั่วคราว>` |
 | `src/lib/engine/` | engine คำนวณต้นทุนซ้อนชั้น (ซื้อ/ทำเอง/ของในคลัง) กำไร ROI พร้อม unit test (`npm test`) |
 | `src/lib/market/` | ตัวดึงราคาตลาด Asia: API ทางการ Pearl Abyss เป็นหลัก, arsha.io เป็น fallback, cache 5 นาที |
-| `src/lib/db/` | Drizzle schema (`users`, `sessions`, `market_items`, `market_daily`, `market_meta`) และตัวเชื่อมต่อ Neon / Postgres ทั่วไป (postgres.js) / PGlite (สร้าง/อัปเดตตารางอัตโนมัติ) |
+| `src/lib/db/` | Drizzle schema (`users`, `sessions`, `market_items`, `market_daily`, `market_meta`, `user_settings`, `user_inventory`, `user_favorites`) และตัวเชื่อมต่อ Neon / Postgres ทั่วไป (postgres.js) / PGlite (สร้าง/อัปเดตตารางอัตโนมัติ) |
 | `src/lib/market/snapshot.ts` | ingest snapshot ตลาด, ประวัติรายวัน, backfill 90 วัน, aggregate สำหรับหน้าสแกน (มี test) |
 | `src/app/market`, `src/components/market/` | หน้าสแกนตลาด ตาราง/ตัวกรอง/รายละเอียดไอเท็ม |
 | `src/app/api/health` | เช็คว่าต่อฐานข้อมูลได้ไหม (เปิด `/api/health` หลัง deploy ถ้าหน้าเว็บขึ้น server error) |

@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { createUser } from "@/lib/auth/service";
 import { resetDbCache } from "@/lib/db";
 import { DEFAULT_SETTINGS } from "@/lib/engine/types";
-import { clearUserInventory, getUserInventory, getUserSettings, saveUserSettings, setUserInventoryItem } from "./user-data";
+import { clearUserInventory, getUserFavorites, getUserInventory, getUserSettings, saveUserSettings, setUserFavorite, setUserInventoryItem } from "./user-data";
 
 beforeAll(() => {
   delete process.env.DATABASE_URL;
@@ -36,5 +36,16 @@ describe("per-account settings and inventory", () => {
     expect(Object.keys(await getUserInventory(u.id))).toEqual(["5301"]);
     await clearUserInventory(u.id);
     expect(await getUserInventory(u.id)).toEqual({});
+  });
+
+  it("stars and unstars items per account", async () => {
+    const u = await createUser({ username: "star-user", password: "secret123" });
+    expect(await getUserFavorites(u.id)).toEqual([]);
+    await setUserFavorite(u.id, 6656, true);
+    await setUserFavorite(u.id, 6656, true); // idempotent
+    await setUserFavorite(u.id, 6653, true);
+    expect(await getUserFavorites(u.id)).toEqual([6656, 6653]);
+    await setUserFavorite(u.id, 6656, false);
+    expect(await getUserFavorites(u.id)).toEqual([6653]);
   });
 });
