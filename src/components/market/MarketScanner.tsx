@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { isBoolean, isNumber, oneOf, usePersistentState } from "@/lib/use-persistent";
 import { netRate } from "@/lib/engine/cost";
 import { pct, silver, silverShort } from "@/lib/format";
 import { mainCategoryLabel, subCategoryLabel } from "@/lib/market/categories";
@@ -88,12 +89,13 @@ export function MarketScanner({
   const [settings] = useSettings();
   const rate = netRate(settings);
 
-  const [mode, setMode] = useState<Mode>("all");
+  // remembered per browser so the page opens the way it was left
+  const [mode, setMode] = usePersistentState<Mode>("market.mode", "all", oneOf(["all", "trade", "buy", "sell"] as const));
   const [query, setQuery] = useState("");
-  const [cat, setCat] = useState("all");
-  const [minVol, setMinVol] = useState(50);
-  const [needStock, setNeedStock] = useState(true);
-  const [sortKey, setSortKey] = useState<SortKey>("roi");
+  const [cat, setCat] = usePersistentState<string>("market.cat", "all", (v): v is string => typeof v === "string");
+  const [minVol, setMinVol] = usePersistentState<number>("market.minVol", 50, isNumber);
+  const [needStock, setNeedStock] = usePersistentState<boolean>("market.needStock", true, isBoolean);
+  const [sortKey, setSortKey] = usePersistentState<SortKey>("market.sort", "roi", oneOf(["roi", "cheap", "expensive", "vol", "price", "trades"] as const));
   const [expanded, setExpanded] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const filterKey = JSON.stringify([mode, query, cat, minVol, needStock, sortKey]);
@@ -310,9 +312,9 @@ export function MarketScanner({
       </div>
 
       {/* desktop: table */}
-      <div className="hidden overflow-x-auto rounded-lg border border-border bg-panel md:block">
+      <div className="hidden overflow-x-auto rounded-lg border border-border bg-panel md:block lg:overflow-visible">
         <table className="w-full min-w-[900px] text-sm">
-          <thead className="bg-panel-2 text-xs text-muted">
+          <thead className="bg-panel-2 text-xs text-muted lg:sticky lg:top-0 lg:z-10">
             <tr>
               <th className="px-3 py-2 text-left font-medium">ไอเท็ม</th>
               <th className="px-2 py-2 text-right font-medium">ราคาตอนนี้</th>

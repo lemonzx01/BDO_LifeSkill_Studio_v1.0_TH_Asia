@@ -2,6 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { isBoolean, oneOf, usePersistentState } from "@/lib/use-persistent";
 import { CostEngine } from "@/lib/engine/cost";
 import { IMPERIAL_TYPES, PROCESSING_TYPES, RECIPE_TYPE_TH } from "@/lib/engine/mastery";
 import type { Inventory, Item, ItemId, MarketPrice, Overrides, Recipe, RecipeEvaluation, RecipeType } from "@/lib/engine/types";
@@ -77,10 +78,11 @@ export function Studio({ user }: { user: SessionUser }) {
   const [tab, setTab] = useState<Tab>(paramTab && TAB_KEYS.includes(paramTab) ? paramTab : "all");
   const [method, setMethod] = useState<RecipeType | "all">("all");
   const [query, setQuery] = useState(params.get("q") ?? "");
-  const [hideIncomplete, setHideIncomplete] = useState(true);
-  const [hideSoldOut, setHideSoldOut] = useState(false);
+  // remembered per browser
+  const [hideIncomplete, setHideIncomplete] = usePersistentState<boolean>("recipes.hideIncomplete", true, isBoolean);
+  const [hideSoldOut, setHideSoldOut] = usePersistentState<boolean>("recipes.hideSoldOut", false, isBoolean);
   const [marketFilter, setMarketFilter] = useState<MarketFilter>(params.get("market") === "soldout" ? "soldout" : "all");
-  const [sortKey, setSortKey] = useState<SortKey>("profitPerUnit");
+  const [sortKey, setSortKey] = usePersistentState<SortKey>("recipes.sort", "profitPerUnit", oneOf(["profitPerHour", "profitPerUnit", "profitPerCraft", "roi", "unitCost"] as const));
   const filterKey = JSON.stringify([tab, method, query, hideIncomplete, hideSoldOut, marketFilter, sortKey]);
   const [limitState, setLimitState] = useState({ key: filterKey, limit: PAGE });
   const limit = limitState.key === filterKey ? limitState.limit : PAGE;
@@ -123,7 +125,7 @@ export function Studio({ user }: { user: SessionUser }) {
         }
       })
       .catch((e: Error) => setDataError(e.message));
-  }, [openId]);
+  }, [openId, setHideIncomplete]);
   const load = (force = false) => {
     setLoading(true);
     void fetchPrices(force);
@@ -347,9 +349,9 @@ export function Studio({ user }: { user: SessionUser }) {
         )}
       </div>
 
-      <div className={`overflow-x-auto rounded-lg border border-border bg-panel ${busy && rows.length === 0 ? "hidden" : "hidden md:block"}`}>
+      <div className={`overflow-x-auto rounded-lg border border-border bg-panel lg:overflow-visible ${busy && rows.length === 0 ? "hidden" : "hidden md:block"}`}>
         <table className="w-full min-w-[760px] text-sm">
-          <thead className="bg-panel-2 text-xs text-muted">
+          <thead className="bg-panel-2 text-xs text-muted lg:sticky lg:top-0 lg:z-10">
             <tr>
               <th className="px-3 py-2 text-left font-medium">สูตร</th>
               <th className="px-2 py-2 text-right font-medium">ต้นทุน/ชิ้น</th>

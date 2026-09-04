@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/market", label: "สแกนตลาด" },
   { href: "/inventory", label: "คลังของ" },
   { href: "/calc", label: "คิดภาษี" },
+  { href: "/help", label: "วิธีใช้" },
 ];
 
 export function TopNav({ user, subtitle }: { user: SessionUser; subtitle?: ReactNode }) {

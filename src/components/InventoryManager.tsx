@@ -3,6 +3,7 @@
 import { mergeImportRows, type ImportMode, type ImportRow } from "@/lib/inventory-import";
 import { rankByName } from "@/lib/search";
 import { useEffect, useMemo, useState } from "react";
+import { oneOf, usePersistentState } from "@/lib/use-persistent";
 import type { ItemId, MarketPrice } from "@/lib/engine/types";
 import { downloadCsv, parseCsv, toCsv } from "@/lib/csv";
 import { silver } from "@/lib/format";
@@ -26,7 +27,7 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
   const { inventory, setOwned, clearInventory } = useUserData();
   const [query, setQuery] = useState("");
   const [prices, setPrices] = useState<Record<ItemId, MarketPrice>>({});
-  const [sort, setSort] = useState<"name" | "recent" | "value">("name");
+  const [sort, setSort] = usePersistentState<"name" | "recent" | "value">("inventory.sort", "name", oneOf(["name", "recent", "value"] as const));
   const [listFilter, setListFilter] = useState("");
   // the row just added from the search box: scrolled into view and tinted for a moment
   const [highlightId, setHighlightId] = useState<ItemId | null>(null);
@@ -77,7 +78,7 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
   const customCount = owned.filter((o) => o.avgCost !== undefined).length;
   const [importMsg, setImportMsg] = useState<string | null>(null);
   // "add" lets one CSV per in-game storage be imported one after another and summed up
-  const [importMode, setImportMode] = useState<ImportMode>("replace");
+  const [importMode, setImportMode] = usePersistentState<ImportMode>("inventory.importMode", "replace", oneOf(["replace", "add"] as const));
 
   const CSV_HEADER = ["id", "ชื่อไทย", "ชื่ออังกฤษ", "จำนวน", "ต้นทุน/ชิ้น"];
 
@@ -274,9 +275,9 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-border bg-panel">
+      <div className="overflow-x-auto rounded-lg border border-border bg-panel lg:overflow-visible">
         <table className="w-full min-w-[640px] text-sm">
-          <thead className="bg-panel-2 text-xs text-muted">
+          <thead className="bg-panel-2 text-xs text-muted lg:sticky lg:top-0 lg:z-10">
             <tr>
               <th className="px-3 py-2 text-left font-medium">ไอเท็ม</th>
               <th className="px-2 py-2 text-right font-medium">จำนวน</th>
