@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
 import { UserMenu, type SessionUser } from "./auth/UserMenu";
 
 const LINKS = [
@@ -11,7 +12,7 @@ const LINKS = [
   { href: "/inventory", label: "คลังของ" },
 ];
 
-export function TopNav({ user, subtitle }: { user: SessionUser; subtitle?: string }) {
+export function TopNav({ user, subtitle }: { user: SessionUser; subtitle?: ReactNode }) {
   const pathname = usePathname();
   return (
     <header className="mb-4 flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:justify-between">

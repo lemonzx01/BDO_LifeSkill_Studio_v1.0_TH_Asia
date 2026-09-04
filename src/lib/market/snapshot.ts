@@ -337,6 +337,10 @@ export interface ScanRow {
   avg30: number | null;
   avg7: number | null;
   days: number;
+  /** listed stock per day over the last week (oldest first), from our own snapshots */
+  stockHist: number[];
+  /** real units traded per day, from the change in the item's cumulative trade counter (null until 2+ days known) */
+  tradesPerDay: number | null;
 }
 
 let scanCache: { key: string; rows: ScanRow[]; at: number } | null = null;
@@ -365,6 +369,45 @@ async function aggregate(daysBack: number, now: Date): Promise<Map<number, AggRo
   return new Map(rows.map((r) => [Number(r.item_id), r]));
 }
 
+interface RecentRow {
+  item_id: number;
+  day: string;
+  stock: number | null;
+  total_trades: string | number | null;
+}
+
+/** Last week of our own daily rows (stock + cumulative trades) per item. */
+async function recentDaily(now: Date): Promise<Map<number, RecentRow[]>> {
+  const db = await getDb();
+  const since = new Date(now);
+  since.setUTCDate(since.getUTCDate() - 7);
+  const res = await db.execute(sql`
+    SELECT item_id, day, stock, total_trades FROM market_daily
+    WHERE day >= ${isoDay(since)} AND stock IS NOT NULL ORDER BY item_id, day
+  `);
+  const rows = (res as unknown as { rows: RecentRow[] }).rows ?? (res as unknown as RecentRow[]);
+  const out = new Map<number, RecentRow[]>();
+  for (const r of rows) {
+    const id = Number(r.item_id);
+    const list = out.get(id) ?? [];
+    list.push(r);
+    out.set(id, list);
+  }
+  return out;
+}
+
+function tradesPerDayFrom(rows: RecentRow[] | undefined): number | null {
+  if (!rows || rows.length < 2) return null;
+  const withTrades = rows.filter((r) => r.total_trades !== null && r.total_trades !== undefined);
+  if (withTrades.length < 2) return null;
+  const first = withTrades[0];
+  const last = withTrades[withTrades.length - 1];
+  const spanDays = (Date.parse(String(last.day)) - Date.parse(String(first.day))) / 86_400_000;
+  if (spanDays < 1) return null;
+  const diff = Number(last.total_trades) - Number(first.total_trades);
+  return diff >= 0 ? diff / spanDays : null;
+}
+
 /** Every priced market item with 7/30/90-day aggregates. Cached for 5 minutes per snapshot. */
 export async function getMarketScan(deps: { now?: () => Date } = {}): Promise<{ rows: ScanRow[]; refreshedAt: Date | null; source: string | null }> {
   const now = deps.now ? deps.now() : new Date();
@@ -374,11 +417,12 @@ export async function getMarketScan(deps: { now?: () => Date } = {}): Promise<{ 
     return { rows: scanCache.rows, refreshedAt: last.at, source: last.source };
   }
   const db = await getDb();
-  const [items, a90, a30, a7] = await Promise.all([
+  const [items, a90, a30, a7, recent] = await Promise.all([
     db.select().from(marketItems).where(sql`${marketItems.price} > 0`),
     aggregate(90, now),
     aggregate(30, now),
     aggregate(7, now),
+    recentDaily(now),
   ]);
   const num = (v: string | number | null | undefined) => (v === null || v === undefined ? null : Number(v));
   const rows: ScanRow[] = items.map((it) => {
@@ -404,6 +448,8 @@ export async function getMarketScan(deps: { now?: () => Date } = {}): Promise<{ 
       avg30: g30 && Number(g30.days) >= 2 ? num(g30.avg) : null,
       avg7: g7 ? num(g7.avg) : null,
       days,
+      stockHist: (recent.get(it.id) ?? []).map((r) => Number(r.stock ?? 0)),
+      tradesPerDay: tradesPerDayFrom(recent.get(it.id)),
     };
   });
   scanCache = { key, rows, at: now.getTime() };

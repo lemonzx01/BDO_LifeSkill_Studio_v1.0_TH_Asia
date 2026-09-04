@@ -55,6 +55,8 @@ describe("market snapshot", () => {
     expect(one.min90).toBe(100);
     expect(one.max90).toBe(150);
     expect(one.vol14).toBe(900);
+    expect(one.stockHist).toEqual([100]); // only today's snapshot carries stock; backfilled days do not
+    expect(one.tradesPerDay).toBeNull();
     const two = scan.rows.find((x) => x.id === 2)!;
     expect(two.days).toBe(3);
     expect(two.avg90).toBeCloseTo(85000);

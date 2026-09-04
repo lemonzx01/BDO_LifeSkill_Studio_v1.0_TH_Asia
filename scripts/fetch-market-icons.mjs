@@ -50,6 +50,11 @@ async function main() {
             await sleep(DELAY_MS);
             const buf = await fetchBuf(url);
             if (buf.length < 100) throw new Error("empty");
+            // bdocodex answers missing images with an HTML page and status 200: only accept real image bytes
+            const isWebp = buf.subarray(0, 4).toString() === "RIFF" && buf.subarray(8, 12).toString() === "WEBP";
+            const isPng = buf[0] === 0x89 && buf.subarray(1, 4).toString() === "PNG";
+            const isJpg = buf[0] === 0xff && buf[1] === 0xd8;
+            if (!isWebp && !isPng && !isJpg) throw new Error("not an image");
             fs.writeFileSync(path.join(ICON_DIR, `${r.itemId}.webp`), buf);
             ok = true;
             break;

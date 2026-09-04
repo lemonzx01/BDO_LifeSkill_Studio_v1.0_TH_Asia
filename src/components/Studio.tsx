@@ -135,7 +135,7 @@ export function Studio({ user }: { user: SessionUser }) {
   );
   const evaluations = useMemo(() => engine.evaluateAll(), [engine]);
 
-  const rows = useMemo(() => {
+  const rowsAndAlts = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = evaluations.filter((ev) => {
       const t = ev.recipe.type;
@@ -162,8 +162,24 @@ export function Studio({ user }: { user: SessionUser }) {
       return true;
     });
     list.sort((a, b) => (sortKey === "unitCost" ? a.unitCost - b.unitCost : b[sortKey] - a[sortKey]));
-    return list;
+    // the game often has a x1 and a x10 version of the same recipe (same cost per unit): show one row
+    const seen = new Map<string, RecipeEvaluation>();
+    const alts = new Map<number, number>();
+    const out: RecipeEvaluation[] = [];
+    for (const ev of list) {
+      const key = `${ev.recipe.type}:${ev.productId}`;
+      const prev = seen.get(key);
+      if (prev && Math.abs(prev.unitCost - ev.unitCost) <= Math.max(1, prev.unitCost * 0.005)) {
+        alts.set(prev.recipe.id, (alts.get(prev.recipe.id) ?? 0) + 1);
+        continue;
+      }
+      if (!prev) seen.set(key, ev);
+      out.push(ev);
+    }
+    return { rows: out, alts };
   }, [evaluations, tab, method, query, hideIncomplete, hideSoldOut, marketFilter, sortKey, items, prices]);
+  const rows = rowsAndAlts.rows;
+  const alts = rowsAndAlts.alts;
 
   const busy = loading || !data;
 
@@ -249,7 +265,7 @@ export function Studio({ user }: { user: SessionUser }) {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="ค้นหาชื่อไอเท็ม (ไทย/อังกฤษ)…"
+          placeholder="ค้นหาชื่อไอเท็ม…"
           className="min-w-[200px] flex-1 rounded border border-border bg-panel px-3 py-1.5 text-sm outline-none focus:border-accent"
         />
         <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)} className="rounded border border-border bg-panel px-2 py-1.5 text-sm">
@@ -289,6 +305,7 @@ export function Studio({ user }: { user: SessionUser }) {
             items={items}
             prices={prices}
             inventory={inventory}
+            alt={alts.get(ev.recipe.id) ?? 0}
             open={expanded === ev.recipe.id}
             onToggle={() => setExpanded(expanded === ev.recipe.id ? null : ev.recipe.id)}
           />
@@ -320,6 +337,7 @@ export function Studio({ user }: { user: SessionUser }) {
                 items={items}
                 prices={prices}
                 inventory={inventory}
+                alt={alts.get(ev.recipe.id) ?? 0}
                 open={expanded === ev.recipe.id}
                 onToggle={() => setExpanded(expanded === ev.recipe.id ? null : ev.recipe.id)}
               />
@@ -361,6 +379,7 @@ function Row({
   items,
   prices,
   inventory,
+  alt = 0,
   open,
   onToggle,
 }: {
@@ -368,6 +387,7 @@ function Row({
   items: Record<ItemId, Item>;
   prices: Record<ItemId, MarketPrice>;
   inventory: Inventory;
+  alt?: number;
   open: boolean;
   onToggle: () => void;
 }) {
@@ -384,6 +404,7 @@ function Row({
               <div className="truncate text-[11px] text-muted">
                 {RECIPE_TYPE_TH[ev.recipe.type]}
                 {ev.recipe.skill.sort > 0 ? ` · ${ev.recipe.skill.display}` : ""} · ผลผลิต {ev.expectedYield.toFixed(1)}/รอบ
+                {alt > 0 ? ` · มีสูตรทำทีละมากอีก ${alt} แบบ (ต้นทุน/ชิ้นเท่ากัน)` : ""}
               </div>
             </div>
           </div>
@@ -416,6 +437,7 @@ function RecipeCard({
   items,
   prices,
   inventory,
+  alt = 0,
   open,
   onToggle,
 }: {
@@ -423,6 +445,7 @@ function RecipeCard({
   items: Record<ItemId, Item>;
   prices: Record<ItemId, MarketPrice>;
   inventory: Inventory;
+  alt?: number;
   open: boolean;
   onToggle: () => void;
 }) {
@@ -438,6 +461,7 @@ function RecipeCard({
             {RECIPE_TYPE_TH[ev.recipe.type]}
             {ev.recipe.skill.sort > 0 ? ` · ${ev.recipe.skill.display}` : ""} · ต้นทุน {silverShort(ev.unitCost)} → {ev.saleChannel === "imperial" ? "ส่ง" : "ขาย"}{" "}
             {ev.sellPrice ? silverShort(ev.sellPrice) : "-"}
+            {alt > 0 ? ` · +${alt} สูตรทำทีละมาก` : ""}
           </div>
           <div className="mt-1">
             <Flags ev={ev} stock={prices[ev.productId]?.stock} />

@@ -21,7 +21,7 @@ interface PricesResponse {
   prices: Record<ItemId, MarketPrice>;
   fetchedAt: number | null;
 }
-const TOP = 5;
+const TOP = 10;
 
 export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSettings: boolean }) {
   const [settings, setSettings] = useSettings();
