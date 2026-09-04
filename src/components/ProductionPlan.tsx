@@ -24,23 +24,7 @@ export function ProductionPlan({
 }) {
   const { setOwned } = useUserData();
   const [qty, setQty] = useState(100);
-  const [note, setNote] = useState("");
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const rounds = Math.max(0, Math.ceil(qty / ev.expectedYield));
-
-  const savePlan = async () => {
-    setSaveState("saving");
-    try {
-      const res = await fetch("/api/plans", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recipeId: ev.recipe.id, productId: ev.productId, qty, note, unitCost: ev.unitCost, profitPerUnit: ev.profitPerUnit }),
-      });
-      setSaveState(res.ok ? "saved" : "error");
-    } catch {
-      setSaveState("error");
-    }
-  };
 
   const rows = useMemo(() => {
     const req = flattenRequirements(ev.tree, rounds);
@@ -142,30 +126,6 @@ export function ProductionPlan({
         <Stat label="เงินสดที่ต้องใช้ซื้อเพิ่ม" value={silver(buyCost)} />
         <Stat label="กำไร (หักเฉพาะที่ซื้อเพิ่ม)" value={silver(cashProfit)} tone={cashProfit >= 0 ? "good" : "bad"} />
         <Stat label="กำไรเทียบต้นทุนเต็ม" value={silver(fullProfit)} tone={fullProfit >= 0 ? "good" : "bad"} />
-      </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-        <input
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="หมายเหตุถึงกิล (ไม่บังคับ) เช่น ทำส่งวันศุกร์"
-          className="min-w-[220px] flex-1 rounded border border-border bg-panel-2 px-3 py-1.5 text-sm outline-none focus:border-accent"
-        />
-        <button
-          onClick={savePlan}
-          disabled={saveState === "saving" || qty <= 0}
-          className="rounded bg-accent px-3 py-1.5 text-sm font-semibold text-black hover:bg-amber-300 disabled:opacity-50"
-        >
-          {saveState === "saving" ? "กำลังบันทึก…" : "บันทึกแผนให้กิลเห็น"}
-        </button>
-        {saveState === "saved" && (
-          <span className="text-sm text-good">
-            บันทึกแล้ว ดูได้ที่หน้า{" "}
-            <a href="/plans" className="underline">
-              แผนกิล
-            </a>
-          </span>
-        )}
-        {saveState === "error" && <span className="text-sm text-bad">บันทึกไม่สำเร็จ</span>}
       </div>
       <p className="mt-2 text-[11px] text-muted">
         ช่อง &ldquo;มีอยู่แล้ว&rdquo; บันทึกไว้กับบัญชีของคุณ ใช้ร่วมกันทุกสูตรและทุกเครื่อง (ดู/แก้รวมได้ที่หน้า &ldquo;คลังของ&rdquo;) · ต้นทุนของของที่มีอยู่ตั้งได้ในตั้งค่า

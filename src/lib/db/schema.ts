@@ -93,24 +93,6 @@ export const userInventory = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.itemId] })],
 );
 
-/** Production plans members save to share with the guild ("who is making what") */
-export const plans = pgTable("plans", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  recipeId: integer("recipe_id").notNull(),
-  productId: integer("product_id").notNull(),
-  qty: integer("qty").notNull(),
-  note: text("note").notNull().default(""),
-  /** snapshot of the numbers when saved (silver) */
-  unitCost: bigint("unit_cost", { mode: "number" }),
-  profitPerUnit: bigint("profit_per_unit", { mode: "number" }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
-export type Plan = typeof plans.$inferSelect;
-
 export type MarketItem = typeof marketItems.$inferSelect;
 export type MarketDailyRow = typeof marketDaily.$inferSelect;
 

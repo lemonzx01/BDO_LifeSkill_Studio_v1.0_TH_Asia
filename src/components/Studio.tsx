@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CostEngine } from "@/lib/engine/cost";
 import { IMPERIAL_TYPES, PROCESSING_TYPES, RECIPE_TYPE_TH } from "@/lib/engine/mastery";
@@ -54,7 +55,10 @@ interface DataResponse {
   meta: { importedAt: string; recipeCount: number; itemCount: number };
 }
 
+const TAB_KEYS: Tab[] = ["all", "alchemy", "cooking", "processing", "imperial"];
+
 export function Studio({ user }: { user: SessionUser }) {
+  const params = useSearchParams();
   const [settings, setSettings] = useSettings();
   const inventory = useInventory();
   const [data, setData] = useState<DataResponse | null>(null);
@@ -65,12 +69,15 @@ export function Studio({ user }: { user: SessionUser }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [tab, setTab] = useState<Tab>("all");
+  // links from the home page can preselect a tab / market filter / search / an open recipe
+  const paramTab = params.get("tab") as Tab | null;
+  const openId = Number(params.get("open"));
+  const [tab, setTab] = useState<Tab>(paramTab && TAB_KEYS.includes(paramTab) ? paramTab : "all");
   const [method, setMethod] = useState<RecipeType | "all">("all");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(params.get("q") ?? "");
   const [hideIncomplete, setHideIncomplete] = useState(true);
   const [hideSoldOut, setHideSoldOut] = useState(false);
-  const [marketFilter, setMarketFilter] = useState<MarketFilter>("all");
+  const [marketFilter, setMarketFilter] = useState<MarketFilter>(params.get("market") === "soldout" ? "soldout" : "all");
   const [sortKey, setSortKey] = useState<SortKey>("profitPerUnit");
   const filterKey = JSON.stringify([tab, method, query, hideIncomplete, hideSoldOut, marketFilter, sortKey]);
   const [limitState, setLimitState] = useState({ key: filterKey, limit: PAGE });
@@ -98,9 +105,23 @@ export function Studio({ user }: { user: SessionUser }) {
   useEffect(() => {
     fetch("/api/data", { cache: "no-cache" })
       .then((res) => (res.ok ? (res.json() as Promise<DataResponse>) : Promise.reject(new Error(`HTTP ${res.status}`))))
-      .then((json) => setData(json))
+      .then((json) => {
+        setData(json);
+        // "?open=<recipeId>": show that recipe expanded, whatever the filters would have hidden
+        if (openId) {
+          const r = json.recipes.find((x) => x.id === openId);
+          if (r) {
+            const product = r.products.find((p) => p.kind === "main") ?? r.products[0];
+            setQuery(json.items[product?.id ?? 0]?.th ?? r.name);
+            setTab("all");
+            setHideIncomplete(false);
+            setMarketFilter("all");
+            setExpanded(r.id);
+          }
+        }
+      })
       .catch((e: Error) => setDataError(e.message));
-  }, []);
+  }, [openId]);
   const load = (force = false) => {
     setLoading(true);
     void fetchPrices(force);
@@ -259,7 +280,25 @@ export function Studio({ user }: { user: SessionUser }) {
         </label>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-border bg-panel">
+      {/* phones: one card per recipe */}
+      <div className="space-y-2 md:hidden">
+        {rows.slice(0, limit).map((ev) => (
+          <RecipeCard
+            key={ev.recipe.id}
+            ev={ev}
+            items={items}
+            prices={prices}
+            inventory={inventory}
+            open={expanded === ev.recipe.id}
+            onToggle={() => setExpanded(expanded === ev.recipe.id ? null : ev.recipe.id)}
+          />
+        ))}
+        {rows.length === 0 && (
+          <div className="rounded-lg border border-border bg-panel px-3 py-8 text-center text-muted">{busy ? "กำลังโหลดสูตรและราคา…" : "ไม่พบสูตรที่ตรงเงื่อนไข"}</div>
+        )}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-lg border border-border bg-panel md:block">
         <table className="w-full min-w-[760px] text-sm">
           <thead className="bg-panel-2 text-xs text-muted">
             <tr>
@@ -369,6 +408,53 @@ function Row({
         </tr>
       )}
     </>
+  );
+}
+
+function RecipeCard({
+  ev,
+  items,
+  prices,
+  inventory,
+  open,
+  onToggle,
+}: {
+  ev: RecipeEvaluation;
+  items: Record<ItemId, Item>;
+  prices: Record<ItemId, MarketPrice>;
+  inventory: Inventory;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const item = items[ev.productId];
+  const good = ev.profitPerUnit > 0;
+  return (
+    <div className={`rounded-lg border bg-panel ${open ? "border-accent/60" : "border-border"}`}>
+      <button onClick={onToggle} className="flex w-full items-center gap-3 px-3 py-3 text-left">
+        <ItemIcon id={ev.productId} grade={item?.grade} size={40} />
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-medium">{item?.th ?? ev.recipe.name}</div>
+          <div className="truncate text-[11px] text-muted">
+            {RECIPE_TYPE_TH[ev.recipe.type]}
+            {ev.recipe.skill.sort > 0 ? ` · ${ev.recipe.skill.display}` : ""} · ต้นทุน {silverShort(ev.unitCost)} → {ev.saleChannel === "imperial" ? "ส่ง" : "ขาย"}{" "}
+            {ev.sellPrice ? silverShort(ev.sellPrice) : "-"}
+          </div>
+          <div className="mt-1">
+            <Flags ev={ev} stock={prices[ev.productId]?.stock} />
+          </div>
+        </div>
+        <div className="text-right">
+          <div className={`num text-base font-semibold ${good ? "text-good" : "text-bad"}`}>{silverShort(ev.profitPerUnit)}</div>
+          <div className={`num text-[11px] ${good ? "text-good" : "text-bad"}`}>ROI {pct(ev.roi)}</div>
+          <div className="num text-[11px] text-muted">/ชิ้น</div>
+        </div>
+      </button>
+      {open && (
+        <div className="border-t border-border px-3 py-3">
+          <RecipeDetail key={ev.productId} ev={ev} items={items} prices={prices} inventory={inventory} />
+        </div>
+      )}
+    </div>
   );
 }
 
