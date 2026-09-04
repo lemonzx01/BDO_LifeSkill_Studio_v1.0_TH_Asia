@@ -28,7 +28,7 @@ export async function getUserInventory(userId: number): Promise<Inventory> {
   const db = await getDb();
   const rows = await db.select().from(userInventory).where(eq(userInventory.userId, userId));
   const out: Inventory = {};
-  for (const r of rows) if (r.qty > 0) out[r.itemId] = { qty: r.qty, avgCost: r.avgCost ?? undefined };
+  for (const r of rows) if (r.qty > 0) out[r.itemId] = { qty: r.qty, avgCost: r.avgCost ?? undefined, updatedAt: r.updatedAt?.getTime() };
   return out;
 }
 

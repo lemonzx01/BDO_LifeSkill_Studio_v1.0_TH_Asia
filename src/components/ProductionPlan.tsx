@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { planProduction, type ConsumeChange } from "@/lib/engine/consume";
 import { flattenRequirements } from "@/lib/engine/cost";
 import type { Inventory, Item, ItemId, MarketPrice, RecipeEvaluation } from "@/lib/engine/types";
 import { silver } from "@/lib/format";
@@ -26,6 +27,9 @@ export function ProductionPlan({
   const { setOwned } = useUserData();
   const [qty, setQty] = useState(100);
   const rounds = Math.max(0, Math.ceil(qty / ev.expectedYield));
+  const [addProduct, setAddProduct] = useState(true);
+  // what the last "ผลิตแล้ว" changed, so it can be undone
+  const [done, setDone] = useState<{ changes: ConsumeChange[]; costs: Record<ItemId, number | undefined>; units: number } | null>(null);
 
   const rows = useMemo(() => {
     const req = flattenRequirements(ev.tree, rounds);
@@ -44,6 +48,25 @@ export function ProductionPlan({
   }, [ev.tree, rounds, items, inventory, prices]);
 
   const buyCost = rows.reduce((a, r) => a + r.cost, 0);
+  const ownedRows = rows.filter((r) => r.owned > 0);
+  const productUnits = Math.round(rounds * ev.expectedYield);
+
+  /** Record that the crafts happened: owned materials go out, the product comes in. */
+  const produce = () => {
+    const changes = planProduction(inventory, rows.map((r) => ({ id: r.id, need: r.need })), addProduct ? { id: ev.productId, units: productUnits } : undefined);
+    if (changes.length === 0) return;
+    const lines = changes.map((c) => `${items[c.id]?.th ?? `#${c.id}`}: ${silver(c.before)} → ${silver(c.after)}`).join("\n");
+    if (!confirm(`บันทึกว่าผลิตแล้ว ${silver(rounds)} รอบ และปรับคลังตามนี้?\n\n${lines}`)) return;
+    const costs: Record<ItemId, number | undefined> = {};
+    for (const c of changes) costs[c.id] = inventory[c.id]?.avgCost;
+    for (const c of changes) setOwned(c.id, c.after);
+    setDone({ changes, costs, units: addProduct ? productUnits : 0 });
+  };
+  const undo = () => {
+    if (!done) return;
+    for (const c of done.changes) setOwned(c.id, c.before, c.before > 0 ? done.costs[c.id] : undefined);
+    setDone(null);
+  };
   const revenue = qty * ev.netPerUnit;
   const cashProfit = revenue - buyCost;
   const fullProfit = qty * ev.profitPerUnit;
@@ -113,6 +136,34 @@ export function ProductionPlan({
             </tr>
           </tfoot>
         </table>
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-3 rounded border border-border bg-panel-2/60 px-2 py-1.5 text-sm">
+        <button
+          onClick={produce}
+          disabled={rounds <= 0 || (ownedRows.length === 0 && !addProduct)}
+          className="rounded bg-accent px-3 py-1 font-medium text-black hover:opacity-90 disabled:opacity-50"
+          title="หักวัตถุดิบที่มีอยู่แล้วออกจากคลังตามจำนวนที่ใช้ และเพิ่มผลผลิตเข้าคลัง"
+        >
+          ผลิตแล้ว {silver(rounds)} รอบ → ปรับคลัง
+        </button>
+        <label className="flex items-center gap-1.5 text-muted">
+          <input type="checkbox" checked={addProduct} onChange={(e) => setAddProduct(e.target.checked)} />
+          เพิ่ม {items[ev.productId]?.th ?? "ผลผลิต"} ×{silver(productUnits)} เข้าคลังด้วย
+        </label>
+        {ownedRows.length > 0 ? (
+          <span className="text-muted">จะหัก {ownedRows.length} รายการที่มีอยู่แล้ว</span>
+        ) : (
+          <span className="text-muted">ยังไม่มีวัตถุดิบในคลังให้หัก</span>
+        )}
+        {done && (
+          <span className="ml-auto flex items-center gap-2 text-good">
+            ปรับคลังแล้ว {done.changes.length} รายการ
+            <button onClick={undo} className="rounded border border-border px-2 py-0.5 text-xs text-foreground hover:bg-panel">
+              เลิกทำ
+            </button>
+          </span>
+        )}
       </div>
 
       <div className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">

@@ -25,17 +25,37 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
   const { inventory, setOwned, clearInventory } = useUserData();
   const [query, setQuery] = useState("");
   const [prices, setPrices] = useState<Record<ItemId, MarketPrice>>({});
+  const [sort, setSort] = useState<"name" | "recent" | "value">("name");
+  const [listFilter, setListFilter] = useState("");
+  // the row just added from the search box: scrolled into view and tinted for a moment
+  const [highlightId, setHighlightId] = useState<ItemId | null>(null);
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
   const owned = useMemo(
     () =>
       Object.entries(inventory)
         .filter(([, v]) => v && v.qty > 0)
-        .map(([id, v]) => ({ id: Number(id), qty: v!.qty, avgCost: v!.avgCost }))
+        .map(([id, v]) => ({ id: Number(id), qty: v!.qty, avgCost: v!.avgCost, updatedAt: v!.updatedAt ?? 0 }))
         .sort((a, b) => (byId.get(a.id)?.th ?? "").localeCompare(byId.get(b.id)?.th ?? "", "th")),
     [inventory, byId],
   );
   const ownedKey = owned.map((o) => o.id).join(",");
+
+  /** rows actually shown: filtered by the list search box and ordered by the chosen sort */
+  const visible = useMemo(() => {
+    const f = listFilter.trim().toLowerCase();
+    const list = f ? owned.filter((o) => `${byId.get(o.id)?.th ?? ""} ${byId.get(o.id)?.en ?? ""}`.toLowerCase().includes(f)) : owned.slice();
+    if (sort === "recent") list.sort((a, b) => b.updatedAt - a.updatedAt);
+    else if (sort === "value") list.sort((a, b) => b.qty * (prices[b.id]?.price ?? 0) - a.qty * (prices[a.id]?.price ?? 0));
+    return list;
+  }, [owned, byId, listFilter, sort, prices]);
+
+  useEffect(() => {
+    if (highlightId === null) return;
+    document.getElementById(`inv-${highlightId}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    const t = setTimeout(() => setHighlightId(null), 4000);
+    return () => clearTimeout(t);
+  }, [highlightId]);
 
   useEffect(() => {
     if (!ownedKey) return;
@@ -168,6 +188,8 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
                   onClick={() => {
                     setOwned(m.id, 1);
                     setQuery("");
+                    setListFilter("");
+                    setHighlightId(m.id);
                   }}
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-panel-2"
                 >
@@ -180,6 +202,38 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
           </ul>
         )}
       </div>
+
+      {owned.length > 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
+          <input
+            value={listFilter}
+            onChange={(e) => setListFilter(e.target.value)}
+            placeholder="ค้นหาในคลัง…"
+            className="w-52 rounded border border-border bg-panel px-2 py-1 text-sm outline-none focus:border-accent"
+          />
+          <span className="text-xs text-muted">เรียงตาม</span>
+          {(
+            [
+              ["name", "ชื่อ"],
+              ["recent", "เพิ่ม/แก้ล่าสุด"],
+              ["value", "มูลค่า"],
+            ] as const
+          ).map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => setSort(k)}
+              className={`rounded border px-2 py-0.5 text-xs ${sort === k ? "border-accent bg-accent/15 text-foreground" : "border-border bg-panel text-muted hover:bg-panel-2"}`}
+            >
+              {label}
+            </button>
+          ))}
+          {listFilter && (
+            <span className="text-xs text-muted">
+              แสดง {visible.length} จาก {owned.length}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-lg border border-border bg-panel">
         <table className="w-full min-w-[640px] text-sm">
@@ -194,11 +248,11 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
             </tr>
           </thead>
           <tbody>
-            {owned.map((o) => {
+            {visible.map((o) => {
               const it = byId.get(o.id);
               const price = prices[o.id]?.price ?? 0;
               return (
-                <tr key={o.id} className="border-t border-border">
+                <tr key={o.id} id={`inv-${o.id}`} className={`border-t border-border transition-colors ${highlightId === o.id ? "bg-accent/15" : ""}`}>
                   <td className="px-3 py-1.5">
                     <div className="flex items-center gap-2">
                       <ItemIcon id={o.id} grade={it?.grade} size={26} />
@@ -258,6 +312,13 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
               <tr>
                 <td colSpan={6} className="px-3 py-8 text-center text-muted">
                   ยังไม่มีของในคลัง พิมพ์ชื่อไอเท็มด้านบนเพื่อเพิ่ม หรือกรอกช่อง &ldquo;มีอยู่แล้ว&rdquo; ในแผนผลิต
+                </td>
+              </tr>
+            )}
+            {owned.length > 0 && visible.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-3 py-6 text-center text-muted">
+                  ไม่มีรายการในคลังที่ตรงกับ &ldquo;{listFilter}&rdquo;
                 </td>
               </tr>
             )}

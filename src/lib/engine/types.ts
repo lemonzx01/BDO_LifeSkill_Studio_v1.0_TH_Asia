@@ -130,6 +130,8 @@ export interface InventoryEntry {
   qty: number;
   /** average cost paid per unit (silver) */
   avgCost?: number;
+  /** when this entry was last changed (ms since epoch); lets the inventory page sort by "recently added" */
+  updatedAt?: number;
 }
 export type Inventory = Record<ItemId, InventoryEntry | undefined>;
 

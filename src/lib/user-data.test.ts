@@ -25,11 +25,13 @@ describe("per-account settings and inventory", () => {
     const u = await createUser({ username: "invuser", password: "secret123" });
     await setUserInventoryItem(u.id, 5301, 40, 12000);
     await setUserInventoryItem(u.id, 6354, 3);
-    expect(await getUserInventory(u.id)).toEqual({ 5301: { qty: 40, avgCost: 12000 }, 6354: { qty: 3, avgCost: undefined } });
+    const inv = await getUserInventory(u.id);
+    expect(inv).toMatchObject({ 5301: { qty: 40, avgCost: 12000 }, 6354: { qty: 3, avgCost: undefined } });
+    expect(typeof inv[5301]?.updatedAt).toBe("number");
     await setUserInventoryItem(u.id, 5301, 55); // avgCost omitted -> kept
-    expect((await getUserInventory(u.id))[5301]).toEqual({ qty: 55, avgCost: 12000 });
+    expect((await getUserInventory(u.id))[5301]).toMatchObject({ qty: 55, avgCost: 12000 });
     await setUserInventoryItem(u.id, 5301, 55, null); // explicit null clears the cost
-    expect((await getUserInventory(u.id))[5301]).toEqual({ qty: 55, avgCost: undefined });
+    expect((await getUserInventory(u.id))[5301]).toMatchObject({ qty: 55, avgCost: undefined });
     await setUserInventoryItem(u.id, 6354, 0);
     expect(Object.keys(await getUserInventory(u.id))).toEqual(["5301"]);
     await clearUserInventory(u.id);

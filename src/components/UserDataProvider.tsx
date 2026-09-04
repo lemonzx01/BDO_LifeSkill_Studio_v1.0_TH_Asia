@@ -70,7 +70,7 @@ export function UserDataProvider({
     (id: ItemId, qty: number, avgCost?: number | null) => {
       setInventory((cur) => {
         const next: Inventory = { ...cur };
-        if (qty > 0) next[id] = { qty, avgCost: avgCost === null ? undefined : (avgCost ?? cur[id]?.avgCost) };
+        if (qty > 0) next[id] = { qty, avgCost: avgCost === null ? undefined : (avgCost ?? cur[id]?.avgCost), updatedAt: Date.now() };
         else delete next[id];
         return next;
       });
