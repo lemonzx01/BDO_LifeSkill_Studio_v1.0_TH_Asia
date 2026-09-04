@@ -6,7 +6,6 @@ const base: ScanRow = {
   id: 1,
   th: "ของทดสอบ",
   en: "Test",
-  icon: null,
   grade: 0,
   cat: "material",
   sub: null,

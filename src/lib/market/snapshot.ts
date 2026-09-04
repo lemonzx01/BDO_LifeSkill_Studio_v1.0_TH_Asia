@@ -344,7 +344,6 @@ export interface ScanRow {
   id: ItemId;
   th: string;
   en: string | null;
-  icon: string | null;
   grade: number;
   cat: string | null;
   sub: string | null;
@@ -436,12 +435,26 @@ export async function getMarketScan(deps: { now?: () => Date } = {}): Promise<{ 
   const now = deps.now ? deps.now() : new Date();
   const last = await getLastRefresh();
   const key = last.at?.toISOString() ?? "none";
-  if (scanCache && scanCache.key === key && now.getTime() - scanCache.at < 5 * 60 * 1000) {
+  if (scanCache && scanCache.key === key) {
     return { rows: scanCache.rows, refreshedAt: last.at, source: last.source };
   }
   const db = await getDb();
   const [items, a90, a30, a7, recent] = await Promise.all([
-    db.select().from(marketItems).where(sql`${marketItems.price} > 0`),
+    db
+      .select({
+        id: marketItems.id,
+        nameTh: marketItems.nameTh,
+        nameEn: marketItems.nameEn,
+        grade: marketItems.grade,
+        cat: marketItems.cat,
+        sub: marketItems.sub,
+        price: marketItems.price,
+        stock: marketItems.stock,
+        totalTrades: marketItems.totalTrades,
+        volume14d: marketItems.volume14d,
+      })
+      .from(marketItems)
+      .where(sql`${marketItems.price} > 0`),
     aggregate(90, now),
     aggregate(30, now),
     aggregate(7, now),
@@ -457,7 +470,6 @@ export async function getMarketScan(deps: { now?: () => Date } = {}): Promise<{ 
       id: it.id,
       th: it.nameTh,
       en: it.nameEn,
-      icon: it.icon,
       grade: it.grade,
       cat: it.cat,
       sub: it.sub,
