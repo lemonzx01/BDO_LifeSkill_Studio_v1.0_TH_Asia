@@ -87,8 +87,14 @@ declare global {
 // changes whenever SCHEMA_SQL changes, so a cached connection re-applies new tables
 const SCHEMA_VERSION = String(SCHEMA_SQL.join("\n").length) + ":" + SCHEMA_SQL.length;
 
-async function ensureSchema(db: Db) {
-  for (const stmt of SCHEMA_SQL) await db.execute(sql.raw(stmt));
+async function ensureSchema(db: Db, driver: "neon" | "postgres" | "pglite") {
+  if (driver === "postgres") {
+    // one round trip instead of a dozen: on a cold serverless start every statement
+    // otherwise costs a full network round trip to the database
+    await db.execute(sql.raw(SCHEMA_SQL.join(";\n")));
+  } else {
+    for (const stmt of SCHEMA_SQL) await db.execute(sql.raw(stmt));
+  }
   globalThis.__blsSchemaVersion = SCHEMA_VERSION;
 }
 
@@ -97,20 +103,25 @@ function databaseUrl(): string | undefined {
   return process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL || undefined;
 }
 
+let driverKind: "neon" | "postgres" | "pglite" = "pglite";
+
 async function connect(): Promise<Db> {
   const url = databaseUrl();
   let db: Db;
   if (url && /\.neon\.tech[/:]/.test(url)) {
+    driverKind = "neon";
     const { neon } = await import("@neondatabase/serverless");
     const { drizzle } = await import("drizzle-orm/neon-http");
     db = drizzle({ client: neon(url), schema }) as unknown as Db;
   } else if (url) {
+    driverKind = "postgres";
     const postgres = (await import("postgres")).default;
     const { drizzle } = await import("drizzle-orm/postgres-js");
     const local = /@(localhost|127\.0\.0\.1)[:/]/.test(url);
     // prepare:false — Supabase's transaction pooler (port 6543) rejects prepared statements;
     // small pool — every serverless instance opens its own connections
-    const client = postgres(url, { prepare: false, max: 4, idle_timeout: 20, connect_timeout: 15, ssl: local ? false : "require" });
+    // onnotice: "table does not exist, skipping" from DROP TABLE IF EXISTS is not worth a log line
+    const client = postgres(url, { prepare: false, max: 4, idle_timeout: 20, connect_timeout: 15, ssl: local ? false : "require", onnotice: () => {} });
     db = drizzle({ client, schema }) as unknown as Db;
   } else {
     if (process.env.VERCEL) {
@@ -126,7 +137,7 @@ async function connect(): Promise<Db> {
     const client = dataDir ? new PGlite(dataDir) : new PGlite();
     db = drizzle({ client, schema }) as unknown as Db;
   }
-  await ensureSchema(db);
+  await ensureSchema(db, driverKind);
   return db;
 }
 
@@ -138,7 +149,7 @@ export async function getDb(): Promise<Db> {
     });
   }
   const db = await globalThis.__blsDb;
-  if (globalThis.__blsSchemaVersion !== SCHEMA_VERSION) await ensureSchema(db);
+  if (globalThis.__blsSchemaVersion !== SCHEMA_VERSION) await ensureSchema(db, driverKind);
   return db;
 }
 

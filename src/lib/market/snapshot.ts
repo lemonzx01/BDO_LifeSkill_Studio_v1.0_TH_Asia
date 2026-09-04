@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { marketDaily, marketItems, marketMeta } from "@/lib/db/schema";
 import type { ItemId, MarketPrice } from "@/lib/engine/types";
@@ -106,8 +106,11 @@ async function setMeta(key: string, value: string) {
 }
 
 export async function getLastRefresh(): Promise<{ at: Date | null; source: string | null }> {
-  const at = await getMeta("last_refresh_at");
-  const source = await getMeta("last_source");
+  // one round trip for both keys: this runs on almost every page view
+  const db = await getDb();
+  const rows = await db.select().from(marketMeta).where(inArray(marketMeta.key, ["last_refresh_at", "last_source"]));
+  const at = rows.find((r) => r.key === "last_refresh_at")?.value ?? null;
+  const source = rows.find((r) => r.key === "last_source")?.value ?? null;
   return { at: at ? new Date(at) : null, source };
 }
 
@@ -365,6 +368,7 @@ export interface ScanRow {
 let scanCache: { key: string; rows: ScanRow[]; at: number } | null = null;
 
 export function invalidateScanCache() {
+  priceCache = null;
   scanCache = null;
 }
 
@@ -475,21 +479,30 @@ export async function getMarketScan(deps: { now?: () => Date } = {}): Promise<{ 
   return { rows, refreshedAt: last.at, source: last.source };
 }
 
+// the whole priced snapshot, kept per server instance until the snapshot is rebuilt
+let priceCache: { at: number; byId: Map<ItemId, MarketPrice> } | null = null;
+
 /** Current prices straight from the snapshot (for the recipe engine), keyed by id. */
 export async function getSnapshotPrices(ids: ItemId[]): Promise<{ prices: Record<ItemId, MarketPrice>; at: Date | null }> {
-  const db = await getDb();
   const last = await getLastRefresh();
   if (!last.at) return { prices: {}, at: null };
-  const out: Record<ItemId, MarketPrice> = {};
-  for (let i = 0; i < ids.length; i += 1000) {
-    const chunk = ids.slice(i, i + 1000);
+  const at = last.at.getTime();
+  if (!priceCache || priceCache.at !== at) {
+    // one query for every priced item beats several 1,000-id IN lists, and warm
+    // instances then answer every later request from memory
+    const db = await getDb();
     const rows = await db
       .select({ id: marketItems.id, price: marketItems.price, stock: marketItems.stock, trades: marketItems.totalTrades, vol: marketItems.volume14d })
       .from(marketItems)
-      .where(sql`${marketItems.id} IN (${sql.join(chunk.map((c) => sql`${c}`), sql`, `)})`);
-    for (const r of rows) {
-      out[r.id] = { id: r.id, price: r.price, stock: r.stock, totalTrades: r.trades, volume14d: r.vol ?? undefined, updatedAt: last.at.getTime() };
-    }
+      .where(sql`${marketItems.price} > 0`);
+    const byId = new Map<ItemId, MarketPrice>();
+    for (const r of rows) byId.set(r.id, { id: r.id, price: r.price, stock: r.stock, totalTrades: r.trades, volume14d: r.vol ?? undefined, updatedAt: at });
+    priceCache = { at, byId };
+  }
+  const out: Record<ItemId, MarketPrice> = {};
+  for (const id of ids) {
+    const p = priceCache.byId.get(id);
+    if (p) out[id] = p;
   }
   return { prices: out, at: last.at };
 }
