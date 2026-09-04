@@ -36,14 +36,12 @@ export function AdminUsers({ users, meId, meRole }: { users: AdminUserRow[]; meI
     <div className="space-y-6">
       <CreateUserForm meRole={meRole} />
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full min-w-[900px] text-sm">
+        <table className="w-full min-w-[760px] text-sm">
           <thead className="bg-panel-2 text-xs text-muted">
             <tr>
-              <th className="w-[24%] px-3 py-2 text-left font-medium">ผู้ใช้</th>
-              <th className="w-px whitespace-nowrap px-3 py-2 text-left font-medium">สิทธิ์</th>
-              <th className="w-px whitespace-nowrap px-3 py-2 text-left font-medium">สถานะ</th>
+              <th className="px-3 py-2 text-left font-medium">ผู้ใช้</th>
               <th className="w-px whitespace-nowrap px-3 py-2 text-left font-medium">ล็อกอินล่าสุด</th>
-              <th className="px-3 py-2 text-left font-medium">จัดการ</th>
+              <th className="w-px whitespace-nowrap px-3 py-2 text-left font-medium">จัดการ</th>
             </tr>
           </thead>
           <tbody>
@@ -112,17 +110,14 @@ function UserRow({ u, isMe, meRole }: { u: AdminUserRow; isMe: boolean; meRole: 
   return (
     <>
       <tr className="border-t border-border">
-        <td className="px-3 py-2">
-          <div className="font-medium">
-            {u.displayName} {isMe && <span className="text-xs text-muted">(คุณ)</span>}
+        <td className="px-3 py-2.5">
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <span className="font-medium">{u.displayName}</span>
+            <span className="text-xs text-muted">@{u.username}</span>
+            {isMe && <span className="text-xs text-muted">(คุณ)</span>}
           </div>
-          <div className="text-xs text-muted">@{u.username}</div>
-        </td>
-        <td className="whitespace-nowrap px-3 py-2">
-          <RoleBadge role={u.role} />
-        </td>
-        <td className="whitespace-nowrap px-3 py-2">
-          <div className="flex flex-col items-start gap-1">
+          <div className="mt-1 flex flex-wrap items-center gap-1">
+            <RoleBadge role={u.role} />
             {u.isActive ? <span className={`${badge} bg-good/15 text-good`}>ใช้งานได้</span> : <span className={`${badge} bg-bad/15 text-bad`}>ปิดใช้งาน</span>}
             {u.mustChangePassword && <span className={`${badge} bg-warn/15 text-warn`}>รอตั้งรหัสใหม่</span>}
           </div>
@@ -196,7 +191,7 @@ function UserRow({ u, isMe, meRole }: { u: AdminUserRow; isMe: boolean; meRole: 
       </tr>
       {showReset && !isMe && (
         <tr className="border-t border-border/60 bg-background/40">
-          <td colSpan={5} className="px-3 py-2">
+          <td colSpan={3} className="px-3 py-2">
             <ResetPasswordForm id={u.id} username={u.username} onDone={() => setShowReset(false)} />
           </td>
         </tr>
