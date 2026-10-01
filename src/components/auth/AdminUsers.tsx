@@ -12,13 +12,17 @@ import {
 } from "@/lib/auth/actions";
 import { assignableRoles, canManage, ROLE_TH } from "@/lib/auth/roles";
 import type { Role } from "@/lib/db/schema";
-import { errorCls, ghostBtn, inputCls, labelCls, okCls, primaryBtn } from "./ui";
+import { Badge, RoleBadge } from "../ui/Badge";
+import { btn } from "../ui/button";
+import { CardHeader, cardCls } from "../ui/Card";
+import { selectCls } from "../ui/field";
+import { Notice } from "../ui/Notice";
+import { ghostBtn, inputCls, labelCls, primaryBtn } from "./ui";
 
 // row controls: one height, never wrapping, quieter than the page-level buttons
-const rowBtn = "h-8 whitespace-nowrap rounded border border-border bg-panel px-2.5 text-xs hover:bg-panel-2 disabled:opacity-50";
-const rowDanger = "h-8 whitespace-nowrap rounded border border-bad/40 bg-bad/10 px-2.5 text-xs text-bad hover:bg-bad/20 disabled:opacity-50";
-const rowSelect = "h-8 rounded border border-border bg-panel px-2 text-xs outline-none focus:border-accent";
-const badge = "inline-block whitespace-nowrap rounded px-1.5 py-0.5 text-xs";
+const rowBtn = btn("secondary", "sm");
+const rowDanger = btn("danger", "sm");
+const rowSelect = selectCls("sm");
 
 export interface AdminUserRow {
   id: number;
@@ -62,45 +66,49 @@ function CreateUserForm({ meRole }: { meRole: Role }) {
   const [state, formAction, pending] = useActionState<ActionState, FormData>(adminCreateUserAction, {});
   const roles = assignableRoles(meRole);
   return (
-    <form action={formAction} className="rounded-lg border border-border bg-panel p-4">
-      <h2 className="mb-3 text-sm font-semibold text-accent">สร้างบัญชีให้สมาชิก</h2>
-      <div className="grid gap-3 md:grid-cols-4">
-        <label className={labelCls}>
-          ชื่อผู้ใช้
-          <input name="username" required className={inputCls} placeholder="เช่น somchai" />
-        </label>
-        <label className={labelCls}>
-          ชื่อที่แสดง
-          <input name="displayName" maxLength={40} className={inputCls} placeholder="ชื่อในเกม" />
-        </label>
-        <label className={labelCls}>
-          รหัสผ่านชั่วคราว (≥ 8 ตัว)
-          <input name="password" type="text" required minLength={8} className={inputCls} autoComplete="off" />
-        </label>
-        <label className={labelCls}>
-          สิทธิ์
-          <select name="role" className={inputCls} defaultValue="member" disabled={roles.length <= 1}>
-            {roles.map((r) => (
-              <option key={r} value={r}>
-                {ROLE_TH[r]}
-              </option>
-            ))}
-          </select>
-        </label>
+    <form action={formAction} className={cardCls()}>
+      <CardHeader title="สร้างบัญชีให้สมาชิก" />
+      <div className="p-4">
+        <div className="grid gap-3 md:grid-cols-4">
+          <label className={labelCls}>
+            ชื่อผู้ใช้
+            <input name="username" required className={inputCls} placeholder="เช่น somchai" />
+          </label>
+          <label className={labelCls}>
+            ชื่อที่แสดง
+            <input name="displayName" maxLength={40} className={inputCls} placeholder="ชื่อในเกม" />
+          </label>
+          <label className={labelCls}>
+            รหัสผ่านชั่วคราว (≥ 8 ตัว)
+            <input name="password" type="text" required minLength={8} className={inputCls} autoComplete="off" />
+          </label>
+          <label className={labelCls}>
+            สิทธิ์
+            <select name="role" className={`${selectCls()} w-full`} defaultValue="member" disabled={roles.length <= 1}>
+              {roles.map((r) => (
+                <option key={r} value={r}>
+                  {ROLE_TH[r]}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {state.error && (
+          <Notice tone="bad" className="mt-3">
+            {state.error}
+          </Notice>
+        )}
+        {state.ok && (
+          <Notice tone="good" className="mt-3">
+            {state.message}
+          </Notice>
+        )}
+        <button type="submit" disabled={pending} className={`${primaryBtn} mt-3`}>
+          {pending ? "กำลังสร้าง…" : "สร้างบัญชี"}
+        </button>
       </div>
-      {state.error && <div className={`${errorCls} mt-3`}>{state.error}</div>}
-      {state.ok && <div className={`${okCls} mt-3`}>{state.message}</div>}
-      <button type="submit" disabled={pending} className={`${primaryBtn} mt-3`}>
-        {pending ? "กำลังสร้าง…" : "สร้างบัญชี"}
-      </button>
     </form>
   );
-}
-
-function RoleBadge({ role }: { role: Role }) {
-  if (role === "owner") return <span className={`${badge} bg-accent/15 text-accent`}>{ROLE_TH.owner}</span>;
-  if (role === "admin") return <span className={`${badge} bg-sky-500/15 text-sky-300`}>{ROLE_TH.admin}</span>;
-  return <span className={`${badge} text-muted`}>{ROLE_TH.member}</span>;
 }
 
 function UserRow({ u, isMe, meRole }: { u: AdminUserRow; isMe: boolean; meRole: Role }) {
@@ -118,8 +126,8 @@ function UserRow({ u, isMe, meRole }: { u: AdminUserRow; isMe: boolean; meRole: 
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-1">
             <RoleBadge role={u.role} />
-            {u.isActive ? <span className={`${badge} bg-good/15 text-good`}>ใช้งานได้</span> : <span className={`${badge} bg-bad/15 text-bad`}>ปิดใช้งาน</span>}
-            {u.mustChangePassword && <span className={`${badge} bg-warn/15 text-warn`}>รอตั้งรหัสใหม่</span>}
+            {u.isActive ? <Badge tone="good">ใช้งานได้</Badge> : <Badge tone="bad">ปิดใช้งาน</Badge>}
+            {u.mustChangePassword && <Badge tone="warn">รอตั้งรหัสใหม่</Badge>}
           </div>
         </td>
         <td className="whitespace-nowrap px-3 py-2 text-xs text-muted">
@@ -215,8 +223,8 @@ function ResetPasswordForm({ id, username, onDone }: { id: number; username: str
       <button type="button" onClick={onDone} className={ghostBtn}>
         ปิด
       </button>
-      {state.error && <div className={errorCls}>{state.error}</div>}
-      {state.ok && <div className={okCls}>{state.message}</div>}
+      {state.error && <Notice tone="bad">{state.error}</Notice>}
+      {state.ok && <Notice tone="good">{state.message}</Notice>}
     </form>
   );
 }

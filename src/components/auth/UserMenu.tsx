@@ -5,6 +5,7 @@ import { useState } from "react";
 import { logoutAction } from "@/lib/auth/actions";
 import { isAdmin, ROLE_TH } from "@/lib/auth/roles";
 import type { Role } from "@/lib/db/schema";
+import { RoleBadge } from "../ui/Badge";
 import { ghostBtn } from "./ui";
 
 export interface SessionUser {
@@ -16,18 +17,20 @@ export interface SessionUser {
 /** Full menu on desktop; a single avatar button that opens a small menu on phones. */
 export function UserMenu({ user, compact = false }: { user: SessionUser; compact?: boolean }) {
   const [open, setOpen] = useState(false);
+  // the phone dropdown is a list: full-width rows with left-aligned labels, not centred buttons
+  const item = compact ? "flex min-h-10 w-full items-center rounded px-3 text-sm text-foreground hover:bg-panel-2" : ghostBtn;
   const links = (
     <>
       {isAdmin(user.role) && (
-        <Link href="/admin" className={ghostBtn}>
+        <Link href="/admin" className={item}>
           สมาชิก
         </Link>
       )}
-      <Link href="/account" className={ghostBtn}>
+      <Link href="/account" className={item}>
         รหัสผ่าน
       </Link>
-      <form action={logoutAction}>
-        <button type="submit" className={ghostBtn}>
+      <form action={logoutAction} className={compact ? "w-full" : undefined}>
+        <button type="submit" className={item}>
           ออกจากระบบ
         </button>
       </form>
@@ -61,7 +64,7 @@ export function UserMenu({ user, compact = false }: { user: SessionUser; compact
     <div className="flex flex-wrap items-center gap-2 text-sm">
       <span className="text-muted">
         <span className="font-medium text-foreground">{user.displayName}</span>
-        {isAdmin(user.role) && <span className="ml-1 rounded bg-accent/15 px-1.5 py-0.5 text-[11px] text-accent">{ROLE_TH[user.role]}</span>}
+        {isAdmin(user.role) && <RoleBadge role={user.role} className="ml-1" />}
       </span>
       {links}
     </div>

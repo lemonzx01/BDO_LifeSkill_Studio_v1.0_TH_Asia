@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { Studio } from "@/components/Studio";
 import { UserDataProvider } from "@/components/UserDataProvider";
+import { PageSkeleton } from "@/components/ui/Skeleton";
 import { requireUser } from "@/lib/auth/session";
 import { getUserInventory, getUserSettings } from "@/lib/user-data";
 
@@ -12,7 +13,7 @@ export default async function RecipesPage() {
   const [settings, inventory] = await Promise.all([getUserSettings(user.id), getUserInventory(user.id)]);
   return (
     <UserDataProvider initialSettings={settings} initialInventory={inventory}>
-      <Suspense fallback={null}>
+      <Suspense fallback={<PageSkeleton label="กำลังโหลดสูตร…" />}>
         <Studio user={{ username: user.username, displayName: user.displayName, role: user.role }} />
       </Suspense>
     </UserDataProvider>

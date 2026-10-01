@@ -8,6 +8,13 @@ import { silver } from "@/lib/format";
 import { ItemIcon } from "./ItemIcon";
 import { NumberInput } from "./NumberInput";
 import { useUserData } from "./UserDataProvider";
+import { Badge } from "./ui/Badge";
+import { btn } from "./ui/button";
+import { Card, SectionLabel } from "./ui/Card";
+import { checkboxCls, fieldCls } from "./ui/field";
+import { Money } from "./ui/Money";
+import { Notice } from "./ui/Notice";
+import { Stat } from "./ui/Stat";
 
 /**
  * "I want N of this" -> crafts needed, every raw material across all recipe
@@ -72,12 +79,12 @@ export function ProductionPlan({
   const fullProfit = qty * ev.profitPerUnit;
 
   return (
-    <section className="mt-4 rounded-lg border border-border bg-panel p-3">
+    <Card className="mt-4 p-3">
       <div className="mb-2 flex flex-wrap items-center gap-3">
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">แผนผลิต</h4>
+        <SectionLabel as="h4">แผนผลิต</SectionLabel>
         <label className="flex items-center gap-2 text-sm">
           อยากได้
-          <NumberInput min={0} step={10} value={qty} onChange={(v) => setQty(Math.floor(v))} className="num w-24 rounded border border-border bg-panel-2 px-2 py-1 text-right" />
+          <NumberInput min={0} step={10} value={qty} onChange={(v) => setQty(Math.floor(v))} className={`${fieldCls("sm")} w-24`} />
           ชิ้น
         </label>
         <span className="text-sm text-muted">
@@ -87,7 +94,7 @@ export function ProductionPlan({
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px] text-sm">
-          <thead className="text-[11px] text-muted">
+          <thead className="text-xs text-muted">
             <tr>
               <th className="py-1 text-left font-medium">วัตถุดิบ (ทุกชั้น)</th>
               <th className="py-1 text-right font-medium">ต้องใช้</th>
@@ -104,10 +111,8 @@ export function ProductionPlan({
                   <div className="flex items-center gap-2">
                     <ItemIcon id={r.id} grade={r.item?.grade} size={22} />
                     <span className="truncate">{r.item?.th ?? `#${r.id}`}</span>
-                    {r.soldOut && <span className="rounded bg-rose-500/15 px-1.5 py-0.5 text-[10px] text-rose-300">ของหมด</span>}
-                    {!r.item?.market && !r.item?.npcBuy && (
-                      <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-300">ต้องหาเอง</span>
-                    )}
+                    {r.soldOut && <Badge tone="warn">ของหมด</Badge>}
+                    {!r.item?.market && !r.item?.npcBuy && <Badge tone="warn">ต้องหาเอง</Badge>}
                   </div>
                 </td>
                 <td className="num py-1 text-right">{silver(r.need)}</td>
@@ -118,7 +123,8 @@ export function ProductionPlan({
                     blankZero
                     placeholder="0"
                     onChange={(v) => setOwned(r.id, Math.floor(v))}
-                    className="num w-24 rounded border border-border bg-panel-2 px-2 py-0.5 text-right"
+                    aria-label={`มีอยู่แล้ว ${r.item?.th ?? `#${r.id}`}`}
+                    className={`${fieldCls("sm")} w-24`}
                   />
                 </td>
                 <td className={`num py-1 text-right ${r.toBuy > 0 ? "" : "text-muted"}`}>{silver(r.toBuy)}</td>
@@ -142,13 +148,13 @@ export function ProductionPlan({
         <button
           onClick={produce}
           disabled={rounds <= 0 || (ownedRows.length === 0 && !addProduct)}
-          className="rounded bg-accent px-3 py-1 font-medium text-black hover:opacity-90 disabled:opacity-50"
+          className={btn("primary")}
           title="หักวัตถุดิบที่มีอยู่แล้วออกจากคลังตามจำนวนที่ใช้ และเพิ่มผลผลิตเข้าคลัง"
         >
           ผลิตแล้ว {silver(rounds)} รอบ → ปรับคลัง
         </button>
         <label className="flex items-center gap-1.5 text-muted">
-          <input type="checkbox" checked={addProduct} onChange={(e) => setAddProduct(e.target.checked)} />
+          <input type="checkbox" checked={addProduct} onChange={(e) => setAddProduct(e.target.checked)} className={checkboxCls} />
           เพิ่ม {items[ev.productId]?.th ?? "ผลผลิต"} ×{silver(productUnits)} เข้าคลังด้วย
         </label>
         {ownedRows.length > 0 ? (
@@ -156,34 +162,22 @@ export function ProductionPlan({
         ) : (
           <span className="text-muted">ยังไม่มีวัตถุดิบในคลังให้หัก</span>
         )}
-        {done && (
-          <span className="ml-auto flex items-center gap-2 text-good">
-            ปรับคลังแล้ว {done.changes.length} รายการ
-            <button onClick={undo} className="rounded border border-border px-2 py-0.5 text-xs text-foreground hover:bg-panel">
-              เลิกทำ
-            </button>
-          </span>
-        )}
       </div>
+      {done && (
+        <Notice tone="good" className="mt-2" action={{ label: "เลิกทำ", onClick: undo }}>
+          ปรับคลังแล้ว {done.changes.length} รายการ
+        </Notice>
+      )}
 
       <div className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
         <Stat label={`ขายได้สุทธิ (${silver(qty)} ชิ้น)`} value={silver(revenue)} />
         <Stat label="เงินสดที่ต้องใช้ซื้อเพิ่ม" value={silver(buyCost)} />
-        <Stat label="กำไร (หักเฉพาะที่ซื้อเพิ่ม)" value={silver(cashProfit)} tone={cashProfit >= 0 ? "good" : "bad"} />
-        <Stat label="กำไรเทียบต้นทุนเต็ม" value={silver(fullProfit)} tone={fullProfit >= 0 ? "good" : "bad"} />
+        <Stat label="กำไร (หักเฉพาะที่ซื้อเพิ่ม)" value={<Money value={cashProfit} tone="profit" />} emphasis />
+        <Stat label="กำไรเทียบต้นทุนเต็ม" value={<Money value={fullProfit} tone="profit" />} />
       </div>
-      <p className="mt-2 text-[11px] text-muted">
+      <p className="mt-2 text-xs text-muted">
         ช่อง &ldquo;มีอยู่แล้ว&rdquo; บันทึกไว้กับบัญชีของคุณ ใช้ร่วมกันทุกสูตรและทุกเครื่อง (ดู/แก้รวมได้ที่หน้า &ldquo;คลังของ&rdquo;) · ต้นทุนของของที่มีอยู่ตั้งได้ในตั้งค่า
       </p>
-    </section>
-  );
-}
-
-function Stat({ label, value, tone }: { label: string; value: string; tone?: "good" | "bad" }) {
-  return (
-    <div className="rounded border border-border bg-panel-2/60 px-2 py-1.5">
-      <div className="text-[11px] text-muted">{label}</div>
-      <div className={`num font-semibold ${tone === "good" ? "text-good" : tone === "bad" ? "text-bad" : ""}`}>{value}</div>
-    </div>
+    </Card>
   );
 }

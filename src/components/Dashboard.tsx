@@ -6,15 +6,20 @@ import { CostEngine } from "@/lib/engine/cost";
 import { ideasFromInventory } from "@/lib/engine/ideas";
 import { IMPERIAL_TYPES, PROCESSING_TYPES, RECIPE_TYPE_TH } from "@/lib/engine/mastery";
 import type { Item, ItemId, MarketPrice, Recipe, RecipeEvaluation, RecipeType } from "@/lib/engine/types";
-import { pct, silverShort, timeAgo } from "@/lib/format";
+import { signed, signedPct, silverShort, timeAgo } from "@/lib/format";
 import type { SessionUser } from "./auth/UserMenu";
 import { InventoryIdeas } from "./InventoryIdeas";
 import { ItemIcon } from "./ItemIcon";
-import { Loading } from "./Loading";
 import { OnboardingCard } from "./OnboardingCard";
 import { TopNav } from "./TopNav";
 import { FavoriteStar } from "./FavoriteStar";
 import { useInventory, useSettings, useUserData } from "./UserDataProvider";
+import { btn } from "./ui/button";
+import { Card, CardHeader } from "./ui/Card";
+import { EmptyState } from "./ui/EmptyState";
+import { Money } from "./ui/Money";
+import { Notice } from "./ui/Notice";
+import { SkeletonCards } from "./ui/Skeleton";
 
 interface DataResponse {
   recipes: Recipe[];
@@ -127,7 +132,11 @@ export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSetting
         />
       )}
 
-      {error && <div className="mb-3 rounded border border-bad/40 bg-bad/10 px-3 py-2 text-sm text-bad">โหลดข้อมูลไม่สำเร็จ: {error}</div>}
+      {error && (
+        <Notice tone="bad" className="mb-3">
+          โหลดข้อมูลไม่สำเร็จ: {error}
+        </Notice>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-muted">
         <span>
@@ -135,40 +144,39 @@ export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSetting
           <b className="num text-foreground">{settings.mastery.cooking ?? 0}</b> · แปรรูป <b className="num text-foreground">{settings.mastery.processing ?? 0}</b> · Value Pack{" "}
           <b className="text-foreground">{settings.valuePack ? "เปิด" : "ปิด"}</b>
         </span>
-        <button onClick={() => setShowSetup(true)} className="rounded border border-border bg-panel px-2 py-1 hover:bg-panel-2">
+        <button onClick={() => setShowSetup(true)} className={btn("secondary", "sm")}>
           แก้ไข
         </button>
       </div>
 
       {!data || !pricesLoaded ? (
-        <Loading text={!data ? "กำลังโหลดฐานสูตร…" : "กำลังโหลดราคาตลาด…"} />
+        <SkeletonCards n={6} label={!data ? "กำลังโหลดฐานสูตร…" : "กำลังโหลดราคาตลาด…"} className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <section className="rounded-lg border border-accent/40 bg-panel">
-            <header className="flex items-center justify-between border-b border-border px-4 py-2.5">
-              <h2 className="text-sm font-semibold text-accent">ทำอะไรได้จากของในคลัง</h2>
-              <Link href="/inventory" className="text-xs text-muted hover:text-foreground">
-                คลังของ →
-              </Link>
-            </header>
+          {/* the one gold card on the page: the thing to act on first */}
+          <Card tone="highlight">
+            <CardHeader
+              tone="highlight"
+              title="ทำอะไรได้จากของในคลัง"
+              action={
+                <Link href="/inventory" className={btn("ghost", "sm")}>
+                  คลังของ →
+                </Link>
+              }
+            />
             {ownedCount === 0 ? (
-              <p className="px-4 py-6 text-center text-sm text-muted">
-                ยังไม่มีของในคลัง เพิ่มที่หน้า{" "}
-                <Link href="/inventory" className="underline">
-                  คลังของ
-                </Link>{" "}
-                แล้วระบบจะบอกว่าเอาไปทำอะไรได้กำไรสุด
-              </p>
+              <EmptyState
+                title="ยังไม่มีของในคลัง"
+                hint="เพิ่มของที่มีไว้ แล้วระบบจะบอกว่าเอาไปทำอะไรได้กำไรสุด"
+                action={{ label: "เพิ่มของในคลัง", href: "/inventory" }}
+              />
             ) : (
               <InventoryIdeas ideas={ideas} items={items} limit={TOP} emptyText="ของที่มีตอนนี้ยังประกอบเป็นสูตรไหนไม่ครบ" />
             )}
-          </section>
+          </Card>
           {favorites.length > 0 && (
-            <section className="rounded-lg border border-border bg-panel">
-              <header className="flex items-center justify-between border-b border-border px-4 py-2.5">
-                <h2 className="text-sm font-semibold text-accent">ของที่ฉันเฝ้า</h2>
-                <span className="text-xs text-muted">กด ★ ในหน้าคำนวณสูตร / สแกนตลาด</span>
-              </header>
+            <Card>
+              <CardHeader title="ของที่ฉันเฝ้า" hint="กด ★ ในหน้าคำนวณสูตร / สแกนตลาด" />
               <ul className="divide-y divide-border">
                 {favorites.map((id) => {
                   const it = items[id];
@@ -182,16 +190,16 @@ export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSetting
                       <ItemIcon id={id} grade={it?.grade ?? fav?.grade ?? 0} size={28} />
                       <div className="min-w-0 flex-1">
                         <div className="truncate font-medium">{name}</div>
-                        <div className="truncate text-[11px] text-muted">
+                        <div className="line-clamp-2 text-xs text-muted">
                           {price ? `ราคา ${silverShort(price)} · ค้างขาย ${silverShort(stock ?? 0)}` : "ไม่มีในตลาด"}
-                          {best ? ` · ทำเองกำไร ${silverShort(best.profitPerUnit)}/ชิ้น` : ""}
+                          {best ? ` · ทำเองกำไร ${signed(best.profitPerUnit, silverShort)}/ชิ้น` : ""}
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
-                        <Link href={`/market?q=${encodeURIComponent(name)}`} className="rounded border border-border px-2 py-0.5 text-xs hover:bg-panel-2">
+                        <Link href={`/market?q=${encodeURIComponent(name)}`} className={btn("secondary", "sm")}>
                           ตลาด
                         </Link>
-                        <Link href={`/recipes?q=${encodeURIComponent(name)}`} className="rounded border border-border px-2 py-0.5 text-xs hover:bg-panel-2">
+                        <Link href={`/recipes?q=${encodeURIComponent(name)}`} className={btn("secondary", "sm")}>
                           สูตร
                         </Link>
                         <FavoriteStar id={id} />
@@ -200,18 +208,20 @@ export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSetting
                   );
                 })}
               </ul>
-            </section>
+            </Card>
           )}
           {sections.map((s) => (
-            <section key={s.key} className="rounded-lg border border-border bg-panel">
-              <header className="flex items-center justify-between border-b border-border px-4 py-2.5">
-                <h2 className="text-sm font-semibold text-accent">{s.title}</h2>
-                <Link href={s.href} className="text-xs text-muted hover:text-foreground">
-                  ดูทั้งหมด →
-                </Link>
-              </header>
+            <Card key={s.key}>
+              <CardHeader
+                title={s.title}
+                action={
+                  <Link href={s.href} className={btn("ghost", "sm")}>
+                    ดูทั้งหมด →
+                  </Link>
+                }
+              />
               {s.rows.length === 0 ? (
-                <p className="px-4 py-6 text-center text-sm text-muted">ยังไม่มีสูตรที่กำไรเป็นบวกในหมวดนี้ตอนนี้</p>
+                <EmptyState title="ยังไม่มีสูตรที่กำไรเป็นบวกในหมวดนี้ตอนนี้" />
               ) : (
                 <ul className="divide-y divide-border">
                   {s.rows.map((ev, i) => (
@@ -219,7 +229,7 @@ export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSetting
                   ))}
                 </ul>
               )}
-            </section>
+            </Card>
           ))}
         </div>
       )}
@@ -243,15 +253,17 @@ function HighlightRow({ rank, ev, item, stock }: { rank: number; ev: RecipeEvalu
         <ItemIcon id={ev.productId} grade={item?.grade} size={32} />
         <div className="min-w-0 flex-1">
           <div className="truncate font-medium">{item?.th ?? ev.recipe.name}</div>
-          <div className="truncate text-[11px] text-muted">
+          <div className="line-clamp-2 text-xs text-muted">
             {RECIPE_TYPE_TH[ev.recipe.type]} · ต้นทุน {silverShort(ev.unitCost)} → {ev.saleChannel === "imperial" ? "ส่งราชวัง" : "ขาย"} {silverShort(ev.sellPrice)}
             {ev.flags.materialSoldOut ? " · วัตถุดิบบางตัวหมดตลาด" : ""}
             {ev.saleChannel === "market" && stock === 0 ? " · ขาดตลาด" : ""}
           </div>
         </div>
         <div className="text-right">
-          <div className="num font-semibold text-good">+{silverShort(ev.profitPerUnit)}</div>
-          <div className="num text-[11px] text-muted">ROI {pct(ev.roi)}</div>
+          <div className="font-semibold">
+            <Money value={ev.profitPerUnit} tone="profit" compact />
+          </div>
+          <div className="num text-xs text-muted">ROI {signedPct(ev.roi)}</div>
         </div>
       </Link>
     </li>

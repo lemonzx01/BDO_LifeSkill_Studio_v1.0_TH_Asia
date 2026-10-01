@@ -2,7 +2,8 @@
 
 import { useActionState } from "react";
 import { changeProfileAction, type ActionState } from "@/lib/auth/actions";
-import { errorCls, inputCls, labelCls, okCls, primaryBtn } from "./ui";
+import { Notice } from "../ui/Notice";
+import { inputCls, labelCls, primaryBtn } from "./ui";
 
 /** Change the login name (ไอดี) and the display name; the current password confirms it. */
 export function ChangeProfileForm({ username, displayName }: { username: string; displayName: string }) {
@@ -21,8 +22,8 @@ export function ChangeProfileForm({ username, displayName }: { username: string;
         รหัสผ่านปัจจุบัน (เพื่อยืนยัน)
         <input name="current" type="password" autoComplete="current-password" required className={inputCls} />
       </label>
-      {state.error && <div className={errorCls}>{state.error}</div>}
-      {state.ok && <div className={okCls}>{state.message}</div>}
+      {state.error && <Notice tone="bad">{state.error}</Notice>}
+      {state.ok && <Notice tone="good">{state.message}</Notice>}
       <button type="submit" disabled={pending} className={primaryBtn}>
         {pending ? "กำลังบันทึก…" : "บันทึกชื่อ"}
       </button>

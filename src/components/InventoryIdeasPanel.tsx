@@ -6,6 +6,9 @@ import type { Item, ItemId, MarketPrice, Recipe } from "@/lib/engine/types";
 import { InventoryIdeas } from "./InventoryIdeas";
 import { Loading } from "./Loading";
 import { useInventory, useSettings } from "./UserDataProvider";
+import { Card, CardHeader } from "./ui/Card";
+import { EmptyState } from "./ui/EmptyState";
+import { Notice } from "./ui/Notice";
 
 interface DataResponse {
   recipes: Recipe[];
@@ -38,22 +41,22 @@ export function InventoryIdeasPanel() {
   const ownedCount = Object.values(inventory).filter((v) => v && v.qty > 0).length;
 
   return (
-    <section className="mt-6 rounded-lg border border-border bg-panel">
-      <header className="border-b border-border px-4 py-2.5">
-        <h2 className="text-sm font-semibold text-accent">ทำอะไรได้จากของในคลัง</h2>
-        <p className="text-[11px] text-muted">
-          สูตรที่ทำได้ทันทีด้วยของที่มี ไม่ต้องซื้อเพิ่ม (นับวัตถุดิบทดแทนให้) · &ldquo;กำไร&rdquo; = ขายผลผลิตหลังหักภาษี − มูลค่าวัตถุดิบที่ใช้ไปถ้าขายตรง ๆ แทน
-        </p>
-      </header>
+    <Card className="mt-6">
+      <CardHeader
+        title="ทำอะไรได้จากของในคลัง"
+        hint={<>สูตรที่ทำได้ทันทีด้วยของที่มี ไม่ต้องซื้อเพิ่ม (นับวัตถุดิบทดแทนให้) · &ldquo;กำไร&rdquo; = ขายผลผลิตหลังหักภาษี − มูลค่าวัตถุดิบที่ใช้ไปถ้าขายตรง ๆ แทน</>}
+      />
       {error ? (
-        <p className="px-4 py-4 text-sm text-bad">โหลดข้อมูลไม่สำเร็จ: {error}</p>
+        <div className="p-4">
+          <Notice tone="bad">โหลดข้อมูลไม่สำเร็จ: {error}</Notice>
+        </div>
       ) : ownedCount === 0 ? (
-        <p className="px-4 py-6 text-center text-sm text-muted">เพิ่มของที่มีเข้าคลังก่อน แล้วระบบจะบอกว่าเอาไปทำอะไรได้กำไรสุด</p>
+        <EmptyState title="เพิ่มของที่มีเข้าคลังก่อน แล้วระบบจะบอกว่าเอาไปทำอะไรได้กำไรสุด" />
       ) : !data || !prices ? (
         <Loading text="กำลังคำนวณจากของในคลัง…" className="border-0" />
       ) : (
         <InventoryIdeas ideas={ideas} items={data.items} emptyText="ของที่มีตอนนี้ยังประกอบเป็นสูตรไหนไม่ครบ (ต้องมีวัตถุดิบครบทุกอย่างของสูตร)" />
       )}
-    </section>
+    </Card>
   );
 }

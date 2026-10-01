@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { silver } from "@/lib/format";
 import { ItemIcon } from "./ItemIcon";
+import { btn } from "./ui/button";
+import { fieldCls } from "./ui/field";
 
 interface Hit {
   id: number;
@@ -141,14 +143,17 @@ export function QuickSearch() {
             aria-modal="true"
             aria-label="ค้นหาด่วน"
           >
-            <input
-              ref={inputRef}
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder="พิมพ์ชื่อไอเทม… (Enter = ดูสูตร, Shift+Enter = ดูในตลาด)"
-              className="w-full border-b border-border bg-transparent px-4 py-3 text-sm outline-none"
-            />
+            <div className="border-b border-border p-2">
+              <input
+                ref={inputRef}
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onKeyDown={onKeyDown}
+                aria-label="ชื่อไอเทมหรือหน้า"
+                placeholder="พิมพ์ชื่อไอเทม… (Enter = ดูสูตร, Shift+Enter = ดูในตลาด)"
+                className={fieldCls()}
+              />
+            </div>
             <ul className="max-h-[60vh] overflow-y-auto">
               {showPages &&
                 pageHits.map((p, i) => (
@@ -173,19 +178,19 @@ export function QuickSearch() {
                       <ItemIcon id={h.id} grade={h.grade} size={28} />
                       <button type="button" onClick={() => toRecipes(h)} className="min-w-0 flex-1 text-left">
                         <div className="truncate font-medium">{h.th}</div>
-                        <div className="truncate text-[11px] text-muted">
+                        <div className="line-clamp-2 text-xs text-muted">
                           {silver(h.price)} · ค้างขาย {silver(h.stock)}
                           {h.en ? ` · ${h.en}` : ""}
                         </div>
                       </button>
                       <div className="flex shrink-0 gap-1">
-                        <button type="button" onClick={() => toRecipes(h)} className="rounded border border-border px-2 py-0.5 text-xs hover:bg-panel">
+                        <button type="button" onClick={() => toRecipes(h)} className={btn("secondary", "sm")}>
                           สูตร
                         </button>
-                        <button type="button" onClick={() => toMarket(h)} className="rounded border border-border px-2 py-0.5 text-xs hover:bg-panel">
+                        <button type="button" onClick={() => toMarket(h)} className={btn("secondary", "sm")}>
                           ตลาด
                         </button>
-                        <button type="button" onClick={() => toCalc(h)} className="rounded border border-border px-2 py-0.5 text-xs hover:bg-panel">
+                        <button type="button" onClick={() => toCalc(h)} className={btn("secondary", "sm")}>
                           คิดภาษี
                         </button>
                       </div>
@@ -193,7 +198,7 @@ export function QuickSearch() {
                   </li>
                 ))}
             </ul>
-            <div className="border-t border-border px-4 py-1.5 text-[11px] text-muted">↑↓ เลือก · Enter ดูสูตร · Shift+Enter ดูในตลาด · Esc ปิด</div>
+            <div className="border-t border-border px-4 py-1.5 text-xs text-muted">↑↓ เลือก · Enter ดูสูตร · Shift+Enter ดูในตลาด · Esc ปิด</div>
           </div>
         </div>
       )}

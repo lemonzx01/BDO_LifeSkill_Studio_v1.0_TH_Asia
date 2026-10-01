@@ -7,27 +7,36 @@ import { CostEngine } from "@/lib/engine/cost";
 import { IMPERIAL_TYPES, PROCESSING_TYPES, RECIPE_TYPE_TH } from "@/lib/engine/mastery";
 import type { Inventory, Item, ItemId, MarketPrice, Overrides, Recipe, RecipeEvaluation, RecipeType } from "@/lib/engine/types";
 import { downloadCsv, toCsv } from "@/lib/csv";
-import { pct, silver, silverShort, timeAgo } from "@/lib/format";
+import { signedPct, silver, silverShort, timeAgo } from "@/lib/format";
 import type { TreeTools } from "./CostTree";
 import { FavoriteStar } from "./FavoriteStar";
 import { ItemIcon } from "./ItemIcon";
-import { Loading } from "./Loading";
 import { RecipeDetail } from "./RecipeDetail";
 import { SettingsPanel } from "./SettingsPanel";
 import type { SessionUser } from "./auth/UserMenu";
 import { TopNav } from "./TopNav";
 import { useInventory, useSettings } from "./UserDataProvider";
+import { Badge, type BadgeTone } from "./ui/Badge";
+import { btn, btnShape, toggleCls } from "./ui/button";
+import { cardCls } from "./ui/Card";
+import { EmptyState } from "./ui/EmptyState";
+import { checkboxCls, selectCls } from "./ui/field";
+import { Money, pctCls } from "./ui/Money";
+import { Notice } from "./ui/Notice";
+import { SearchInput } from "./ui/SearchInput";
+import { Segmented } from "./ui/Segmented";
+import { SkeletonRows } from "./ui/Skeleton";
 
 type Tab = "all" | "alchemy" | "cooking" | "processing" | "imperial";
 type SortKey = "profitPerHour" | "profitPerUnit" | "profitPerCraft" | "roi" | "unitCost";
 type MarketFilter = "all" | "soldout" | "instock";
 
-const TABS: { key: Tab; label: string }[] = [
-  { key: "all", label: "ทั้งหมด" },
-  { key: "alchemy", label: "แปรธาตุ" },
-  { key: "cooking", label: "ทำอาหาร" },
-  { key: "processing", label: "แปรรูป" },
-  { key: "imperial", label: "ราชวัง" },
+const TABS: { value: Tab; label: string }[] = [
+  { value: "all", label: "ทั้งหมด" },
+  { value: "alchemy", label: "แปรธาตุ" },
+  { value: "cooking", label: "ทำอาหาร" },
+  { value: "processing", label: "แปรรูป" },
+  { value: "imperial", label: "ราชวัง" },
 ];
 const SORTS: { key: SortKey; label: string }[] = [
   { key: "profitPerUnit", label: "กำไร/ชิ้น" },
@@ -245,25 +254,28 @@ export function Studio({ user }: { user: SessionUser }) {
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold">จัดอันดับกำไรสูตร แปรธาตุ / ทำอาหาร / แปรรูป</h2>
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={() => load(true)} disabled={loading} className="rounded border border-border bg-panel px-3 py-1.5 text-sm hover:bg-panel-2 disabled:opacity-50">
+          <button onClick={() => load(true)} disabled={loading} className={btn("secondary")}>
             {loading ? "กำลังโหลด…" : "รีเฟรชราคา"}
           </button>
-          <button onClick={exportCsv} disabled={busy || rows.length === 0} className="rounded border border-border bg-panel px-3 py-1.5 text-sm hover:bg-panel-2 disabled:opacity-50">
+          <button onClick={exportCsv} disabled={busy || rows.length === 0} className={btn("secondary")}>
             ส่งออก CSV
           </button>
-          <button
-            onClick={() => setShowSettings((s) => !s)}
-            className={`rounded border px-3 py-1.5 text-sm ${showSettings ? "border-accent bg-accent/10 text-accent" : "border-border bg-panel hover:bg-panel-2"}`}
-          >
+          <button onClick={() => setShowSettings((s) => !s)} aria-pressed={showSettings} className={`${btnShape()} ${toggleCls(showSettings)}`}>
             ตั้งค่า
           </button>
         </div>
       </div>
 
       {error && (
-        <div className="mb-3 rounded border border-bad/40 bg-bad/10 px-3 py-2 text-sm text-bad">โหลดราคาไม่สำเร็จ: {error} — ตัวเลขที่เห็นอาจไม่ครบ ลองกดรีเฟรชอีกครั้ง</div>
+        <Notice tone="bad" className="mb-3" action={{ label: loading ? "กำลังโหลด…" : "ลองใหม่", onClick: () => load(true), disabled: loading }}>
+          โหลดราคาไม่สำเร็จ: {error} ตัวเลขที่เห็นอาจไม่ครบ
+        </Notice>
       )}
-      {dataError && <div className="mb-3 rounded border border-bad/40 bg-bad/10 px-3 py-2 text-sm text-bad">โหลดฐานข้อมูลสูตรไม่สำเร็จ: {dataError}</div>}
+      {dataError && (
+        <Notice tone="bad" className="mb-3">
+          โหลดฐานข้อมูลสูตรไม่สำเร็จ: {dataError}
+        </Notice>
+      )}
 
       {showSettings && (
         <div className="mb-4">
@@ -272,15 +284,9 @@ export function Studio({ user }: { user: SessionUser }) {
       )}
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="flex rounded border border-border bg-panel p-0.5">
-          {TABS.map((t) => (
-            <button key={t.key} onClick={() => setTab(t.key)} className={`rounded px-3 py-1 text-sm ${tab === t.key ? "bg-accent text-black" : "text-muted hover:text-foreground"}`}>
-              {t.label}
-            </button>
-          ))}
-        </div>
+        <Segmented label="สายอาชีพ" options={TABS} value={tab} onChange={setTab} />
         {tab === "processing" && (
-          <select value={method} onChange={(e) => setMethod(e.target.value as RecipeType | "all")} className="rounded border border-border bg-panel px-2 py-1.5 text-sm">
+          <select aria-label="วิธีแปรรูป" value={method} onChange={(e) => setMethod(e.target.value as RecipeType | "all")} className={selectCls()}>
             <option value="all">วิธีแปรรูป: ทั้งหมด</option>
             {PROCESSING_TYPES.map((t) => (
               <option key={t} value={t}>
@@ -289,24 +295,15 @@ export function Studio({ user }: { user: SessionUser }) {
             ))}
           </select>
         )}
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="ค้นหาชื่อไอเท็ม…"
-          className="min-w-[200px] flex-1 rounded border border-border bg-panel px-3 py-1.5 text-sm outline-none focus:border-accent"
-        />
-        <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)} className="rounded border border-border bg-panel px-2 py-1.5 text-sm">
+        <SearchInput label="ค้นหาชื่อไอเท็ม" value={query} onChange={setQuery} placeholder="ค้นหาชื่อไอเท็ม…" className="min-w-[200px] flex-1" />
+        <select aria-label="เรียงตาม" value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)} className={selectCls()}>
           {SORTS.map((s) => (
             <option key={s.key} value={s.key}>
               เรียงตาม: {s.label}
             </option>
           ))}
         </select>
-        <select
-          value={marketFilter}
-          onChange={(e) => setMarketFilter(e.target.value as MarketFilter)}
-          className={`rounded border px-2 py-1.5 text-sm ${marketFilter === "all" ? "border-border bg-panel" : "border-accent bg-accent/10 text-accent"}`}
-        >
+        <select aria-label="สภาพตลาด" value={marketFilter} onChange={(e) => setMarketFilter(e.target.value as MarketFilter)} className={selectCls("md", marketFilter !== "all")}>
           {MARKET_FILTERS.map((f) => (
             <option key={f.key} value={f.key}>
               {f.label}
@@ -314,16 +311,16 @@ export function Studio({ user }: { user: SessionUser }) {
           ))}
         </select>
         <label className="flex items-center gap-1.5 text-sm text-muted">
-          <input type="checkbox" checked={hideIncomplete} onChange={(e) => setHideIncomplete(e.target.checked)} className="accent-accent" />
+          <input type="checkbox" checked={hideIncomplete} onChange={(e) => setHideIncomplete(e.target.checked)} className={checkboxCls} />
           ซ่อนที่ข้อมูลไม่ครบ
         </label>
         <label className="flex items-center gap-1.5 text-sm text-muted">
-          <input type="checkbox" checked={hideSoldOut} onChange={(e) => setHideSoldOut(e.target.checked)} className="accent-accent" />
+          <input type="checkbox" checked={hideSoldOut} onChange={(e) => setHideSoldOut(e.target.checked)} className={checkboxCls} />
           ซ่อนที่วัตถุดิบหมดตลาด
         </label>
       </div>
 
-      {busy && rows.length === 0 && <Loading text={!data ? "กำลังโหลดฐานสูตร…" : "กำลังโหลดราคาตลาด…"} className="mb-3" />}
+      {busy && rows.length === 0 && <SkeletonRows n={8} label={!data ? "กำลังโหลดฐานสูตร…" : "กำลังโหลดราคาตลาด…"} className="mb-3" />}
 
       {/* phones: one card per recipe */}
       <div className={`space-y-2 md:hidden ${busy && rows.length === 0 ? "hidden" : ""}`}>
@@ -345,9 +342,8 @@ export function Studio({ user }: { user: SessionUser }) {
             }}
           />
         ))}
-        {rows.length === 0 && (
-          <div className="rounded-lg border border-border bg-panel px-3 py-8 text-center text-muted">{busy ? "กำลังโหลดสูตรและราคา…" : "ไม่พบสูตรที่ตรงเงื่อนไข"}</div>
-        )}
+        {/* while loading this list is hidden and the skeleton above shows instead */}
+        {rows.length === 0 && <EmptyState title="ไม่พบสูตรที่ตรงเงื่อนไข" className={cardCls()} />}
       </div>
 
       <div className={`overflow-x-auto rounded-lg border border-border bg-panel lg:overflow-visible ${busy && rows.length === 0 ? "hidden" : "hidden md:block"}`}>
@@ -385,8 +381,8 @@ export function Studio({ user }: { user: SessionUser }) {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-3 py-8 text-center text-muted">
-                  {busy ? "กำลังโหลดสูตรและราคา…" : "ไม่พบสูตรที่ตรงเงื่อนไข"}
+                <td colSpan={8}>
+                  <EmptyState title="ไม่พบสูตรที่ตรงเงื่อนไข" />
                 </td>
               </tr>
             )}
@@ -395,7 +391,7 @@ export function Studio({ user }: { user: SessionUser }) {
       </div>
       {rows.length > limit && (
         <div className="mt-3 text-center">
-          <button onClick={showMore} className="rounded border border-border bg-panel px-4 py-1.5 text-sm hover:bg-panel-2">
+          <button onClick={showMore} className={btn("secondary")}>
             แสดงเพิ่ม ({rows.length - limit} รายการ)
           </button>
         </div>
@@ -439,7 +435,6 @@ function Row({
   onToggle: () => void;
 }) {
   const item = items[ev.productId];
-  const good = ev.profitPerUnit > 0;
   const unk = ev.flags.unknownCost;
   const alt = alts.length;
   return (
@@ -451,7 +446,7 @@ function Row({
             <ItemIcon id={ev.productId} grade={item?.grade} size={30} />
             <div className="min-w-0">
               <div className="truncate font-medium">{item?.th ?? ev.recipe.name}</div>
-              <div className="truncate text-[11px] text-muted">
+              <div className="truncate text-xs text-muted">
                 {RECIPE_TYPE_TH[ev.recipe.type]}
                 {ev.recipe.skill.sort > 0 ? ` · ${ev.recipe.skill.display}` : ""} · ผลผลิต {ev.expectedYield.toFixed(1)}/รอบ
                 {alt > 0 ? ` · มีสูตรอื่นอีก ${alt} แบบ (ดูในรายละเอียด)` : ""}
@@ -461,11 +456,16 @@ function Row({
         </td>
         <td className="num px-2 py-1.5 text-right">{unk ? <span className="text-muted">? ({silverShort(ev.unitCost)}+)</span> : silver(ev.unitCost)}</td>
         <td className="num px-2 py-1.5 text-right">{ev.sellPrice ? silver(ev.sellPrice) : "-"}</td>
-        <td className={`num px-2 py-1.5 text-right font-semibold ${unk ? "text-muted" : good ? "text-good" : "text-bad"}`}>{unk ? "?" : silver(ev.profitPerUnit)}</td>
-        <td className={`num px-2 py-1.5 text-right ${unk ? "text-muted" : good ? "text-good" : "text-bad"}`}>{unk ? "?" : pct(ev.roi)}</td>
-        <td className="num px-2 py-1.5 text-right">{unk ? <span className="text-muted">?</span> : silverShort(ev.profitPerCraft)}</td>
-        <td className={`num px-2 py-1.5 text-right font-semibold ${unk ? "text-muted" : good ? "text-good" : "text-bad"}`}>
-          {ev.saleChannel === "imperial" || unk ? <span className="text-muted">{unk ? "?" : "-"}</span> : silverShort(ev.profitPerHour)}
+        {/* desktop table: full silver in every money column */}
+        <td className="px-2 py-1.5 text-right font-semibold">
+          <Money value={ev.profitPerUnit} tone="profit" unknown={unk} />
+        </td>
+        <td className={`num px-2 py-1.5 text-right ${pctCls(ev.roi, 0, unk)}`}>{unk ? "?" : signedPct(ev.roi)}</td>
+        <td className="px-2 py-1.5 text-right">
+          <Money value={ev.profitPerCraft} tone="profit" unknown={unk} />
+        </td>
+        <td className="px-2 py-1.5 text-right font-semibold">
+          {ev.saleChannel === "imperial" && !unk ? <span className="text-muted">-</span> : <Money value={ev.profitPerHour} tone="profit" unknown={unk} />}
         </td>
         <td className="px-2 py-1.5">
           <Flags ev={ev} stock={prices[ev.productId]?.stock} />
@@ -506,7 +506,6 @@ function RecipeCard({
   onToggle: () => void;
 }) {
   const item = items[ev.productId];
-  const good = ev.profitPerUnit > 0;
   const unk = ev.flags.unknownCost;
   const alt = alts.length;
   return (
@@ -515,7 +514,7 @@ function RecipeCard({
         <ItemIcon id={ev.productId} grade={item?.grade} size={40} />
         <div className="min-w-0 flex-1">
           <div className="truncate font-medium">{item?.th ?? ev.recipe.name}</div>
-          <div className="truncate text-[11px] text-muted">
+          <div className="line-clamp-2 text-xs text-muted">
             {RECIPE_TYPE_TH[ev.recipe.type]}
             {ev.recipe.skill.sort > 0 ? ` · ${ev.recipe.skill.display}` : ""} · ต้นทุน {unk ? "?" : silverShort(ev.unitCost)} → {ev.saleChannel === "imperial" ? "ส่ง" : "ขาย"}{" "}
             {ev.sellPrice ? silverShort(ev.sellPrice) : "-"}
@@ -526,9 +525,11 @@ function RecipeCard({
           </div>
         </div>
         <div className="text-right">
-          <div className={`num text-base font-semibold ${unk ? "text-muted" : good ? "text-good" : "text-bad"}`}>{unk ? "?" : silverShort(ev.profitPerUnit)}</div>
-          <div className={`num text-[11px] ${unk ? "text-muted" : good ? "text-good" : "text-bad"}`}>{unk ? "ต้นทุนไม่ครบ" : `ROI ${pct(ev.roi)}`}</div>
-          <div className="num text-[11px] text-muted">/ชิ้น</div>
+          <div className="text-base font-semibold">
+            <Money value={ev.profitPerUnit} tone="profit" compact unknown={unk} />
+          </div>
+          <div className={`num text-xs ${pctCls(ev.roi, 0, unk)}`}>{unk ? "ต้นทุนไม่ครบ" : `ROI ${signedPct(ev.roi)}`}</div>
+          <div className="num text-xs text-muted">/ชิ้น</div>
         </div>
       </button>
       {open && (
@@ -542,24 +543,24 @@ function RecipeCard({
 
 function Flags({ ev, stock }: { ev: RecipeEvaluation; stock?: number }) {
   const f = ev.flags;
-  const chips: { text: string; cls: string }[] = [];
-  if (ev.saleChannel === "imperial") chips.push({ text: "ส่งราชวัง ไม่หักภาษี", cls: "bg-accent/15 text-accent" });
-  else if (f.productNotMarketable) chips.push({ text: "ขายตลาดไม่ได้", cls: "bg-zinc-500/20 text-zinc-300" });
-  else if (f.productNoPrice) chips.push({ text: "ไม่มีราคาขาย", cls: "bg-zinc-500/20 text-zinc-300" });
-  if (f.unknownCost) chips.push({ text: "ต้นทุนไม่ครบ", cls: "bg-rose-500/15 text-rose-300" });
-  if (f.materialSoldOut) chips.push({ text: "วัตถุดิบหมด", cls: "bg-warn/15 text-warn" });
-  if (f.aboveSkill) chips.push({ text: "เกินระดับ", cls: "bg-violet-500/15 text-violet-300" });
+  const chips: { text: string; tone: BadgeTone }[] = [];
+  if (ev.saleChannel === "imperial") chips.push({ text: "ส่งราชวัง ไม่หักภาษี", tone: "accent" });
+  else if (f.productNotMarketable) chips.push({ text: "ขายตลาดไม่ได้", tone: "neutral" });
+  else if (f.productNoPrice) chips.push({ text: "ไม่มีราคาขาย", tone: "neutral" });
+  if (f.unknownCost) chips.push({ text: "ต้นทุนไม่ครบ", tone: "bad" });
+  if (f.materialSoldOut) chips.push({ text: "วัตถุดิบหมด", tone: "warn" });
+  if (f.aboveSkill) chips.push({ text: "เกินระดับ", tone: "warn" });
   if (ev.saleChannel === "market" && !f.productNotMarketable && !f.productNoPrice && stock !== undefined) {
-    if (stock > 0) chips.push({ text: `ค้างขาย ${silverShort(stock)}`, cls: "bg-sky-500/10 text-sky-300" });
-    else chips.push({ text: "ขาดตลาด", cls: "bg-good/15 text-good" });
+    if (stock > 0) chips.push({ text: `ค้างขาย ${silverShort(stock)}`, tone: "neutral" });
+    else chips.push({ text: "ขาดตลาด", tone: "good" });
   }
-  if (chips.length === 0) chips.push({ text: "พร้อม", cls: "bg-good/15 text-good" });
+  if (chips.length === 0) chips.push({ text: "พร้อม", tone: "good" });
   return (
     <div className="flex flex-wrap gap-1">
       {chips.map((c) => (
-        <span key={c.text} className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] ${c.cls}`}>
+        <Badge key={c.text} tone={c.tone}>
           {c.text}
-        </span>
+        </Badge>
       ))}
     </div>
   );

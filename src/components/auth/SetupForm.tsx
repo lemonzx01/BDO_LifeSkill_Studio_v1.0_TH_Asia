@@ -2,7 +2,8 @@
 
 import { useActionState } from "react";
 import { setupAdminAction, type ActionState } from "@/lib/auth/actions";
-import { errorCls, inputCls, labelCls, primaryBtn } from "./ui";
+import { Notice } from "../ui/Notice";
+import { inputCls, labelCls, primaryBtn } from "./ui";
 
 export function SetupForm() {
   const [state, formAction, pending] = useActionState<ActionState, FormData>(setupAdminAction, {});
@@ -24,7 +25,7 @@ export function SetupForm() {
         ยืนยันรหัสผ่าน
         <input name="confirm" type="password" autoComplete="new-password" required minLength={8} className={inputCls} />
       </label>
-      {state.error && <div className={errorCls}>{state.error}</div>}
+      {state.error && <Notice tone="bad">{state.error}</Notice>}
       <button type="submit" disabled={pending} className={`${primaryBtn} w-full`}>
         {pending ? "กำลังสร้าง…" : "สร้างบัญชีแอดมิน"}
       </button>

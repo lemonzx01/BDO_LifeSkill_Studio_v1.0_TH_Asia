@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { TopNav } from "@/components/TopNav";
+import { btn } from "@/components/ui/button";
+import { Card, CardHeader } from "@/components/ui/Card";
 import { requireUser } from "@/lib/auth/session";
 import { APP_NAME } from "@/lib/brand";
 
@@ -69,28 +71,30 @@ export default async function HelpPage() {
       <TopNav user={user} subtitle={`วิธีใช้ ${APP_NAME} แบบสั้น ๆ หน้าละไม่กี่บรรทัด`} />
       <div className="space-y-3">
         {SECTIONS.map((s) => (
-          <section key={s.href} className="rounded-lg border border-border bg-panel p-4">
-            <h2 className="mb-2 flex items-center justify-between text-sm font-semibold text-accent">
-              {s.title}
-              <Link href={s.href} className="rounded border border-border bg-panel-2 px-2 py-0.5 text-xs font-normal text-muted hover:text-foreground">
-                เปิดหน้า
-              </Link>
-            </h2>
-            <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
+          <Card key={s.href}>
+            <CardHeader
+              title={s.title}
+              action={
+                <Link href={s.href} className={btn("ghost", "sm")}>
+                  เปิดหน้า →
+                </Link>
+              }
+            />
+            <ul className="list-disc space-y-1 py-3 pl-9 pr-4 text-sm text-muted">
               {s.lines.map((l) => (
                 <li key={l}>{l}</li>
               ))}
             </ul>
-          </section>
+          </Card>
         ))}
-        <section className="rounded-lg border border-border bg-panel p-4 text-sm text-muted">
-          <h2 className="mb-2 text-sm font-semibold text-accent">สูตรที่ใช้คิด</h2>
-          <ul className="list-disc space-y-1 pl-5">
+        <Card>
+          <CardHeader title="สูตรที่ใช้คิด" />
+          <ul className="list-disc space-y-1 py-3 pl-9 pr-4 text-sm text-muted">
             <li>เงินที่ได้รับจริง = ราคาขาย × 0.65 × (1 + Value Pack 0.30 + Family Fame + แหวนพ่อค้า 0.05)</li>
             <li>ต้นทุนของแต่ละอย่าง = ถูกสุดระหว่าง ซื้อตลาด / ซื้อ NPC / ทำเองจากวัตถุดิบ (เลือกวัตถุดิบทดแทนที่ถูกสุดให้)</li>
             <li>ผลผลิตต่อรอบ = ค่าเฉลี่ยของสูตร ปรับด้วยโอกาสได้ผลผลิตเต็มจาก Mastery ของคุณ</li>
           </ul>
-        </section>
+        </Card>
       </div>
     </main>
   );

@@ -23,7 +23,7 @@ type Props = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | 
  * controlled <input value={n}> snaps back to "0" the moment the field is
  * emptied, which makes it impossible to type a new number naturally.
  */
-export function NumberInput({ value, onChange, min, max, blankZero = false, commitOnBlur = false, onFocus, onBlur, onKeyDown, ...rest }: Props) {
+export function NumberInput({ value, onChange, min, max, blankZero = false, commitOnBlur = false, inputMode = "numeric", onFocus, onBlur, onKeyDown, ...rest }: Props) {
   const [draft, setDraft] = useState<string | null>(null); // null = not editing, show the prop
   const shown = draft !== null ? draft : blankZero && value === 0 ? "" : String(value);
   const clamp = (n: number) => Math.min(max ?? Number.POSITIVE_INFINITY, Math.max(min ?? Number.NEGATIVE_INFINITY, n));
@@ -40,6 +40,8 @@ export function NumberInput({ value, onChange, min, max, blankZero = false, comm
     <input
       {...rest}
       type="number"
+      // phones show the digit pad; pass inputMode="decimal" for a field that takes fractions
+      inputMode={inputMode}
       min={min}
       max={max}
       value={shown}

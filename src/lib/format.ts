@@ -4,7 +4,8 @@ const nf1 = new Intl.NumberFormat("th-TH", { maximumFractionDigits: 1 });
 /** 1234567 -> "1,234,567" */
 export function silver(n: number): string {
   if (!Number.isFinite(n)) return "-";
-  return nf0.format(Math.round(n));
+  // `|| 0` turns -0 (Math.round(-0.3)) into 0, which Intl would print as "-0"
+  return nf0.format(Math.round(n) || 0);
 }
 
 /** Compact silver: 1234567 -> "1.23M", 12345 -> "12.3K" */
@@ -21,6 +22,27 @@ export function silverShort(n: number): string {
 export function pct(n: number, digits = 0): string {
   if (!Number.isFinite(n)) return "-";
   return `${(n * 100).toFixed(digits)}%`;
+}
+
+/** True when a formatted number reads as zero ("0", "-0", "0.0%"): it gets no sign and no colour. */
+export function readsAsZero(s: string): boolean {
+  return !/[1-9]/.test(s);
+}
+
+/**
+ * A change or a profit: "+" in front when above zero (a negative already has "-"). 1234 -> "+1,234".
+ * Decided on the text as shown, so 0.3 and -0.3 both read "0", never "+0" or "-0".
+ */
+export function signed(n: number, fmt: (n: number) => string = silver): string {
+  const s = fmt(n);
+  if (!Number.isFinite(n)) return s;
+  if (readsAsZero(s)) return s.replace(/^-/, "");
+  return n > 0 ? `+${s}` : s;
+}
+
+/** 0.125 -> "+13%", -0.05 -> "-5%" */
+export function signedPct(n: number, digits = 0): string {
+  return signed(n, (v) => pct(v, digits));
 }
 
 export function num(n: number): string {

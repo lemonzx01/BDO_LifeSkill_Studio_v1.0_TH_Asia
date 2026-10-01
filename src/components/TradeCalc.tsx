@@ -1,14 +1,17 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { tradeMath } from "@/lib/engine/trade";
-import { pct, silver } from "@/lib/format";
+import { pct, signedPct, silver } from "@/lib/format";
 import type { SessionUser } from "./auth/UserMenu";
 import { ItemIcon } from "./ItemIcon";
 import { NumberInput } from "./NumberInput";
 import { TopNav } from "./TopNav";
 import { useSettings } from "./UserDataProvider";
+import { btn } from "./ui/button";
+import { fieldCls, selectCls } from "./ui/field";
+import { Money, pctCls } from "./ui/Money";
 
 interface MarketHit {
   id: number;
@@ -31,7 +34,7 @@ const FAME_OPTIONS = [
   { v: 0.015, label: "+1.5% (7,000+)" },
 ];
 
-const inputCls = "num w-full rounded border border-border bg-panel-2 px-3 py-2 text-base outline-none focus:border-accent";
+const inputCls = `${fieldCls()} num`;
 const labelCls = "flex flex-col gap-1 text-sm";
 
 export function TradeCalc({ user }: { user: SessionUser }) {
@@ -126,7 +129,7 @@ export function TradeCalc({ user }: { user: SessionUser }) {
           <div className="relative">
             <label className={labelCls}>
               <span className="font-medium">ไอเท็ม (ไม่บังคับ — เลือกแล้วจะเห็นช่องราคาจริงในตลาด)</span>
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="พิมพ์ชื่อไอเท็ม…" className="w-full rounded border border-border bg-panel-2 px-3 py-2 text-base outline-none focus:border-accent" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="พิมพ์ชื่อไอเท็ม…" className={fieldCls()} />
             </label>
             {hits.length > 0 && (
               <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded border border-border bg-panel shadow-lg">
@@ -153,7 +156,7 @@ export function TradeCalc({ user }: { user: SessionUser }) {
                     setItem(null);
                     setOrders(null);
                   }}
-                  className="text-xs text-muted hover:text-foreground"
+                  className={btn("ghost", "sm")}
                 >
                   เอาออก
                 </button>
@@ -173,21 +176,21 @@ export function TradeCalc({ user }: { user: SessionUser }) {
           <div className="grid gap-3 sm:grid-cols-3">
             <label className={labelCls}>
               <span className="font-medium">Value Pack</span>
-              <select value={valuePack ? "1" : "0"} onChange={(e) => setValuePack(e.target.value === "1")} className="rounded border border-border bg-panel-2 px-3 py-2 text-base">
+              <select value={valuePack ? "1" : "0"} onChange={(e) => setValuePack(e.target.value === "1")} className={`${selectCls()} w-full`}>
                 <option value="1">มี (+30%)</option>
                 <option value="0">ไม่มี</option>
               </select>
             </label>
             <label className={labelCls}>
               <span className="font-medium">แหวนพ่อค้าผู้มั่งคั่ง</span>
-              <select value={merchantRing ? "1" : "0"} onChange={(e) => setMerchantRing(e.target.value === "1")} className="rounded border border-border bg-panel-2 px-3 py-2 text-base">
+              <select value={merchantRing ? "1" : "0"} onChange={(e) => setMerchantRing(e.target.value === "1")} className={`${selectCls()} w-full`}>
                 <option value="0">ไม่มี</option>
                 <option value="1">มี (+5%)</option>
               </select>
             </label>
             <label className={labelCls}>
               <span className="font-medium">Family Fame</span>
-              <select value={familyFame} onChange={(e) => setFamilyFame(Number(e.target.value))} className="rounded border border-border bg-panel-2 px-3 py-2 text-base">
+              <select value={familyFame} onChange={(e) => setFamilyFame(Number(e.target.value))} className={`${selectCls()} w-full`}>
                 {FAME_OPTIONS.map((o) => (
                   <option key={o.v} value={o.v}>
                     {o.label}
@@ -205,13 +208,13 @@ export function TradeCalc({ user }: { user: SessionUser }) {
           {buy > 0 && (
             <>
               <Line label="ต้นทุนซื้อ" value={`-${silver(result.cost)}`} muted />
-              <Line label={good ? "กำไร" : "ขาดทุน"} value={silver(result.profit)} cls={good ? "text-good" : "text-bad"} big />
-              <Line label="กำไร/ชิ้น" value={silver(result.profitPerUnit)} cls={good ? "text-good" : "text-bad"} />
-              {result.roi !== null && <Line label="ROI" value={pct(result.roi, 1)} cls={good ? "text-good" : "text-bad"} />}
+              <Line label={good ? "กำไร" : "ขาดทุน"} value={<Money value={result.profit} tone="profit" />} big />
+              <Line label="กำไร/ชิ้น" value={<Money value={result.profitPerUnit} tone="profit" />} />
+              {result.roi !== null && <Line label="ROI" value={signedPct(result.roi, 1)} cls={pctCls(result.roi, 1)} />}
               <Line label="ขายอย่างน้อยเท่านี้ถึงเท่าทุน" value={silver(Math.ceil(result.breakEvenSell))} muted />
             </>
           )}
-          <p className="pt-2 text-[11px] text-muted">
+          <p className="pt-2 text-xs text-muted">
             ได้รับจริง = ราคาขาย × 0.65 × (1 + Value Pack 0.30 + แหวน 0.05 + Family Fame) · ตัวเลขในเกมอาจต่างกันไม่กี่ซิลเวอร์จากการปัดเศษ
           </p>
         </section>
@@ -248,14 +251,14 @@ function PriceField({
           <button
             type="button"
             onClick={() => setOpen((o) => !o)}
-            className="flex items-center justify-between rounded border border-border bg-panel-2 px-2 py-1.5 text-sm text-muted hover:text-foreground"
+            className="flex min-h-10 w-full items-center justify-between rounded border border-border bg-panel-2 px-3 text-sm text-muted hover:text-foreground md:min-h-9"
           >
             <span>เลือกจากช่องราคาในตลาด ({rungs.length} ช่อง)</span>
             <span className="text-xs">{open ? "▴" : "▾"}</span>
           </button>
           {open && (
             <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-72 overflow-y-auto rounded border border-border bg-panel shadow-lg">
-              <div className="sticky top-0 grid grid-cols-[1fr_auto_auto] gap-x-3 border-b border-border bg-panel-2 px-2 py-1 text-[11px] text-muted">
+              <div className="sticky top-0 grid grid-cols-[1fr_auto_auto] gap-x-3 border-b border-border bg-panel-2 px-2 py-1 text-xs text-muted">
                 <span>ราคา</span>
                 <span className="w-16 text-right">มีขาย</span>
                 <span className="w-16 text-right">รอซื้อ</span>
@@ -283,13 +286,13 @@ function PriceField({
           )}
         </>
       ) : (
-        <span className="text-[11px] text-muted">{loading ? "กำลังโหลดช่องราคา…" : (hint ?? "เลือกไอเท็มด้านบนเพื่อดึงช่องราคาจากตลาด")}</span>
+        <span className="text-xs text-muted">{loading ? "กำลังโหลดช่องราคา…" : (hint ?? "เลือกไอเท็มด้านบนเพื่อดึงช่องราคาจากตลาด")}</span>
       )}
     </div>
   );
 }
 
-function Line({ label, value, cls = "", muted = false, big = false }: { label: string; value: string; cls?: string; muted?: boolean; big?: boolean }) {
+function Line({ label, value, cls = "", muted = false, big = false }: { label: string; value: ReactNode; cls?: string; muted?: boolean; big?: boolean }) {
   return (
     <div className={`flex items-center justify-between gap-3 rounded border border-border px-3 ${big ? "bg-panel-2/60 py-2.5" : "py-1.5"}`}>
       <span className={`${muted ? "text-muted" : ""} ${big ? "text-base" : "text-sm"}`}>{label}</span>

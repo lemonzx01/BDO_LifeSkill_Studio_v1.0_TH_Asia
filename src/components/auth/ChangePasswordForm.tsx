@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useActionState } from "react";
 import { changePasswordAction, type ActionState } from "@/lib/auth/actions";
-import { errorCls, inputCls, labelCls, okCls, primaryBtn } from "./ui";
+import { Notice } from "../ui/Notice";
+import { inputCls, labelCls, primaryBtn } from "./ui";
 
 export function ChangePasswordForm() {
   const [state, formAction, pending] = useActionState<ActionState, FormData>(changePasswordAction, {});
@@ -21,14 +22,14 @@ export function ChangePasswordForm() {
         ยืนยันรหัสผ่านใหม่
         <input name="confirm" type="password" autoComplete="new-password" required minLength={8} className={inputCls} />
       </label>
-      {state.error && <div className={errorCls}>{state.error}</div>}
+      {state.error && <Notice tone="bad">{state.error}</Notice>}
       {state.ok && (
-        <div className={okCls}>
+        <Notice tone="good">
           {state.message} ·{" "}
           <Link href="/" className="underline">
             ไปหน้าแรก
           </Link>
-        </div>
+        </Notice>
       )}
       <button type="submit" disabled={pending} className={primaryBtn}>
         {pending ? "กำลังบันทึก…" : "เปลี่ยนรหัสผ่าน"}

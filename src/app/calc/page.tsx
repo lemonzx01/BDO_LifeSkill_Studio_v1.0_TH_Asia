@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { TradeCalc } from "@/components/TradeCalc";
 import { UserDataProvider } from "@/components/UserDataProvider";
+import { PageSkeleton } from "@/components/ui/Skeleton";
 import { requireUser } from "@/lib/auth/session";
 import { getUserSettings } from "@/lib/user-data";
 
@@ -12,7 +13,7 @@ export default async function CalcPage() {
   const settings = await getUserSettings(user.id);
   return (
     <UserDataProvider initialSettings={settings} initialInventory={{}}>
-      <Suspense fallback={null}>
+      <Suspense fallback={<PageSkeleton width="5xl" rows={4} />}>
         <TradeCalc user={{ username: user.username, displayName: user.displayName, role: user.role }} />
       </Suspense>
     </UserDataProvider>

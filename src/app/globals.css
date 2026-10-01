@@ -9,9 +9,12 @@
   --foreground: #e8eaf0;
   --muted: #9aa3b2;
   --accent: #e9bd23;
+  --accent-hover: #f3cd48;
   --good: #4ade80;
   --bad: #f87171;
   --warn: #fbbf24;
+  --info: #7dd3fc;
+  --special: #c4b5fd;
 }
 
 @theme inline {
@@ -22,10 +25,42 @@
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
   --color-good: var(--good);
   --color-bad: var(--bad);
   --color-warn: var(--warn);
+  --color-info: var(--info);
+  --color-special: var(--special);
   --font-sans: var(--font-thai), system-ui, sans-serif;
+}
+
+/* taller lines for the small sizes, so stacked Thai vowels and tone marks are not clipped */
+@theme {
+  --text-xs--line-height: 1.125rem;
+  --text-sm--line-height: 1.375rem;
+}
+
+@layer base {
+  /* one visible keyboard focus ring everywhere; fields swap it for their own ring */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+/* native <select> arrows differ per browser: draw one chevron, used by selectCls() */
+@utility select-chevron {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%239aa3b2' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  background-position: right 0.5rem center;
+  background-repeat: no-repeat;
+  background-size: 1rem 1rem;
+}
+
+/* a smaller chevron closer to the edge, for a select in a narrow cell (selectTightCls()) */
+@utility select-chevron-tight {
+  background-position: right 0.25rem center;
+  background-size: 0.875rem 0.875rem;
 }
 
 body {
@@ -41,4 +76,23 @@ body {
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
   opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* outside any layer on purpose, so it beats the text-* utilities: iOS zooms into fields under 16px */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
 }

@@ -2,7 +2,8 @@
 
 import { useActionState } from "react";
 import { loginAction, type ActionState } from "@/lib/auth/actions";
-import { errorCls, inputCls, labelCls, primaryBtn } from "./ui";
+import { Notice } from "../ui/Notice";
+import { inputCls, labelCls, primaryBtn } from "./ui";
 
 export function LoginForm() {
   const [state, formAction, pending] = useActionState<ActionState, FormData>(loginAction, {});
@@ -20,7 +21,7 @@ export function LoginForm() {
         <input type="checkbox" name="remember" value="1" className="h-4 w-4 accent-accent" />
         จดจำฉันไว้ในเครื่องนี้ (30 วัน)
       </label>
-      {state.error && <div className={errorCls}>{state.error}</div>}
+      {state.error && <Notice tone="bad">{state.error}</Notice>}
       <button type="submit" disabled={pending} className={`${primaryBtn} w-full`}>
         {pending ? "กำลังเข้าสู่ระบบ…" : "เข้าสู่ระบบ"}
       </button>

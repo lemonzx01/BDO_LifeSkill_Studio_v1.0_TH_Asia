@@ -5,6 +5,8 @@ import { imperialBonus, massProcessCount, MASTERY_MAX, maxQuantityChance } from 
 import type { Settings, SkillGroup } from "@/lib/engine/types";
 import { pct } from "@/lib/format";
 import { NumberInput } from "./NumberInput";
+import { btn } from "./ui/button";
+import { checkboxCls, fieldCls } from "./ui/field";
 
 const SKILLS: { key: SkillGroup; label: string }[] = [
   { key: "alchemy", label: "แปรธาตุ" },
@@ -37,26 +39,26 @@ export function OnboardingCard({ settings, onSave, onSkip }: { settings: Setting
                 step={50}
                 value={m}
                 onChange={(v) => setMastery(key, v)}
-                className="num rounded border border-border bg-panel-2 px-3 py-2 text-base outline-none focus:border-accent"
+                className={`${fieldCls()} num`}
               />
-              <span className="text-[11px] text-muted">{hint}</span>
+              <span className="text-xs text-muted">{hint}</span>
             </label>
           );
         })}
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium">Value Pack</span>
-          <span className="flex items-center gap-2 rounded border border-border bg-panel-2 px-3 py-2">
-            <input type="checkbox" checked={draft.valuePack} onChange={(e) => setDraft({ ...draft, valuePack: e.target.checked })} className="h-5 w-5 accent-accent" />
+          <span className="flex min-h-10 items-center gap-2 rounded border border-border bg-panel-2 px-3 md:min-h-9">
+            <input type="checkbox" checked={draft.valuePack} onChange={(e) => setDraft({ ...draft, valuePack: e.target.checked })} className={checkboxCls} />
             <span>{draft.valuePack ? "มี (ได้รับ 84.5%)" : "ไม่มี (ได้รับ 65%)"}</span>
           </span>
-          <span className="text-[11px] text-muted">ภาษีตลาดกลางหลังหัก</span>
+          <span className="text-xs text-muted">ภาษีตลาดกลางหลังหัก</span>
         </label>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
-        <button onClick={() => onSave(draft)} className="rounded bg-accent px-4 py-2 text-sm font-semibold text-black hover:bg-amber-300">
+        <button onClick={() => onSave(draft)} className={btn("primary")}>
           บันทึกและเริ่มใช้งาน
         </button>
-        <button onClick={onSkip} className="rounded border border-border bg-panel px-4 py-2 text-sm hover:bg-panel-2">
+        <button onClick={onSkip} className={btn("secondary")}>
           ข้ามไปก่อน
         </button>
       </div>

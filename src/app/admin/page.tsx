@@ -1,5 +1,6 @@
 import { AuthCard } from "@/components/auth/AuthCard";
 import { AdminUsers } from "@/components/auth/AdminUsers";
+import { btn } from "@/components/ui/button";
 import { listUsers } from "@/lib/auth/service";
 import { requireAdmin } from "@/lib/auth/session";
 import { meta } from "@/lib/data";
@@ -29,7 +30,7 @@ export default async function AdminPage() {
           {dataAgeDays > 60 ? " · เกมอาจมีแพตช์ใหม่ ควรรัน npm run import:data" : ""})
         </span>
         {me.role === "owner" && (
-          <a href="/api/admin/backup" className="ml-auto rounded border border-border bg-panel px-2.5 py-1 text-xs text-foreground hover:bg-panel-2" title="ดาวน์โหลดบัญชี ตั้งค่า และคลังของทุกคนเป็นไฟล์เดียว (Supabase ฟรีไม่มี backup อัตโนมัติ)">
+          <a href="/api/admin/backup" className={`ml-auto ${btn("secondary", "sm")}`} title="ดาวน์โหลดบัญชี ตั้งค่า และคลังของทุกคนเป็นไฟล์เดียว (Supabase ฟรีไม่มี backup อัตโนมัติ)">
             สำรองข้อมูลทั้งหมด
           </a>
         )}

@@ -13,6 +13,20 @@ import { ItemIcon } from "./ItemIcon";
 import { NumberInput } from "./NumberInput";
 import { TopNav } from "./TopNav";
 import { useUserData } from "./UserDataProvider";
+import { Badge } from "./ui/Badge";
+import { btn } from "./ui/button";
+import { EmptyState } from "./ui/EmptyState";
+import { fieldCls, selectCls } from "./ui/field";
+import { Notice, type NoticeTone } from "./ui/Notice";
+import { SearchInput } from "./ui/SearchInput";
+import { Segmented } from "./ui/Segmented";
+
+type InventorySort = "name" | "recent" | "value";
+const SORTS: { value: InventorySort; label: string }[] = [
+  { value: "name", label: "ชื่อ" },
+  { value: "recent", label: "เพิ่ม/แก้ล่าสุด" },
+  { value: "value", label: "มูลค่า" },
+];
 
 export interface ItemLite {
   id: ItemId;
@@ -27,7 +41,7 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
   const { inventory, setOwned, clearInventory } = useUserData();
   const [query, setQuery] = useState("");
   const [prices, setPrices] = useState<Record<ItemId, MarketPrice>>({});
-  const [sort, setSort] = usePersistentState<"name" | "recent" | "value">("inventory.sort", "name", oneOf(["name", "recent", "value"] as const));
+  const [sort, setSort] = usePersistentState<InventorySort>("inventory.sort", "name", oneOf(["name", "recent", "value"] as const));
   const [listFilter, setListFilter] = useState("");
   // the row just added from the search box: scrolled into view and tinted for a moment
   const [highlightId, setHighlightId] = useState<ItemId | null>(null);
@@ -76,7 +90,8 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
   const totalValue = owned.reduce((a, o) => a + o.qty * (prices[o.id]?.price ?? 0), 0);
   const totalCost = owned.reduce((a, o) => a + o.qty * (o.avgCost ?? prices[o.id]?.price ?? 0), 0);
   const customCount = owned.filter((o) => o.avgCost !== undefined).length;
-  const [importMsg, setImportMsg] = useState<string | null>(null);
+  // bad = the file could not be read, warn = some names were not found, good = everything imported
+  const [importMsg, setImportMsg] = useState<{ tone: NoticeTone; text: string } | null>(null);
   // "add" lets one CSV per in-game storage be imported one after another and summed up
   const [importMode, setImportMode] = usePersistentState<ImportMode>("inventory.importMode", "replace", oneOf(["replace", "add"] as const));
 
@@ -112,7 +127,7 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
   const importCsv = async (file: File) => {
     const rows = parseCsv(await file.text());
     if (rows.length < 2) {
-      setImportMsg("ไฟล์ว่างหรืออ่านไม่ได้");
+      setImportMsg({ tone: "bad", text: "ไฟล์ว่างหรืออ่านไม่ได้" });
       return;
     }
     const header = rows[0].map((h) => h.trim().toLowerCase());
@@ -123,7 +138,7 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
     const qtyCol = col("จำนวน", "qty", "quantity");
     const costCol = col("ต้นทุน", "cost", "avg");
     if (qtyCol < 0 || (idCol < 0 && nameCol < 0)) {
-      setImportMsg("ต้องมีคอลัมน์ จำนวน และ id หรือ ชื่อไอเท็ม");
+      setImportMsg({ tone: "bad", text: "ต้องมีคอลัมน์ จำนวน และ id หรือ ชื่อไอเท็ม" });
       return;
     }
     const byTh = new Map(items.map((i) => [i.th.trim().toLowerCase(), i.id]));
@@ -149,9 +164,10 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
       ok += 1;
     }
     for (const [id, t] of mergeImportRows(parsed, importMode, inventory)) setOwned(id, t.qty, t.cost);
-    setImportMsg(
-      `นำเข้า ${ok} รายการ (${importMode === "add" ? "บวกเพิ่มจากที่มี" : "ทับจำนวนเดิม"})${missing.length ? ` · ไม่พบชื่อ ${missing.length} รายการ: ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? "…" : ""}` : ""}`,
-    );
+    setImportMsg({
+      tone: missing.length ? "warn" : "good",
+      text: `นำเข้า ${ok} รายการ (${importMode === "add" ? "บวกเพิ่มจากที่มี" : "ทับจำนวนเดิม"})${missing.length ? ` · ไม่พบชื่อ ${missing.length} รายการ: ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? "…" : ""}` : ""}`,
+    });
   };
 
   return (
@@ -163,13 +179,14 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
           <select
             value={importMode}
             onChange={(e) => setImportMode(e.target.value as ImportMode)}
-            className="rounded border border-border bg-panel px-2 py-1.5 text-sm"
+            className={selectCls()}
+            aria-label="วิธีนำเข้า"
             title="ของที่ซ้ำกับในคลัง: ทับด้วยตัวเลขในไฟล์ หรือบวกเพิ่มจากที่มี (ใช้เมื่อนำเข้าทีละคลังในเกม)"
           >
             <option value="replace">ไฟล์ทับจำนวนเดิม</option>
             <option value="add">ไฟล์บวกเพิ่มจากที่มี</option>
           </select>
-          <label className="cursor-pointer rounded border border-border bg-panel px-3 py-1.5 text-sm hover:bg-panel-2">
+          <label className={`${btn("secondary")} cursor-pointer`}>
             นำเข้า CSV
             <input
               type="file"
@@ -182,10 +199,10 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
               }}
             />
           </label>
-          <button onClick={exportCsv} disabled={owned.length === 0} className="rounded border border-border bg-panel px-3 py-1.5 text-sm hover:bg-panel-2 disabled:opacity-50">
+          <button onClick={exportCsv} disabled={owned.length === 0} className={btn("secondary")}>
             ส่งออก CSV
           </button>
-          <button onClick={downloadTemplate} className="rounded border border-border bg-panel px-3 py-1.5 text-sm hover:bg-panel-2" title="ไฟล์ตัวอย่างสำหรับกรอกแล้วนำเข้า">
+          <button onClick={downloadTemplate} className={btn("secondary")} title="ไฟล์ตัวอย่างสำหรับกรอกแล้วนำเข้า">
             ไฟล์ตัวอย่าง CSV
           </button>
           {customCount > 0 && (
@@ -193,7 +210,7 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
               onClick={() => {
                 for (const o of owned) if (o.avgCost !== undefined) setOwned(o.id, o.qty, null);
               }}
-              className="rounded border border-border bg-panel px-3 py-1.5 text-sm hover:bg-panel-2"
+              className={btn("secondary")}
               title="เปลี่ยนต้นทุนทุกรายการให้ใช้ราคาตลาดปัจจุบันเสมอ"
             >
               ต้นทุนทั้งหมดตามตลาด
@@ -204,22 +221,21 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
               onClick={() => {
                 if (confirm("ล้างคลังทั้งหมด?")) clearInventory();
               }}
-              className="rounded border border-bad/40 bg-bad/10 px-3 py-1.5 text-sm text-bad hover:bg-bad/20"
+              className={btn("danger")}
             >
               ล้างทั้งหมด
             </button>
           )}
         </div>
       </div>
-      {importMsg && <div className="mb-3 rounded border border-border bg-panel px-3 py-2 text-sm text-muted">{importMsg}</div>}
+      {importMsg && (
+        <Notice tone={importMsg.tone} className="mb-3" onClose={() => setImportMsg(null)}>
+          {importMsg.text}
+        </Notice>
+      )}
 
       <div className="relative mb-4">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="พิมพ์ชื่อไอเท็มเพื่อเพิ่มเข้าคลัง…"
-          className="w-full rounded border border-border bg-panel px-3 py-2 text-sm outline-none focus:border-accent"
-        />
+        <SearchInput label="เพิ่มไอเท็มเข้าคลัง" value={query} onChange={setQuery} placeholder="พิมพ์ชื่อไอเท็มเพื่อเพิ่มเข้าคลัง…" className="w-full" />
         {matches.length > 0 && (
           <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded border border-border bg-panel shadow-lg">
             {matches.map((m) => (
@@ -245,28 +261,9 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
 
       {owned.length > 0 && (
         <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
-          <input
-            value={listFilter}
-            onChange={(e) => setListFilter(e.target.value)}
-            placeholder="ค้นหาในคลัง…"
-            className="w-52 rounded border border-border bg-panel px-2 py-1 text-sm outline-none focus:border-accent"
-          />
+          <SearchInput label="ค้นหาในคลัง" value={listFilter} onChange={setListFilter} placeholder="ค้นหาในคลัง…" className="w-52" />
           <span className="text-xs text-muted">เรียงตาม</span>
-          {(
-            [
-              ["name", "ชื่อ"],
-              ["recent", "เพิ่ม/แก้ล่าสุด"],
-              ["value", "มูลค่า"],
-            ] as const
-          ).map(([k, label]) => (
-            <button
-              key={k}
-              onClick={() => setSort(k)}
-              className={`rounded border px-2 py-0.5 text-xs ${sort === k ? "border-accent bg-accent/15 text-foreground" : "border-border bg-panel text-muted hover:bg-panel-2"}`}
-            >
-              {label}
-            </button>
-          ))}
+          <Segmented label="เรียงตาม" options={SORTS} value={sort} onChange={setSort} />
           {listFilter && (
             <span className="text-xs text-muted">
               แสดง {visible.length} จาก {owned.length}
@@ -298,7 +295,7 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
                       <ItemIcon id={o.id} grade={it?.grade} size={26} />
                       <div className="min-w-0">
                         <div className="truncate">{it?.th ?? `#${o.id}`}</div>
-                        <div className="truncate text-[11px] text-muted">{it?.en}</div>
+                        <div className="truncate text-xs text-muted">{it?.en}</div>
                       </div>
                     </div>
                   </td>
@@ -309,17 +306,18 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
                       commitOnBlur
                       title="พิมพ์จำนวนแล้วกด Enter หรือคลิกออกจากช่อง · ใส่ 0 = เอาออกจากคลัง"
                       onChange={(v) => setOwned(o.id, Math.floor(v), o.avgCost)}
-                      className="num w-24 rounded border border-border bg-panel-2 px-2 py-0.5 text-right"
+                      aria-label={`จำนวน ${it?.th ?? `#${o.id}`}`}
+                      className={`${fieldCls("sm")} w-24`}
                     />
                   </td>
                   <td className="px-2 py-1.5 text-right">
                     {o.avgCost === undefined ? (
                       <div className="flex items-center justify-end gap-1.5">
                         <span className="num text-muted">{price ? silver(price) : "-"}</span>
-                        <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-300" title="ใช้ราคาตลาดปัจจุบันเสมอ">
+                        <Badge tone="info" title="ใช้ราคาตลาดปัจจุบันเสมอ">
                           ตามตลาด
-                        </span>
-                        <button onClick={() => setOwned(o.id, o.qty, price || 0)} className="text-[11px] text-muted hover:text-foreground" title="กำหนดต้นทุนที่จ่ายจริงเอง">
+                        </Badge>
+                        <button onClick={() => setOwned(o.id, o.qty, price || 0)} className="text-xs text-muted hover:text-foreground" title="กำหนดต้นทุนที่จ่ายจริงเอง">
                           กำหนดเอง
                         </button>
                       </div>
@@ -330,9 +328,10 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
                           value={o.avgCost}
                           commitOnBlur
                           onChange={(v) => setOwned(o.id, o.qty, v)}
-                          className="num w-28 rounded border border-border bg-panel-2 px-2 py-0.5 text-right"
+                          aria-label={`ต้นทุนต่อชิ้น ${it?.th ?? `#${o.id}`}`}
+                          className={`${fieldCls("sm")} w-28`}
                         />
-                        <button onClick={() => setOwned(o.id, o.qty, null)} className="text-[11px] text-muted hover:text-foreground" title="กลับไปใช้ราคาตลาดเสมอ">
+                        <button onClick={() => setOwned(o.id, o.qty, null)} className="text-xs text-muted hover:text-foreground" title="กลับไปใช้ราคาตลาดเสมอ">
                           ตามตลาด
                         </button>
                       </div>
@@ -341,7 +340,7 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
                   <td className="num px-2 py-1.5 text-right text-muted">{price ? silver(price) : it?.market ? "…" : "ไม่มีในตลาด"}</td>
                   <td className="num px-2 py-1.5 text-right font-medium">{silver(o.qty * price)}</td>
                   <td className="px-2 py-1.5 text-right">
-                    <button onClick={() => setOwned(o.id, 0)} className="text-xs text-muted hover:text-bad">
+                    <button onClick={() => setOwned(o.id, 0)} className={btn("dangerGhost", "sm")}>
                       ลบ
                     </button>
                   </td>
@@ -350,15 +349,15 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
             })}
             {owned.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-muted">
-                  ยังไม่มีของในคลัง พิมพ์ชื่อไอเท็มด้านบนเพื่อเพิ่ม หรือกรอกช่อง &ldquo;มีอยู่แล้ว&rdquo; ในแผนผลิต
+                <td colSpan={6}>
+                  <EmptyState title="ยังไม่มีของในคลัง" hint={<>พิมพ์ชื่อไอเท็มด้านบนเพื่อเพิ่ม หรือกรอกช่อง &ldquo;มีอยู่แล้ว&rdquo; ในแผนผลิต</>} />
                 </td>
               </tr>
             )}
             {owned.length > 0 && visible.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-muted">
-                  ไม่มีรายการในคลังที่ตรงกับ &ldquo;{listFilter}&rdquo;
+                <td colSpan={6}>
+                  <EmptyState title={<>ไม่มีรายการในคลังที่ตรงกับ &ldquo;{listFilter}&rdquo;</>} />
                 </td>
               </tr>
             )}

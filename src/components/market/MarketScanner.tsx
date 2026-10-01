@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { isBoolean, isNumber, oneOf, usePersistentState } from "@/lib/use-persistent";
 import { netRate } from "@/lib/engine/cost";
-import { pct, silver, silverShort } from "@/lib/format";
+import { pct, signedPct, silver, silverShort } from "@/lib/format";
 import { mainCategoryLabel, subCategoryLabel } from "@/lib/market/categories";
 import { assessRecovery, sellEvidence, type Assessment, type EvidenceLine } from "@/lib/market/evidence";
 import type { ScanRow } from "@/lib/market/snapshot";
@@ -15,17 +15,27 @@ import { PerfBeacon } from "../PerfBeacon";
 import { TimeAgo } from "../TimeAgo";
 import { TopNav } from "../TopNav";
 import { useSettings } from "../UserDataProvider";
+import { Badge, type BadgeTone } from "../ui/Badge";
+import { btn } from "../ui/button";
+import { Card, CardHeader, cardCls, SectionLabel } from "../ui/Card";
+import { EmptyState } from "../ui/EmptyState";
+import { checkboxCls, selectCls } from "../ui/field";
+import { Money, pctCls } from "../ui/Money";
+import { Notice } from "../ui/Notice";
+import { SearchInput } from "../ui/SearchInput";
+import { Segmented } from "../ui/Segmented";
+import { Stat } from "../ui/Stat";
 import { MarketPanel } from "./MarketPanel";
 
 type SortKey = "roi" | "cheap" | "expensive" | "vol" | "price" | "trades";
 type Mode = "all" | "trade" | "buy" | "sell";
 type Signal = "trade" | "buy" | "sell" | null;
 
-const MODES: { key: Mode; label: string; hint: string }[] = [
-  { key: "all", label: "ดูทั้งหมด", hint: "ทุกไอเท็มในตลาด" },
-  { key: "trade", label: "หาของเทรด", hint: "ซื้อตอนนี้ แล้วตั้งขายที่ราคาปกติ ยังได้กำไรหลังหักภาษี" },
-  { key: "buy", label: "ซื้อของถูก", hint: "ราคาต่ำกว่าปกติ และหลักฐานชี้ว่ามีโอกาสฟื้น (ดูรายละเอียดในแต่ละแถว)" },
-  { key: "sell", label: "ขายของที่มี", hint: "ราคาตอนนี้สูงกว่าปกติ ถ้ามีของอยู่ควรปล่อยตอนนี้" },
+const MODES: { value: Mode; label: string; hint: string }[] = [
+  { value: "all", label: "ดูทั้งหมด", hint: "ทุกไอเท็มในตลาด" },
+  { value: "trade", label: "หาของเทรด", hint: "ซื้อตอนนี้ แล้วตั้งขายที่ราคาปกติ ยังได้กำไรหลังหักภาษี" },
+  { value: "buy", label: "ซื้อของถูก", hint: "ราคาต่ำกว่าปกติ และหลักฐานชี้ว่ามีโอกาสฟื้น (ดูรายละเอียดในแต่ละแถว)" },
+  { value: "sell", label: "ขายของที่มี", hint: "ราคาตอนนี้สูงกว่าปกติ ถ้ามีของอยู่ควรปล่อยตอนนี้" },
 ];
 const SORTS: { key: SortKey; label: string }[] = [
   { key: "roi", label: "กำไรเทรด (ROI)" },
@@ -56,17 +66,18 @@ interface Computed {
   assess: Assessment;
 }
 
-const LEVEL_CLS: Record<Assessment["level"], string> = {
-  สูง: "bg-good/15 text-good",
-  ปานกลาง: "bg-warn/15 text-warn",
-  ต่ำ: "bg-bad/15 text-bad",
-  ไม่พอข้อมูล: "bg-panel-2 text-muted",
+// colours follow the one meaning map in ui/Badge.tsx
+const LEVEL_TONE: Record<Assessment["level"], BadgeTone> = {
+  สูง: "good",
+  ปานกลาง: "warn",
+  ต่ำ: "bad",
+  ไม่พอข้อมูล: "neutral",
 };
 
-function signalText(c: Computed): { text: string; cls: string } | null {
-  if (c.signal === "trade") return { text: `เทรดได้ +${pct(c.roi ?? 0)}`, cls: "bg-good/15 text-good" };
-  if (c.signal === "buy") return { text: `ถูกกว่าปกติ ${pct(Math.abs(c.dev ?? 0))} · โอกาสฟื้น ${c.assess.level}`, cls: "bg-sky-500/15 text-sky-300" };
-  if (c.signal === "sell") return { text: `น่าขายตอนนี้ แพงกว่าปกติ ${pct(c.dev ?? 0)}`, cls: "bg-accent/15 text-accent" };
+function signalText(c: Computed): { text: string; tone: BadgeTone } | null {
+  if (c.signal === "trade") return { text: `เทรดได้ ${signedPct(c.roi ?? 0)}`, tone: "good" };
+  if (c.signal === "buy") return { text: `ถูกกว่าปกติ ${pct(Math.abs(c.dev ?? 0))} · โอกาสฟื้น ${c.assess.level}`, tone: "info" };
+  if (c.signal === "sell") return { text: `น่าขายตอนนี้ แพงกว่าปกติ ${pct(c.dev ?? 0)}`, tone: "accent" };
   return null;
 }
 
@@ -213,7 +224,7 @@ export function MarketScanner({
   };
 
   const withHistory = rows.filter((r) => r.avg90 !== null).length;
-  const modeInfo = MODES.find((m) => m.key === mode)!;
+  const modeInfo = MODES.find((m) => m.value === mode)!;
 
   return (
     <main className="mx-auto w-full max-w-7xl px-3 py-4 md:px-6">
@@ -228,11 +239,15 @@ export function MarketScanner({
         }
       />
 
-      {refreshError && <div className="mb-3 rounded border border-bad/40 bg-bad/10 px-3 py-2 text-sm text-bad">ดึงข้อมูลตลาดไม่สำเร็จ: {refreshError}</div>}
+      {refreshError && (
+        <Notice tone="bad" className="mb-3">
+          ดึงข้อมูลตลาดไม่สำเร็จ: {refreshError}
+        </Notice>
+      )}
       {withHistory < rows.length * 0.5 && rows.length > 0 && (
-        <div className="mb-3 rounded border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">
+        <Notice tone="warn" className="mb-3">
           ระบบกำลังทยอยเก็บราคาย้อนหลัง 90 วันของแต่ละไอเท็ม (ทุกครั้งที่เปิดหน้านี้จะได้เพิ่ม) คำแนะนำจะแม่นขึ้นเมื่อครบ ตอนนี้มี {silver(withHistory)} ไอเท็ม
-        </div>
+        </Notice>
       )}
 
       {/* today's picks */}
@@ -250,7 +265,7 @@ export function MarketScanner({
                 {refreshNote}
               </span>
             )}
-            <button onClick={refresh} disabled={refreshing} className="rounded border border-border bg-panel px-3 py-1.5 text-sm hover:bg-panel-2 disabled:opacity-50">
+            <button onClick={refresh} disabled={refreshing} className={btn("secondary")}>
               {refreshing ? "กำลังอัปเดต…" : "อัปเดตตลาดตอนนี้"}
             </button>
           </div>
@@ -261,7 +276,7 @@ export function MarketScanner({
             hint="ซื้อตอนนี้ แล้วตั้งขายที่ราคาปกติ (เฉลี่ย 90 วัน) หักภาษีแล้วยังบวก"
             empty="ตอนนี้ยังไม่มีของที่ซื้อแล้วขายราคาปกติได้กำไร"
             items={picks.trade}
-            metric={(c) => `+${pct(c.roi ?? 0)}`}
+            metric={(c) => signedPct(c.roi ?? 0)}
             metricCls="text-good"
             onPick={focus}
           />
@@ -271,7 +286,7 @@ export function MarketScanner({
             empty="ไม่มีของที่ราคาต่ำและหลักฐานพอตอนนี้"
             items={picks.buy}
             metric={(c) => `โอกาสฟื้น ${c.assess.level} ${c.assess.score} · ถูกกว่า ${pct(Math.abs(c.dev ?? 0))}`}
-            metricCls="text-sky-300"
+            metricCls="text-info"
             onPick={focus}
           />
           <PickList
@@ -289,24 +304,13 @@ export function MarketScanner({
       {/* mode */}
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className="text-sm text-muted">ฉันอยากจะ:</span>
-        <div className="flex flex-wrap gap-1 rounded border border-border bg-panel p-0.5">
-          {MODES.map((m) => (
-            <button key={m.key} onClick={() => setMode(m.key)} className={`rounded px-3 py-1.5 text-sm ${mode === m.key ? "bg-accent text-black" : "text-muted hover:text-foreground"}`}>
-              {m.label}
-            </button>
-          ))}
-        </div>
+        <Segmented label="ฉันอยากจะ" options={MODES} value={mode} onChange={setMode} />
         <span className="text-xs text-muted">{modeInfo.hint}</span>
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="ค้นหาชื่อไอเท็ม…"
-          className="min-w-[200px] flex-1 rounded border border-border bg-panel px-3 py-2 text-sm outline-none focus:border-accent"
-        />
-        <select value={cat} onChange={(e) => setCat(e.target.value)} className="rounded border border-border bg-panel px-2 py-2 text-sm">
+        <SearchInput label="ค้นหาชื่อไอเท็ม" value={query} onChange={setQuery} placeholder="ค้นหาชื่อไอเท็ม…" className="min-w-[200px] flex-1" />
+        <select aria-label="หมวด" value={cat} onChange={(e) => setCat(e.target.value)} className={selectCls()}>
           <option value="all">หมวด: ทั้งหมด</option>
           {categories.map((c) => (
             <option key={c.slug} value={c.slug}>
@@ -314,14 +318,14 @@ export function MarketScanner({
             </option>
           ))}
         </select>
-        <select value={minVol} onChange={(e) => setMinVol(Number(e.target.value))} className="rounded border border-border bg-panel px-2 py-2 text-sm">
+        <select aria-label="ปริมาณซื้อขาย" value={minVol} onChange={(e) => setMinVol(Number(e.target.value))} className={selectCls()}>
           {VOL_OPTIONS.map((o) => (
             <option key={o.v} value={o.v}>
               {o.label}
             </option>
           ))}
         </select>
-        <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)} className="rounded border border-border bg-panel px-2 py-2 text-sm">
+        <select aria-label="เรียงตาม" value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)} className={selectCls()}>
           {SORTS.map((s) => (
             <option key={s.key} value={s.key}>
               เรียง: {s.label}
@@ -329,7 +333,7 @@ export function MarketScanner({
           ))}
         </select>
         <label className="flex items-center gap-1.5 text-sm text-muted">
-          <input type="checkbox" checked={needStock} onChange={(e) => setNeedStock(e.target.checked)} className="h-4 w-4 accent-accent" />
+          <input type="checkbox" checked={needStock} onChange={(e) => setNeedStock(e.target.checked)} className={checkboxCls} />
           เฉพาะที่มีของขายอยู่
         </label>
       </div>
@@ -339,7 +343,13 @@ export function MarketScanner({
         {list.slice(0, limit).map((c) => (
           <MarketCard key={c.row.id} c={c} rate={rate} open={expanded === c.row.id} onToggle={() => setExpanded(expanded === c.row.id ? null : c.row.id)} />
         ))}
-        {list.length === 0 && <div className="rounded-lg border border-border bg-panel px-3 py-8 text-center text-muted">ไม่พบไอเท็มที่ตรงเงื่อนไข</div>}
+        {list.length === 0 && (
+          <EmptyState
+            title="ไม่พบไอเท็มที่ตรงเงื่อนไข"
+            hint={<>ลองเปลี่ยนโหมด ลดปริมาณซื้อขายขั้นต่ำ หรือปิด &ldquo;เฉพาะที่มีของขายอยู่&rdquo;</>}
+            className={cardCls()}
+          />
+        )}
       </div>
 
       {/* desktop: table */}
@@ -362,8 +372,8 @@ export function MarketScanner({
             ))}
             {list.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-8 text-center text-muted">
-                  ไม่พบไอเท็มที่ตรงเงื่อนไข ลองเปลี่ยนโหมด ลดปริมาณซื้อขายขั้นต่ำ หรือปิด &ldquo;เฉพาะที่มีของขายอยู่&rdquo;
+                <td colSpan={7}>
+                  <EmptyState title="ไม่พบไอเท็มที่ตรงเงื่อนไข" hint={<>ลองเปลี่ยนโหมด ลดปริมาณซื้อขายขั้นต่ำ หรือปิด &ldquo;เฉพาะที่มีของขายอยู่&rdquo;</>} />
                 </td>
               </tr>
             )}
@@ -372,7 +382,7 @@ export function MarketScanner({
       </div>
       {list.length > limit && (
         <div className="mt-3 text-center">
-          <button onClick={() => setLimitState({ key: filterKey, limit: limit + PAGE })} className="rounded border border-border bg-panel px-4 py-2 text-sm hover:bg-panel-2">
+          <button onClick={() => setLimitState({ key: filterKey, limit: limit + PAGE })} className={btn("secondary")}>
             แสดงเพิ่ม ({list.length - limit} รายการ)
           </button>
         </div>
@@ -407,22 +417,19 @@ function PickList({
   onPick: (c: Computed) => void;
 }) {
   return (
-    <section className="rounded-lg border border-border bg-panel">
-      <header className="border-b border-border px-3 py-2">
-        <h3 className="text-sm font-semibold text-accent">{title}</h3>
-        <p className="text-[11px] text-muted">{hint}</p>
-      </header>
+    <Card>
+      <CardHeader as="h3" title={title} hint={hint} />
       {items.length === 0 ? (
-        <p className="px-3 py-4 text-center text-xs text-muted">{empty}</p>
+        <EmptyState title={empty} />
       ) : (
         <ul className="divide-y divide-border">
           {items.map((c) => (
             <li key={c.row.id}>
-              <button onClick={() => onPick(c)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-panel-2/60">
+              <button onClick={() => onPick(c)} className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm hover:bg-panel-2/60">
                 <ItemIcon id={c.row.id} grade={c.row.grade} size={28} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate">{c.row.th}</span>
-                  <span className="block truncate text-[11px] text-muted">
+                  <span className="line-clamp-2 text-xs text-muted">
                     {silverShort(c.row.price)} · ปกติ {silverShort(c.row.avg90 ?? 0)} · ซื้อขาย {silverShort(c.row.vol14 ?? 0)}/14 วัน
                   </span>
                 </span>
@@ -432,13 +439,12 @@ function PickList({
           ))}
         </ul>
       )}
-    </section>
+    </Card>
   );
 }
 
 function Row({ c, rate, open, onToggle }: { c: Computed; rate: number; open: boolean; onToggle: () => void }) {
   const r = c.row;
-  const good = (c.profit ?? 0) > 0;
   const sig = signalText(c);
   return (
     <>
@@ -449,7 +455,7 @@ function Row({ c, rate, open, onToggle }: { c: Computed; rate: number; open: boo
             <ItemIcon id={r.id} grade={r.grade} size={30} />
             <div className="min-w-0">
               <div className="truncate font-medium">{r.th}</div>
-              <div className="truncate text-[11px] text-muted">
+              <div className="truncate text-xs text-muted">
                 {mainCategoryLabel(r.cat)}
                 {r.sub ? ` · ${subCategoryLabel(r.sub)}` : ""}
                 {r.days > 0 ? ` · ประวัติ ${r.days} วัน` : " · ยังไม่มีประวัติ"}
@@ -459,25 +465,30 @@ function Row({ c, rate, open, onToggle }: { c: Computed; rate: number; open: boo
         </td>
         <td className="num px-2 py-1.5 text-right">{silver(r.price)}</td>
         <td className="num px-2 py-1.5 text-right text-muted">{r.avg90 !== null ? silver(r.avg90) : "-"}</td>
-        <td className={`num px-2 py-1.5 text-right ${c.dev === null ? "text-muted" : c.dev < 0 ? "text-good" : "text-bad"}`}>
-          {c.dev === null ? "-" : `${c.dev > 0 ? "+" : ""}${pct(c.dev)}`}
+        {/* below the 90-day average is green (so the sign is flipped); grey when it reads 0% */}
+        <td className={`num px-2 py-1.5 text-right ${c.dev === null ? "text-muted" : pctCls(-c.dev)}`}>
+          {c.dev === null ? "-" : signedPct(c.dev)}
         </td>
-        <td className={`num px-2 py-1.5 text-right ${c.profit === null ? "text-muted" : good ? "text-good" : "text-bad"}`}>
-          {c.profit === null ? "-" : `${silver(c.profit)} (${pct(c.roi ?? 0)})`}
+        {/* profit on top, ROI underneath, so the silver digits line up from row to row */}
+        <td className="px-2 py-1.5 text-right">
+          {c.profit === null ? (
+            <span className="num text-muted">-</span>
+          ) : (
+            <>
+              <Money value={c.profit} tone="profit" className="block" />
+              <span className="num block text-xs text-muted">ROI {signedPct(c.roi ?? 0)}</span>
+            </>
+          )}
         </td>
         <td className="num px-2 py-1.5 text-right">{r.vol14 === null ? "-" : silver(r.vol14)}</td>
         <td className="px-2 py-1.5">
           <div className="flex flex-wrap gap-1">
-            {sig && <span className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] ${sig.cls}`}>{sig.text}</span>}
-            {r.stock > 0 ? (
-              <span className="whitespace-nowrap rounded bg-panel-2 px-1.5 py-0.5 text-[11px] text-muted">ค้างขาย {silverShort(r.stock)}</span>
-            ) : (
-              <span className="whitespace-nowrap rounded bg-good/15 px-1.5 py-0.5 text-[11px] text-good">ขาดตลาด</span>
-            )}
+            {sig && <Badge tone={sig.tone}>{sig.text}</Badge>}
+            {r.stock > 0 ? <Badge tone="neutral">ค้างขาย {silverShort(r.stock)}</Badge> : <Badge tone="good">ขาดตลาด</Badge>}
             {c.trend7 !== null && Math.abs(c.trend7) >= 0.05 && (
-              <span className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] ${c.trend7 > 0 ? "bg-good/15 text-good" : "bg-bad/15 text-bad"}`}>
+              <Badge tone={c.trend7 > 0 ? "good" : "bad"}>
                 7 วัน {c.trend7 > 0 ? "▲" : "▼"} {pct(Math.abs(c.trend7))}
-              </span>
+              </Badge>
             )}
           </div>
         </td>
@@ -502,23 +513,21 @@ function MarketCard({ c, rate, open, onToggle }: { c: Computed; rate: number; op
         <ItemIcon id={r.id} grade={r.grade} size={40} />
         <div className="min-w-0 flex-1">
           <div className="truncate font-medium">{r.th}</div>
-          <div className="truncate text-[11px] text-muted">
+          <div className="line-clamp-2 text-xs text-muted">
             {silver(r.price)} · ปกติ {r.avg90 !== null ? silverShort(r.avg90) : "-"} · ซื้อขาย {r.vol14 === null ? "-" : silverShort(r.vol14)}/14 วัน
           </div>
           <div className="mt-1 flex flex-wrap gap-1">
-            {sig && <span className={`rounded px-1.5 py-0.5 text-[11px] ${sig.cls}`}>{sig.text}</span>}
-            {r.stock > 0 ? (
-              <span className="rounded bg-panel-2 px-1.5 py-0.5 text-[11px] text-muted">ค้างขาย {silverShort(r.stock)}</span>
-            ) : (
-              <span className="rounded bg-good/15 px-1.5 py-0.5 text-[11px] text-good">ขาดตลาด</span>
+            {sig && (
+              <Badge tone={sig.tone} wrap>
+                {sig.text}
+              </Badge>
             )}
+            {r.stock > 0 ? <Badge tone="neutral">ค้างขาย {silverShort(r.stock)}</Badge> : <Badge tone="good">ขาดตลาด</Badge>}
           </div>
         </div>
         <div className="text-right">
-          <div className={`num text-base font-semibold ${c.dev === null ? "text-muted" : c.dev < 0 ? "text-good" : "text-bad"}`}>
-            {c.dev === null ? "-" : `${c.dev > 0 ? "+" : ""}${pct(c.dev)}`}
-          </div>
-          <div className="text-[11px] text-muted">เทียบปกติ</div>
+          <div className={`num text-base font-semibold ${c.dev === null ? "text-muted" : pctCls(-c.dev)}`}>{c.dev === null ? "-" : signedPct(c.dev)}</div>
+          <div className="text-xs text-muted">เทียบปกติ</div>
         </div>
       </button>
       {open && (
@@ -544,29 +553,29 @@ function Detail({ c, rate }: { c: Computed; rate: number }) {
           <Stat label={`ได้รับสุทธิถ้าขายราคาปกติ (${pct(rate, 1)})`} value={c.net !== null ? silver(c.net) : "-"} />
         </div>
 
-        <div className="mb-2 rounded-lg border border-border bg-panel p-3">
+        <Card as="div" className="mb-2 p-3">
           <div className="mb-1 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted">{sellLines ? "หลักฐานฝั่งขาย" : "หลักฐานว่าจะฟื้น"}</span>
+            <SectionLabel as="h4">{sellLines ? "หลักฐานฝั่งขาย" : "หลักฐานว่าจะฟื้น"}</SectionLabel>
             {!sellLines && (
-              <span className={`rounded px-2 py-0.5 text-xs font-semibold ${LEVEL_CLS[a.level]}`}>
+              <Badge tone={LEVEL_TONE[a.level]}>
                 โอกาสฟื้น {a.level}
                 {a.level !== "ไม่พอข้อมูล" ? ` ${a.score}/100` : ""}
-              </span>
+              </Badge>
             )}
             {a.daysToClear !== null && a.daysToClear > 0 && <span className="text-xs">ที่ความเร็วขายตอนนี้ ของค้างขายหมดใน ~{Math.max(1, Math.round(a.daysToClear))} วัน</span>}
           </div>
           <EvidenceList lines={sellLines ?? a.lines} />
-          <p className="mt-2 text-[11px]">
+          <p className="mt-2 text-xs">
             คะแนนมาจากตัวเลขในตลาดเท่านั้น ไม่รวมอีเวนต์ แพตช์ หรือของแจก ถ้ารู้ว่ากำลังจะมีอีเวนต์ที่ใช้ของนี้ ให้ถือว่าหลักฐานแรงกว่านี้ ถ้ามีแพตช์เพิ่มแหล่งดรอป ให้ถือว่าอ่อนกว่านี้
           </p>
-        </div>
+        </Card>
 
         <p className="flex flex-wrap items-center gap-2 text-xs">
           <span>
             ซื้อขายสะสม {silver(r.trades)} ครั้ง{r.tradesPerDay !== null ? ` (วันละ ~${silver(r.tradesPerDay)})` : ""}
             {r.en ? ` · ${r.en}` : ""} · id {r.id}
           </span>
-          <a href={`/calc?item=${r.id}&name=${encodeURIComponent(r.th)}&price=${r.price}`} className="rounded border border-border bg-panel px-2 py-1 text-foreground hover:bg-panel-2">
+          <a href={`/calc?item=${r.id}&name=${encodeURIComponent(r.th)}&price=${r.price}`} className={btn("secondary", "sm")}>
             คิดกำไรเทรดของนี้ →
           </a>
         </p>
@@ -586,14 +595,5 @@ function EvidenceList({ lines }: { lines: EvidenceLine[] }) {
         </li>
       ))}
     </ul>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded border border-border bg-panel-2/60 px-2 py-1.5">
-      <div className="text-[11px] text-muted">{label}</div>
-      <div className="num font-semibold text-foreground">{value}</div>
-    </div>
   );
 }
