@@ -129,6 +129,62 @@ export async function getLastRefresh(): Promise<{ at: Date | null; source: strin
   return { at: at ? new Date(at) : null, source };
 }
 
+/** A member may force a whole-market refresh at most this often (the timestamps are shared through the database). */
+export const MANUAL_REFRESH_COOLDOWN_MS = 120_000;
+/** market_meta row holding when the last manual refresh was started (successful or not) */
+const MANUAL_CLAIM_KEY = "manual_refresh_started_at";
+
+/**
+ * Claims the shared manual-refresh slot with one atomic upsert that only succeeds when the last claim is
+ * at least `cooldownMs` old, so members on different server instances cannot start refreshes side by side.
+ * The claim stays whether the refresh then succeeds or fails. Returns 0 when claimed, else the seconds to wait.
+ */
+export async function claimManualRefresh(cooldownMs = MANUAL_REFRESH_COOLDOWN_MS): Promise<number> {
+  const db = await getDb();
+  const window = sql`make_interval(secs => ${cooldownMs / 1000}::float8)`;
+  const claimed = await db
+    .insert(marketMeta)
+    .values({ key: MANUAL_CLAIM_KEY, value: sql`now()::text`, updatedAt: sql`now()` })
+    .onConflictDoUpdate({
+      target: marketMeta.key,
+      set: { value: sql`now()::text`, updatedAt: sql`now()` },
+      setWhere: sql`${marketMeta.updatedAt} <= now() - ${window}`,
+    })
+    .returning({ key: marketMeta.key });
+  if (claimed.length) return 0;
+  const full = Math.ceil(cooldownMs / 1000);
+  const [row] = await db
+    .select({ wait: sql<number>`CEIL(EXTRACT(EPOCH FROM (${marketMeta.updatedAt} + ${window} - now())))::int` })
+    .from(marketMeta)
+    .where(eq(marketMeta.key, MANUAL_CLAIM_KEY));
+  return Math.min(full, Math.max(1, Number(row?.wait ?? full)));
+}
+
+export type ManualRefreshOutcome = { ok: true; result: RefreshResult } | { ok: false; retryAfterSec: number };
+
+/**
+ * A member's "update the market now". Waits out the cooldown counted from the later of the last finished
+ * snapshot (cron or manual) and the last manual start, successful or not, so failing refreshes are not
+ * retried on every click either. Throws when the refresh itself fails.
+ */
+export async function manualRefresh(deps: RefreshDeps = {}, backfill = 40): Promise<ManualRefreshOutcome> {
+  const nowMs = (deps.now ? deps.now() : new Date()).getTime();
+  const sinceSnapshot = refreshCooldownSec((await getLastRefresh()).at, nowMs);
+  if (sinceSnapshot > 0) return { ok: false, retryAfterSec: sinceSnapshot };
+  const sinceStart = await claimManualRefresh();
+  if (sinceStart > 0) return { ok: false, retryAfterSec: sinceStart };
+  return { ok: true, result: await refreshMarket({ force: true, backfill }, deps) };
+}
+
+/** Seconds until another manual refresh is allowed after a snapshot taken at `at`, or 0 when it may run now. */
+export function refreshCooldownSec(at: Date | null, nowMs: number, cooldownMs = MANUAL_REFRESH_COOLDOWN_MS): number {
+  if (!at) return 0;
+  const age = nowMs - at.getTime();
+  if (age >= cooldownMs) return 0;
+  // a timestamp from the future (clock skew) still waits no longer than one full cooldown
+  return Math.min(Math.ceil(cooldownMs / 1000), Math.max(1, Math.ceil((cooldownMs - age) / 1000)));
+}
+
 /** True when the snapshot is missing or older than the TTL. */
 export function isSnapshotStale(at: Date | null, ttlMs = SNAPSHOT_TTL_MS): boolean {
   return !at || Date.now() - at.getTime() > ttlMs;
@@ -186,10 +242,18 @@ export async function getMarketStatus(): Promise<{
     lastError: err || null,
     scanRows: scanCache?.rows.length ?? null,
     scanBuildMs: lastScanBuildMs,
-    lastPageStart: await readTiming("timing_market_page_start"),
-    lastPage: await readTiming("timing_market_page"),
-    lastClient: await readTiming("timing_market_client"),
+    lastPageStart: withoutUser(await readTiming("timing_market_page_start")),
+    lastPage: withoutUser(await readTiming("timing_market_page")),
+    lastClient: withoutUser(await readTiming("timing_market_client")),
   };
+}
+
+/** Older timing rows recorded who loaded the page; that must not be shown any more. */
+export function withoutUser(rec: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (!rec) return rec;
+  const rest = { ...rec };
+  delete rest.user;
+  return rest;
 }
 
 async function doRefresh(opts: { force?: boolean; backfill?: number }, deps: RefreshDeps): Promise<RefreshResult> {

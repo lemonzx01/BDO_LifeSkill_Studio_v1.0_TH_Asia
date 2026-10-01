@@ -71,7 +71,7 @@ function CreateUserForm({ meRole }: { meRole: Role }) {
         </label>
         <label className={labelCls}>
           ชื่อที่แสดง
-          <input name="displayName" className={inputCls} placeholder="ชื่อในเกม" />
+          <input name="displayName" maxLength={40} className={inputCls} placeholder="ชื่อในเกม" />
         </label>
         <label className={labelCls}>
           รหัสผ่านชั่วคราว (≥ 8 ตัว)

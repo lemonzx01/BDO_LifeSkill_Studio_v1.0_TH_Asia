@@ -2,10 +2,14 @@ import { and, asc, count, eq, gt, ne } from "drizzle-orm";
 import { createHash, randomBytes } from "node:crypto";
 import { getDb } from "@/lib/db";
 import { sessions, users, type PublicUser, type Role, type User } from "@/lib/db/schema";
-import { DUMMY_HASH, hashPassword, normalizeUsername, validatePassword, validateUsername, verifyPassword } from "./password";
+import { DUMMY_HASH, hashPassword, normalizeUsername, validateDisplayName, validatePassword, validateUsername, verifyPassword } from "./password";
+import { clearReauth, gateReauth, waitMinutes } from "./ratelimit";
 import { assignableRoles, canManage } from "./roles";
 
-export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/** "remember me" sessions last 30 days (and the cookie persists as long) */
+export const REMEMBER_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/** otherwise 12 hours on the server, with a cookie that ends when the browser closes */
+export const SHORT_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
 function toPublic(u: User): PublicUser {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -49,6 +53,9 @@ export async function createUser(input: {
   if (uErr) throw new AuthError(uErr);
   const pErr = validatePassword(input.password);
   if (pErr) throw new AuthError(pErr);
+  const displayName = (input.displayName ?? "").trim();
+  const dErr = validateDisplayName(displayName);
+  if (dErr) throw new AuthError(dErr);
   const db = await getDb();
   const [exists] = await db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1);
   if (exists) throw new AuthError("ชื่อผู้ใช้นี้มีอยู่แล้ว");
@@ -56,7 +63,7 @@ export async function createUser(input: {
     .insert(users)
     .values({
       username,
-      displayName: (input.displayName ?? "").trim() || username,
+      displayName: displayName || username,
       passwordHash: await hashPassword(input.password),
       role: input.role ?? "member",
       mustChangePassword: input.mustChangePassword ?? true,
@@ -82,17 +89,29 @@ export async function verifyCredentials(usernameRaw: string, password: string): 
   return { ok: true, user: toPublic({ ...row, lastLoginAt: new Date() }) };
 }
 
-/** Creates a session row and returns the raw token for the cookie. */
-export async function createSession(userId: number, userAgent?: string | null): Promise<string> {
+/** Creates a session row and returns the raw token for the cookie (30 days with `remember`, else 12 hours). */
+export async function createSession(userId: number, userAgent?: string | null, opts: { remember?: boolean } = {}): Promise<string> {
   const token = randomBytes(32).toString("base64url");
   const db = await getDb();
   await db.insert(sessions).values({
     id: hashToken(token),
     userId,
-    expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+    expiresAt: new Date(Date.now() + (opts.remember ? REMEMBER_SESSION_TTL_MS : SHORT_SESSION_TTL_MS)),
     userAgent: userAgent?.slice(0, 200) ?? null,
   });
   return token;
+}
+
+/** Whether the session behind this token was created with "remember me" (it outlives a short session). */
+export async function isRememberedSession(token: string): Promise<boolean> {
+  if (!token) return false;
+  const db = await getDb();
+  const [row] = await db
+    .select({ createdAt: sessions.createdAt, expiresAt: sessions.expiresAt })
+    .from(sessions)
+    .where(eq(sessions.id, hashToken(token)))
+    .limit(1);
+  return !!row && row.expiresAt.getTime() - row.createdAt.getTime() > SHORT_SESSION_TTL_MS + 60 * 60 * 1000;
 }
 
 /** Resolves a cookie token to an active user, or null (expired, revoked, or user disabled). */
@@ -191,39 +210,56 @@ export async function adminResetPassword(userId: number, newPassword: string) {
   await deleteUserSessions(userId);
 }
 
+/**
+ * Confirms the current password of a signed-in user. Throttled per account before bcrypt runs
+ * (10 tries per 15 minutes); a correct password resets the count.
+ */
+async function confirmCurrentPassword(row: User, currentPassword: string) {
+  const wait = await gateReauth(row.id);
+  if (wait !== null) throw new AuthError(`ใส่รหัสผ่านผิดหลายครั้ง กรุณารอ ${waitMinutes(wait)} นาทีแล้วลองใหม่`);
+  if (!(await verifyPassword(currentPassword, row.passwordHash))) throw new AuthError("รหัสผ่านปัจจุบันไม่ถูกต้อง");
+  await clearReauth(row.id);
+}
+
 /** User changes their own login name and display name; the current password confirms it is really them. */
 export async function changeOwnProfile(userId: number, input: { username: string; displayName: string; currentPassword: string }): Promise<PublicUser> {
   const username = normalizeUsername(input.username);
   const uErr = validateUsername(username);
   if (uErr) throw new AuthError(uErr);
+  const displayName = input.displayName.trim();
+  const dErr = validateDisplayName(displayName);
+  if (dErr) throw new AuthError(dErr);
   const db = await getDb();
   const [row] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (!row) throw new AuthError("ไม่พบผู้ใช้");
-  if (!(await verifyPassword(input.currentPassword, row.passwordHash))) throw new AuthError("รหัสผ่านปัจจุบันไม่ถูกต้อง");
+  await confirmCurrentPassword(row, input.currentPassword);
   if (username !== row.username) {
     const [exists] = await db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1);
     if (exists) throw new AuthError("ชื่อผู้ใช้นี้มีอยู่แล้ว");
   }
-  const displayName = input.displayName.trim() || username;
-  const [updated] = await db.update(users).set({ username, displayName }).where(eq(users.id, userId)).returning();
+  const [updated] = await db
+    .update(users)
+    .set({ username, displayName: displayName || username })
+    .where(eq(users.id, userId))
+    .returning();
   return toPublic(updated);
 }
 
-/** User changes their own password; other sessions are revoked, the current one is kept. */
-export async function changeOwnPassword(userId: number, currentPassword: string, newPassword: string, keepToken?: string) {
+/**
+ * User changes their own password. Every session of the account is revoked, the current one
+ * included: the caller signs the user back in with a fresh session.
+ */
+export async function changeOwnPassword(userId: number, currentPassword: string, newPassword: string) {
   const pErr = validatePassword(newPassword);
   if (pErr) throw new AuthError(pErr);
+  if (newPassword === currentPassword) throw new AuthError("รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสเดิม");
   const db = await getDb();
   const [row] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (!row) throw new AuthError("ไม่พบผู้ใช้");
-  if (!(await verifyPassword(currentPassword, row.passwordHash))) throw new AuthError("รหัสผ่านปัจจุบันไม่ถูกต้อง");
+  await confirmCurrentPassword(row, currentPassword);
   await db
     .update(users)
     .set({ passwordHash: await hashPassword(newPassword), mustChangePassword: false })
     .where(eq(users.id, userId));
-  if (keepToken) {
-    await db.delete(sessions).where(and(eq(sessions.userId, userId), ne(sessions.id, hashToken(keepToken))));
-  } else {
-    await deleteUserSessions(userId);
-  }
+  await deleteUserSessions(userId);
 }

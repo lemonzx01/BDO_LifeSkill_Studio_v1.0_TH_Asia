@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import type { PublicUser } from "@/lib/db/schema";
-import { getUserBySessionToken, SESSION_TTL_MS } from "./service";
+import { getUserBySessionToken, REMEMBER_SESSION_TTL_MS } from "./service";
 
 export const SESSION_COOKIE = "bls_session";
 
@@ -26,26 +26,40 @@ export const getCurrentUser = cache(async (): Promise<PublicUser | null> => {
   }
 });
 
-export async function requireUser(): Promise<PublicUser> {
+/**
+ * Signed-in user, or a redirect to /login. While the account still has the temporary password
+ * an admin gave it, everything except the password change sends the user to /account first;
+ * only the account page and the password change itself pass `allowPendingPassword`.
+ */
+export async function requireUser(opts: { allowPendingPassword?: boolean } = {}): Promise<PublicUser> {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  if (user.mustChangePassword && !opts.allowPendingPassword) redirect("/account?first=1");
   return user;
 }
 
+/** Admin (either tier) with their own password set, or a redirect. */
 export async function requireAdmin(): Promise<PublicUser> {
   const user = await requireUser();
   if (!isAdmin(user.role)) redirect("/");
   return user;
 }
 
-export async function setSessionCookie(token: string) {
+/** For route handlers: the signed-in user, or null when signed out or still on a temporary password. */
+export async function getApiUser(): Promise<PublicUser | null> {
+  const user = await getCurrentUser();
+  return user && !user.mustChangePassword ? user : null;
+}
+
+/** With `remember` the cookie lasts 30 days; without, it is a browser-session cookie (the server side ends after 12 hours). */
+export async function setSessionCookie(token: string, opts: { remember?: boolean } = {}) {
   const jar = await cookies();
   jar.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: Math.floor(SESSION_TTL_MS / 1000),
+    ...(opts.remember ? { maxAge: Math.floor(REMEMBER_SESSION_TTL_MS / 1000) } : {}),
   });
 }
 

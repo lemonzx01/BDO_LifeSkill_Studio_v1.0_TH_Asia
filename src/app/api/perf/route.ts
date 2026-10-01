@@ -1,42 +1,24 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/session";
+import { getApiUser } from "@/lib/auth/session";
+import { readJsonBody } from "@/lib/http";
 import { recordTiming } from "@/lib/market/snapshot";
+import { buildPerfRecord } from "@/lib/perf";
 
 export const dynamic = "force-dynamic";
 
-const NUMBER_FIELDS = [
-  "rows",
-  "ttfbMs",
-  "responseMs",
-  "domReadyMs",
-  "transferBytes",
-  "decodedBytes",
-  "mountedMs",
-  "scriptBytes",
-  "scriptCount",
-  "scriptsDoneMs",
-  "imageBytes",
-  "imageCount",
-] as const;
+/** a real report is a few hundred characters */
+const MAX_BODY_CHARS = 4000;
 
-/** POST { page, ...timings } from PerfBeacon; the latest report per page is shown by /api/health. */
+/**
+ * POST { page, ...timings } from PerfBeacon; the latest report per page is shown to admins by /api/health.
+ * Only allow-listed pages are kept, numbers are clamped and no account name is stored.
+ */
 export async function POST(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  let body: Record<string, unknown>;
-  try {
-    body = (await req.json()) as Record<string, unknown>;
-  } catch {
-    return NextResponse.json({ error: "bad json" }, { status: 400 });
-  }
-  const page = String(body.page ?? "").replace(/[^a-z]/g, "").slice(0, 20);
-  if (!page) return NextResponse.json({ error: "bad page" }, { status: 400 });
-  const data: Record<string, unknown> = { at: new Date().toISOString(), user: user.username, fullLoad: Boolean(body.fullLoad), mobile: Boolean(body.mobile) };
-  for (const k of NUMBER_FIELDS) {
-    const v = Number(body[k]);
-    data[k] = Number.isFinite(v) ? Math.round(v) : null;
-  }
-  data.connection = typeof body.connection === "string" ? body.connection.slice(0, 10) : null;
-  await recordTiming(`timing_${page}_client`, data).catch(() => {});
+  if (!(await getApiUser())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const parsed = await readJsonBody(req, MAX_BODY_CHARS);
+  if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
+  const record = buildPerfRecord(parsed.body, new Date());
+  if (!record) return NextResponse.json({ error: "bad page" }, { status: 400 });
+  await recordTiming(record.key, record.data).catch(() => {});
   return NextResponse.json({ ok: true });
 }

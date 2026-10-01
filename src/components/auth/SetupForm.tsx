@@ -14,7 +14,7 @@ export function SetupForm() {
       </label>
       <label className={labelCls}>
         ชื่อที่แสดง (เช่น ชื่อในเกม)
-        <input name="displayName" className={inputCls} />
+        <input name="displayName" maxLength={40} className={inputCls} />
       </label>
       <label className={labelCls}>
         รหัสผ่าน (อย่างน้อย 8 ตัว)

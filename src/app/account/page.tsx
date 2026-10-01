@@ -1,12 +1,15 @@
 import { AuthCard } from "@/components/auth/AuthCard";
 import { ChangePasswordForm } from "@/components/auth/ChangePasswordForm";
 import { ChangeProfileForm } from "@/components/auth/ChangeProfileForm";
+import { ghostBtn } from "@/components/auth/ui";
+import { logoutEverywhereAction } from "@/lib/auth/actions";
 import { requireUser } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function AccountPage({ searchParams }: { searchParams: Promise<{ first?: string }> }) {
-  const user = await requireUser();
+  // the one page open while the temporary password from the admin is still pending
+  const user = await requireUser({ allowPendingPassword: true });
   const { first } = await searchParams;
   const forced = first === "1" || user.mustChangePassword;
   return (
@@ -24,6 +27,15 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
           <ChangeProfileForm username={user.username} displayName={user.displayName} />
         </section>
       )}
+      <section className="mt-6 border-t border-border pt-4">
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">อุปกรณ์ที่ล็อกอินไว้</h2>
+        <p className="mb-3 text-xs text-muted">ลืมออกจากระบบที่เครื่องอื่น? กดปุ่มนี้เพื่อออกจากทุกเครื่อง รวมถึงเครื่องนี้</p>
+        <form action={logoutEverywhereAction}>
+          <button type="submit" className={ghostBtn}>
+            ออกจากระบบทุกเครื่อง
+          </button>
+        </form>
+      </section>
     </AuthCard>
   );
 }

@@ -13,7 +13,20 @@ import * as schema from "./schema";
  */
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
-const SCHEMA_SQL = [
+/** Every table the app owns; each one has row level security switched on (see SCHEMA_SQL). */
+export const APP_TABLES = [
+  "users",
+  "sessions",
+  "market_items",
+  "market_daily",
+  "market_meta",
+  "user_settings",
+  "user_inventory",
+  "user_favorites",
+  "login_attempts",
+] as const;
+
+export const SCHEMA_SQL = [
   `CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
@@ -82,6 +95,57 @@ const SCHEMA_SQL = [
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (user_id, item_id)
   )`,
+  // login throttle counters shared by every serverless instance (see src/lib/auth/ratelimit.ts)
+  `CREATE TABLE IF NOT EXISTS login_attempts (
+    key TEXT PRIMARY KEY,
+    count INTEGER NOT NULL,
+    reset_at TIMESTAMPTZ NOT NULL
+  )`,
+  // Row level security. Supabase publishes the public schema through its REST API to the
+  // anon/authenticated roles; with RLS on and no policies those roles see and change no rows.
+  // The app connects as the table owner, which RLS does not apply to (no FORCE), so it keeps
+  // working. Same effect as "ALTER TABLE <t> ENABLE ROW LEVEL SECURITY" for each table, but
+  // only for tables still off: that ALTER takes an ACCESS EXCLUSIVE lock, which every cold
+  // start would otherwise queue behind running queries.
+  `DO $$
+  DECLARE t TEXT;
+  BEGIN
+    FOREACH t IN ARRAY ARRAY[${APP_TABLES.map((t) => `'${t}'`).join(", ")}] LOOP
+      IF EXISTS (SELECT 1 FROM pg_class WHERE oid = to_regclass(t) AND NOT relrowsecurity) THEN
+        EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+      END IF;
+    END LOOP;
+  END $$`,
+  // Supabase also grants its API roles every privilege on public tables, now and by default
+  // for future ones. Take those away. Only runs where the roles exist (not on PGlite) and only
+  // while a grant is still there, so warm cold starts do not rewrite catalog rows (concurrent
+  // GRANT/REVOKE on the same rows can fail with "tuple concurrently updated").
+  `DO $$
+  BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') AND (
+      EXISTS (
+        SELECT 1 FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        CROSS JOIN LATERAL aclexplode(c.relacl) a
+        WHERE n.nspname = 'public'
+          AND c.relowner = (SELECT oid FROM pg_roles WHERE rolname = current_user)
+          AND a.grantee IN (SELECT oid FROM pg_roles WHERE rolname IN ('anon', 'authenticated'))
+      ) OR EXISTS (
+        SELECT 1 FROM pg_default_acl d
+        JOIN pg_namespace n ON n.oid = d.defaclnamespace
+        CROSS JOIN LATERAL aclexplode(d.defaclacl) a
+        WHERE n.nspname = 'public'
+          AND d.defaclrole = (SELECT oid FROM pg_roles WHERE rolname = current_user)
+          AND d.defaclobjtype IN ('r', 'S')
+          AND a.grantee IN (SELECT oid FROM pg_roles WHERE rolname IN ('anon', 'authenticated'))
+      )
+    ) THEN
+      REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated;
+      REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated;
+      ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated;
+      ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM anon, authenticated;
+    END IF;
+  END $$`,
   // roles grew a tier: the earliest admin becomes แอดมินใหญ่ once, when none exists yet
   `UPDATE users SET role = 'owner'
     WHERE role = 'admin'

@@ -102,6 +102,7 @@ export function MarketScanner({
   const [sortKey, setSortKey] = usePersistentState<SortKey>("market.sort", "roi", oneOf(["roi", "cheap", "expensive", "vol", "price", "trades"] as const));
   const [expanded, setExpanded] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshNote, setRefreshNote] = useState<string | null>(null);
   // arriving with ?q= means "show me this item": drop the filters that could hide it (after the remembered ones load)
   useEffect(() => {
     if (!initialQuery) return;
@@ -186,9 +187,18 @@ export function MarketScanner({
 
   const refresh = async () => {
     setRefreshing(true);
+    setRefreshNote(null);
     try {
-      await fetch("/api/market/refresh", { method: "POST" });
-      router.refresh();
+      const res = await fetch("/api/market/refresh", { method: "POST" });
+      if (res.ok) {
+        router.refresh();
+        return;
+      }
+      // 429 = someone refreshed moments ago; the server says how long to wait
+      const body = (await res.json().catch(() => null)) as { error?: unknown } | null;
+      setRefreshNote(res.status === 429 && typeof body?.error === "string" ? body.error : "อัปเดตไม่สำเร็จ ลองใหม่ภายหลัง");
+    } catch {
+      setRefreshNote("อัปเดตไม่สำเร็จ ลองใหม่ภายหลัง");
     } finally {
       setRefreshing(false);
     }
@@ -234,9 +244,16 @@ export function MarketScanner({
               ดูจากราคา ของค้างขาย และยอดซื้อขายเท่านั้น ระบบ<b>ไม่รู้</b>อีเวนต์ แพตช์ หรือของแจกล่วงหน้า กดแต่ละรายการเพื่อดูหลักฐานแล้วตัดสินใจเอง
             </p>
           </div>
-          <button onClick={refresh} disabled={refreshing} className="rounded border border-border bg-panel px-3 py-1.5 text-sm hover:bg-panel-2 disabled:opacity-50">
-            {refreshing ? "กำลังอัปเดต…" : "อัปเดตตลาดตอนนี้"}
-          </button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {refreshNote && (
+              <span role="status" className="text-xs text-warn">
+                {refreshNote}
+              </span>
+            )}
+            <button onClick={refresh} disabled={refreshing} className="rounded border border-border bg-panel px-3 py-1.5 text-sm hover:bg-panel-2 disabled:opacity-50">
+              {refreshing ? "กำลังอัปเดต…" : "อัปเดตตลาดตอนนี้"}
+            </button>
+          </div>
         </div>
         <div className="grid gap-3 md:grid-cols-3">
           <PickList

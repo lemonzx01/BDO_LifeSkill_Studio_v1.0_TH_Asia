@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/session";
+import { getApiUser } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
 import { marketMeta, userInventory, users, userSettings } from "@/lib/db/schema";
 
@@ -12,8 +12,9 @@ export const dynamic = "force-dynamic";
  * แอดมินใหญ่ only, because of the hashes.
  */
 export async function GET() {
-  const me = await getCurrentUser();
-  if (!me || me.role !== "owner") return NextResponse.json({ error: "แอดมินใหญ่เท่านั้น" }, { status: 403 });
+  const me = await getApiUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (me.role !== "owner") return NextResponse.json({ error: "แอดมินใหญ่เท่านั้น" }, { status: 403 });
   const db = await getDb();
   const [accounts, settings, inventory, meta] = await Promise.all([
     db.select().from(users),

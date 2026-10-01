@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/session";
+import { getApiUser } from "@/lib/auth/session";
 import { items, meta, recipes } from "@/lib/data";
 
 /**
@@ -7,7 +7,7 @@ import { items, meta, recipes } from "@/lib/data";
  * Served with an ETag so browsers re-download only after a new import.
  */
 export async function GET(req: Request) {
-  if (!(await getCurrentUser())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await getApiUser())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const etag = `"${meta.importedAt}-${meta.recipeCount}-${meta.itemCount}"`;
   if (req.headers.get("if-none-match") === etag) {
     return new NextResponse(null, { status: 304, headers: { ETag: etag } });

@@ -10,11 +10,15 @@ export function LoginForm() {
     <form action={formAction} className="space-y-3">
       <label className={labelCls}>
         ชื่อผู้ใช้
-        <input name="username" autoComplete="username" required autoFocus className={inputCls} />
+        <input name="username" autoComplete="username" required autoFocus maxLength={64} className={inputCls} />
       </label>
       <label className={labelCls}>
         รหัสผ่าน
         <input name="password" type="password" autoComplete="current-password" required className={inputCls} />
+      </label>
+      <label className="flex items-center gap-2 text-sm text-muted">
+        <input type="checkbox" name="remember" value="1" className="h-4 w-4 accent-accent" />
+        จดจำฉันไว้ในเครื่องนี้ (30 วัน)
       </label>
       {state.error && <div className={errorCls}>{state.error}</div>}
       <button type="submit" disabled={pending} className={`${primaryBtn} w-full`}>

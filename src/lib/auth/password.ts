@@ -27,3 +27,11 @@ export function validateUsername(username: string): string | null {
   if (!/^[a-z0-9_.-]{3,32}$/.test(username)) return "ชื่อผู้ใช้ใช้ได้เฉพาะ a-z 0-9 _ . - ยาว 3–32 ตัว";
   return null;
 }
+
+export const DISPLAY_NAME_MAX = 40;
+
+/** Checks an already-trimmed display name (counted like the input's maxLength). */
+export function validateDisplayName(displayName: string): string | null {
+  if (displayName.length > DISPLAY_NAME_MAX) return `ชื่อที่แสดงยาวได้ไม่เกิน ${DISPLAY_NAME_MAX} ตัวอักษร`;
+  return null;
+}

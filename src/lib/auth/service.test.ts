@@ -1,5 +1,8 @@
+import { desc, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
-import { resetDbCache } from "@/lib/db";
+import { getDb, resetDbCache } from "@/lib/db";
+import { sessions } from "@/lib/db/schema";
+import { clear, THROTTLE_LIMITS } from "./ratelimit";
 import { assignableRoles, canManage } from "./roles";
 import {
   adminResetPassword,
@@ -11,10 +14,14 @@ import {
   createSession,
   createUser,
   deleteUser,
+  deleteUserSessions,
   getUserBySessionToken,
+  isRememberedSession,
   listUsers,
+  REMEMBER_SESSION_TTL_MS,
   setUserActive,
   setUserRole,
+  SHORT_SESSION_TTL_MS,
   transferOwnership,
   verifyCredentials,
 } from "./service";
@@ -89,20 +96,87 @@ describe("auth service", () => {
     await deleteUser(member.id);
   });
 
-  it("changes and resets passwords, keeping only the current session", async () => {
+  it("changes and resets passwords, revoking every session", async () => {
     const u = await createUser({ username: "member2", password: "temp-pass-2" });
-    const keep = await createSession(u.id);
+    const current = await createSession(u.id);
     const other = await createSession(u.id);
-    await expect(changeOwnPassword(u.id, "wrong", "new-pass-123", keep)).rejects.toThrow(/ปัจจุบัน/);
-    await changeOwnPassword(u.id, "temp-pass-2", "new-pass-123", keep);
-    expect((await getUserBySessionToken(keep))?.mustChangePassword).toBe(false);
+    expect((await getUserBySessionToken(current))?.mustChangePassword).toBe(true);
+    await expect(changeOwnPassword(u.id, "wrong-pass", "new-pass-123")).rejects.toThrow(/ปัจจุบัน/);
+    await expect(changeOwnPassword(u.id, "temp-pass-2", "temp-pass-2")).rejects.toThrow(/ไม่ซ้ำ/);
+    await changeOwnPassword(u.id, "temp-pass-2", "new-pass-123");
+    // rotated: the session that made the change is gone too; the action signs in again with a fresh one
+    expect(await getUserBySessionToken(current)).toBeNull();
     expect(await getUserBySessionToken(other)).toBeNull();
+    const fresh = await createSession(u.id);
+    expect((await getUserBySessionToken(fresh))?.mustChangePassword).toBe(false);
     expect((await verifyCredentials("member2", "new-pass-123")).ok).toBe(true);
+    expect((await verifyCredentials("member2", "temp-pass-2")).ok).toBe(false);
 
     await adminResetPassword(u.id, "reset-pass-9");
-    expect(await getUserBySessionToken(keep)).toBeNull();
+    expect(await getUserBySessionToken(fresh)).toBeNull();
     const r = await verifyCredentials("member2", "reset-pass-9");
     expect(r.ok && r.user.mustChangePassword).toBe(true);
+  });
+
+  it("throttles current-password re-checks per account, before bcrypt", async () => {
+    const u = await createUser({ username: "guessme", password: "real-pass-1" });
+    for (let i = 0; i < THROTTLE_LIMITS.reauth; i++) {
+      await expect(changeOwnPassword(u.id, `guess-${i}-xx`, "new-pass-123")).rejects.toThrow(/ปัจจุบัน/);
+    }
+    // over the limit: refused even with the right password, and the profile form shares the counter
+    await expect(changeOwnPassword(u.id, "real-pass-1", "new-pass-123")).rejects.toThrow(/รอ 15 นาที/);
+    await expect(changeOwnProfile(u.id, { username: "guessme", displayName: "G", currentPassword: "real-pass-1" })).rejects.toThrow(/รอ/);
+    // other accounts are unaffected
+    const v = await createUser({ username: "bystander", password: "real-pass-2" });
+    await changeOwnPassword(v.id, "real-pass-2", "new-pass-456");
+    // a correct password resets the count
+    await clear(`reauth:${u.id}`);
+    for (let i = 0; i < THROTTLE_LIMITS.reauth - 1; i++) {
+      await expect(changeOwnPassword(u.id, `guess-${i}-yy`, "new-pass-123")).rejects.toThrow(/ปัจจุบัน/);
+    }
+    await changeOwnPassword(u.id, "real-pass-1", "new-pass-123");
+    await expect(changeOwnPassword(u.id, "wrong-again", "new-pass-789")).rejects.toThrow(/ปัจจุบัน/);
+    await deleteUser(u.id);
+    await deleteUser(v.id);
+  });
+
+  it("keeps sessions short unless the user asks to be remembered", async () => {
+    const u = await createUser({ username: "sessions1", password: "secret123" });
+    const db = await getDb();
+    const lifetime = async (token: string) => {
+      const [row] = await db
+        .select({ createdAt: sessions.createdAt, expiresAt: sessions.expiresAt })
+        .from(sessions)
+        .where(eq(sessions.userId, u.id))
+        .orderBy(desc(sessions.createdAt))
+        .limit(1);
+      expect(await getUserBySessionToken(token)).not.toBeNull();
+      return row.expiresAt.getTime() - row.createdAt.getTime();
+    };
+    const short = await createSession(u.id, "vitest");
+    expect(Math.abs((await lifetime(short)) - SHORT_SESSION_TTL_MS)).toBeLessThan(60_000);
+    expect(await isRememberedSession(short)).toBe(false);
+    await deleteUserSessions(u.id);
+    const long = await createSession(u.id, "vitest", { remember: true });
+    expect(Math.abs((await lifetime(long)) - REMEMBER_SESSION_TTL_MS)).toBeLessThan(60_000);
+    expect(await isRememberedSession(long)).toBe(true);
+    expect(await isRememberedSession("bogus")).toBe(false);
+    // signing out everywhere ends them all
+    await createSession(u.id);
+    await deleteUserSessions(u.id);
+    expect(await getUserBySessionToken(long)).toBeNull();
+    await deleteUser(u.id);
+  });
+
+  it("limits display names to 40 characters after trimming", async () => {
+    const forty = "ก".repeat(40);
+    await expect(createUser({ username: "longname", displayName: forty + "x", password: "secret123" })).rejects.toThrow(/40/);
+    const u = await createUser({ username: "longname", displayName: `  ${forty}  `, password: "secret123" });
+    expect(u.displayName).toBe(forty);
+    await expect(changeOwnProfile(u.id, { username: "longname", displayName: forty + "x", currentPassword: "secret123" })).rejects.toThrow(/40/);
+    const same = await changeOwnProfile(u.id, { username: "longname", displayName: ` ${forty} `, currentPassword: "secret123" });
+    expect(same.displayName).toBe(forty);
+    await deleteUser(u.id);
   });
 
   it("transfers แอดมินใหญ่ to another account and steps down", async () => {

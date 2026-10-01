@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import type { Role } from "@/lib/db/schema";
-import { clearFailures, isThrottled, recordFailure } from "./ratelimit";
+import { cleanupAttempts, clientIp, gateLogin, recordLoginSuccess, waitMinutes } from "./ratelimit";
 import {
   AuthError,
   adminResetPassword,
@@ -17,6 +17,8 @@ import {
   createUser,
   deleteSession,
   deleteUser,
+  deleteUserSessions,
+  isRememberedSession,
   setUserActive,
   setUserRole,
   transferOwnership,
@@ -40,32 +42,56 @@ function fail(e: unknown): ActionState {
   return { error: "เกิดข้อผิดพลาด ลองใหม่อีกครั้ง" };
 }
 
+/** longer than any valid username (3–32): refused before any database work */
+const LOGIN_USERNAME_MAX = 64;
+
 export async function loginAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
-  const username = str(fd, "username").trim().toLowerCase();
+  const rawUsername = str(fd, "username");
+  if (rawUsername.length > LOGIN_USERNAME_MAX) return { error: "ชื่อผู้ใช้ยาวเกินไป" };
+  const username = rawUsername.trim().toLowerCase();
   const password = str(fd, "password");
   if (!username || !password) return { error: "กรอกชื่อผู้ใช้และรหัสผ่าน" };
-  if (isThrottled(username)) return { error: "ล็อกอินผิดหลายครั้ง กรุณารอ 15 นาทีแล้วลองใหม่" };
+  const remember = str(fd, "remember") === "1";
+  const h = await headers();
+  const ip = clientIp(h);
 
   let result;
+  let counted: string[] = [];
   try {
+    // counted before the password is checked: the increment is the gate
+    const gate = await gateLogin(username, ip);
+    if (gate.wait !== null) return { error: `ล็อกอินผิดหลายครั้ง กรุณารอ ${waitMinutes(gate.wait)} นาทีแล้วลองใหม่` };
+    counted = gate.counted;
     result = await verifyCredentials(username, password);
   } catch (e) {
     return fail(e);
   }
   if (!result.ok) {
-    recordFailure(username);
     return { error: result.reason === "disabled" ? "บัญชีนี้ถูกปิดการใช้งาน ติดต่อแอดมินของกิล" : "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" };
   }
-  clearFailures(username);
-  const ua = (await headers()).get("user-agent");
-  const token = await createSession(result.user.id, ua);
-  await setSessionCookie(token);
+  try {
+    // a correct password does not use up the counters, and this address now skips the account's overall cap
+    await recordLoginSuccess(username, ip, counted);
+    await cleanupAttempts();
+  } catch (e) {
+    console.error("login throttle cleanup failed:", (e as Error).message);
+  }
+  const token = await createSession(result.user.id, h.get("user-agent"), { remember });
+  await setSessionCookie(token, { remember });
   redirect(result.user.mustChangePassword ? "/account?first=1" : "/");
 }
 
 export async function logoutAction() {
   const token = await getSessionToken();
   if (token) await deleteSession(token).catch(() => {});
+  await clearSessionCookie();
+  redirect("/login");
+}
+
+/** Ends every session of the signed-in account, on every device, this one included. */
+export async function logoutEverywhereAction() {
+  const me = await requireUser({ allowPendingPassword: true });
+  await deleteUserSessions(me.id);
   await clearSessionCookie();
   redirect("/login");
 }
@@ -189,15 +215,21 @@ export async function changeProfileAction(_prev: ActionState, fd: FormData): Pro
 }
 
 export async function changePasswordAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
-  const me = await requireUser();
+  // the one action open while the temporary password is still pending
+  const me = await requireUser({ allowPendingPassword: true });
   const next = str(fd, "password");
   if (next !== str(fd, "confirm")) return { error: "รหัสผ่านใหม่ทั้งสองช่องไม่ตรงกัน" };
   try {
-    await changeOwnPassword(me.id, str(fd, "current"), next, (await getSessionToken()) ?? undefined);
+    const oldToken = await getSessionToken();
+    const remember = oldToken ? await isRememberedSession(oldToken) : false;
+    // revokes every session of the account, this one included; sign back in with a fresh one
+    await changeOwnPassword(me.id, str(fd, "current"), next);
+    const token = await createSession(me.id, (await headers()).get("user-agent"), { remember });
+    await setSessionCookie(token, { remember });
   } catch (e) {
     return fail(e);
   }
   // a temporary password from the admin has just been replaced: continue into the app (redirect throws, so it stays outside the try)
   if (me.mustChangePassword) redirect("/");
-  return { ok: true, message: "เปลี่ยนรหัสผ่านแล้ว" };
+  return { ok: true, message: "เปลี่ยนรหัสผ่านแล้ว เครื่องอื่นที่ล็อกอินไว้จะต้องล็อกอินใหม่" };
 }

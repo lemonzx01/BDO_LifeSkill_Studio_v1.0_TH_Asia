@@ -16,7 +16,8 @@ export default async function MarketPage({ searchParams }: { searchParams: Promi
   const authMs = clock.lap();
   // marker written before the heavy part: if /api/health shows a start without a matching
   // finish, the request died while building or streaming the page
-  await recordTiming("timing_market_page_start", { at: new Date().toISOString(), user: user.username, authMs, region: process.env.VERCEL_REGION ?? null }).catch(() => {});
+  // (no account name: these records are diagnostics, not an access log)
+  await recordTiming("timing_market_page_start", { at: new Date().toISOString(), authMs, region: process.env.VERCEL_REGION ?? null }).catch(() => {});
 
   const last = await getLastRefresh();
   let refreshError: string | null = null;
@@ -40,7 +41,6 @@ export default async function MarketPage({ searchParams }: { searchParams: Promi
   const dataMs = clock.lap();
   const timing = {
     at: new Date().toISOString(),
-    user: user.username,
     authMs,
     staleCheckMs,
     dataMs,

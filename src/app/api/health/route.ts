@@ -1,63 +1,50 @@
 import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
+import { isAdmin } from "@/lib/auth/roles";
+import { getApiUser } from "@/lib/auth/session";
 import { getDb, isUsingEmbeddedDb } from "@/lib/db";
+import { describeError, driverName, publicErrorCode, sanitize, type ErrorLink } from "@/lib/health";
 import { getMarketStatus } from "@/lib/market/snapshot";
 
 export const dynamic = "force-dynamic";
 
-/** Anything that looks like credentials inside a connection string is masked before it leaves the server. */
-function sanitize(message: string): string {
-  return message
-    .replace(/\/\/[^@\s]*@/g, "//***@")
-    .replace(/^Failed query: [\s\S]*$/, "Failed query (see cause)")
-    .slice(0, 300);
-}
-
-/** The error plus its `cause` chain, innermost last — Drizzle wraps driver errors, and the driver error is the useful one. */
-function describe(e: unknown): { code: string | null; message: string }[] {
-  const chain: { code: string | null; message: string }[] = [];
-  let cur: unknown = e;
-  for (let depth = 0; cur && depth < 4; depth++) {
-    const err = cur as { code?: unknown; message?: unknown; cause?: unknown };
-    chain.push({ code: typeof err.code === "string" ? err.code : null, message: sanitize(String(err.message ?? cur)) });
-    cur = err.cause;
-  }
-  return chain;
-}
-
-function driverName(): string {
-  const url = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL || "";
-  if (!url) return "pglite (embedded)";
-  return /\.neon\.tech[/:]/.test(url) ? "neon-http" : "postgres.js";
-}
-
 /**
- * GET /api/health -> { ok, db, driver, envSet, error? }
- * Public on purpose: it is the first thing to check when a fresh deployment shows a server error,
- * and it never reveals the connection string.
+ * GET /api/health
+ * Anyone: { ok, db: "ok" | "error", commit, code? } — code is the bare database error code
+ * (e.g. "28P01"), never a message. A signed-in admin also gets the driver, environment,
+ * deployment, latency, market status and the sanitized error chain.
  */
 export async function GET() {
-  const envSet = !isUsingEmbeddedDb();
-  const base = {
-    driver: driverName(),
-    envSet,
-    vercel: Boolean(process.env.VERCEL),
-    // which build is answering — tells apart "env edited but not redeployed" from "still wrong"
-    deployment: process.env.VERCEL_DEPLOYMENT_ID ?? null,
-    commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
-  };
+  const commit = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null;
+  let latencyMs: number | null = null;
+  let chain: ErrorLink[] | null = null;
   try {
     const db = await getDb();
     const started = Date.now();
     await db.execute(sql`select 1`);
-    const latencyMs = Date.now() - started;
-    const market = await getMarketStatus().catch((e) => ({ error: sanitize(String((e as Error).message)) }));
-    return NextResponse.json({ ok: true, db: "ok", latencyMs, ...base, market }, { headers: { "Cache-Control": "no-store" } });
+    latencyMs = Date.now() - started;
   } catch (e) {
-    const chain = describe(e);
-    return NextResponse.json(
-      { ok: false, db: "error", ...base, error: chain[chain.length - 1], chain },
-      { status: 503, headers: { "Cache-Control": "no-store" } },
-    );
+    chain = describeError(e);
   }
+  const ok = chain === null;
+  const status = ok ? 200 : 503;
+  const headers = { "Cache-Control": "no-store" };
+  const pub = ok ? { ok, db: "ok" as const, commit } : { ok, db: "error" as const, commit, code: publicErrorCode(chain ?? []) };
+
+  const me = await getApiUser();
+  if (!me || !isAdmin(me.role)) return NextResponse.json(pub, { status, headers });
+
+  const details = {
+    driver: driverName(process.env),
+    envSet: !isUsingEmbeddedDb(),
+    vercel: Boolean(process.env.VERCEL),
+    // which build is answering — tells apart "env edited but not redeployed" from "still wrong"
+    deployment: process.env.VERCEL_DEPLOYMENT_ID ?? null,
+  };
+  if (!ok) {
+    const c = chain ?? [];
+    return NextResponse.json({ ...pub, ...details, error: c[c.length - 1], chain: c }, { status, headers });
+  }
+  const market = await getMarketStatus().catch((e) => ({ error: sanitize(String((e as Error).message)) }));
+  return NextResponse.json({ ...pub, ...details, latencyMs, market }, { status, headers });
 }

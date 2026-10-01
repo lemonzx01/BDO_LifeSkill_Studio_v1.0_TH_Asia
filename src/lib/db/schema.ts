@@ -32,6 +32,13 @@ export const sessions = pgTable(
   (t) => [index("sessions_user_id_idx").on(t.userId)],
 );
 
+/** Login throttle: attempts counted per key ("pair:<user>|<ip>", "ip:<ip>", "user:<user>", "reauth:<id>") until reset_at. */
+export const loginAttempts = pgTable("login_attempts", {
+  key: text("key").primaryKey(),
+  count: integer("count").notNull(),
+  resetAt: timestamp("reset_at", { withTimezone: true }).notNull(),
+});
+
 /** Latest central-market state for every item (one row per item id, enhancement level 0). */
 export const marketItems = pgTable("market_items", {
   id: integer("id").primaryKey(),
