@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { isBoolean, isNumber, oneOf, usePersistentState } from "@/lib/use-persistent";
 import { netRate } from "@/lib/engine/cost";
+import { describeError, httpError, problemAction, type FetchProblem } from "@/lib/fetch-error";
 import { pct, signedPct, silver, silverShort } from "@/lib/format";
 import { mainCategoryLabel, subCategoryLabel } from "@/lib/market/categories";
 import { assessRecovery, sellEvidence, type Assessment, type EvidenceLine } from "@/lib/market/evidence";
@@ -13,7 +14,6 @@ import { FavoriteStar } from "../FavoriteStar";
 import { ItemIcon } from "../ItemIcon";
 import { PerfBeacon } from "../PerfBeacon";
 import { TimeAgo } from "../TimeAgo";
-import { TopNav } from "../TopNav";
 import { useSettings } from "../UserDataProvider";
 import { Badge, type BadgeTone } from "../ui/Badge";
 import { btn } from "../ui/button";
@@ -22,9 +22,11 @@ import { EmptyState } from "../ui/EmptyState";
 import { checkboxCls, selectCls } from "../ui/field";
 import { Money, pctCls } from "../ui/Money";
 import { Notice } from "../ui/Notice";
+import { Page, PageHeader } from "../ui/Page";
 import { SearchInput } from "../ui/SearchInput";
 import { Segmented } from "../ui/Segmented";
 import { Stat } from "../ui/Stat";
+import { toast } from "../ui/Toast";
 import { MarketPanel } from "./MarketPanel";
 
 type SortKey = "roi" | "cheap" | "expensive" | "vol" | "price" | "trades";
@@ -113,7 +115,7 @@ export function MarketScanner({
   const [sortKey, setSortKey] = usePersistentState<SortKey>("market.sort", "roi", oneOf(["roi", "cheap", "expensive", "vol", "price", "trades"] as const));
   const [expanded, setExpanded] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [refreshNote, setRefreshNote] = useState<string | null>(null);
+  const [refreshProblem, setRefreshProblem] = useState<FetchProblem | null>(null);
   // arriving with ?q= means "show me this item": drop the filters that could hide it (after the remembered ones load)
   useEffect(() => {
     if (!initialQuery) return;
@@ -198,18 +200,18 @@ export function MarketScanner({
 
   const refresh = async () => {
     setRefreshing(true);
-    setRefreshNote(null);
+    setRefreshProblem(null);
     try {
       const res = await fetch("/api/market/refresh", { method: "POST" });
-      if (res.ok) {
-        router.refresh();
-        return;
-      }
-      // 429 = someone refreshed moments ago; the server says how long to wait
-      const body = (await res.json().catch(() => null)) as { error?: unknown } | null;
-      setRefreshNote(res.status === 429 && typeof body?.error === "string" ? body.error : "อัปเดตไม่สำเร็จ ลองใหม่ภายหลัง");
-    } catch {
-      setRefreshNote("อัปเดตไม่สำเร็จ ลองใหม่ภายหลัง");
+      // a 502 (the refresh itself failed) or a 429 (someone refreshed moments ago) is not a success
+      if (!res.ok) throw await httpError(res);
+      toast({ text: "อัปเดตแล้ว" });
+      router.refresh();
+    } catch (e) {
+      const p = describeError(e);
+      // the server counts its 2-minute wait from this failed start too, so an immediate ลองใหม่
+      // would only be refused: say when instead, with no button
+      setRefreshProblem(p.status !== null && p.status >= 500 ? { ...p, message: "เซิร์ฟเวอร์ไม่ว่าง ลองใหม่ได้ในอีก 2 นาที", action: null } : p);
     } finally {
       setRefreshing(false);
     }
@@ -227,20 +229,23 @@ export function MarketScanner({
   const modeInfo = MODES.find((m) => m.value === mode)!;
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-3 py-4 md:px-6">
+    <Page user={user}>
       <PerfBeacon page="market" rows={rows.length} />
-      <TopNav
-        user={user}
-        subtitle={
+      <PageHeader
+        title="สแกนตลาด"
+        meta={[
+          "ตลาดกลาง Asia",
           <>
-            ตลาดกลาง Asia · {silver(rows.length)} ไอเท็มที่มีการซื้อขายใน 14 วัน (จากทั้งหมด {silver(totalItems)}) · อัปเดต <TimeAgo at={refreshedAt} placeholder="-" />
-            {source ? ` · แหล่ง ${source}` : ""} · มีประวัติแล้ว {silver(withHistory)} ไอเท็ม
-          </>
-        }
+            อัปเดต <TimeAgo at={refreshedAt} placeholder="-" />
+          </>,
+          source && `แหล่ง ${source}`,
+          `ซื้อขายใน 14 วัน ${silver(rows.length)} จาก ${silver(totalItems)} ไอเท็ม`,
+          `มีประวัติแล้ว ${silver(withHistory)} ไอเท็ม`,
+        ]}
       />
 
       {refreshError && (
-        <Notice tone="bad" className="mb-3">
+        <Notice tone="bad" className="mb-3" action={{ label: "ลองใหม่", onClick: () => router.refresh() }}>
           ดึงข้อมูลตลาดไม่สำเร็จ: {refreshError}
         </Notice>
       )}
@@ -259,17 +264,15 @@ export function MarketScanner({
               ดูจากราคา ของค้างขาย และยอดซื้อขายเท่านั้น ระบบ<b>ไม่รู้</b>อีเวนต์ แพตช์ หรือของแจกล่วงหน้า กดแต่ละรายการเพื่อดูหลักฐานแล้วตัดสินใจเอง
             </p>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {refreshNote && (
-              <span role="status" className="text-xs text-warn">
-                {refreshNote}
-              </span>
-            )}
-            <button onClick={refresh} disabled={refreshing} className={btn("secondary")}>
-              {refreshing ? "กำลังอัปเดต…" : "อัปเดตตลาดตอนนี้"}
-            </button>
-          </div>
+          <button onClick={refresh} disabled={refreshing} className={btn("secondary")}>
+            {refreshing ? "กำลังอัปเดต…" : "อัปเดตตลาดตอนนี้"}
+          </button>
         </div>
+        {refreshProblem && (
+          <Notice tone="warn" className="mb-3" action={problemAction(refreshProblem, refresh, refreshing)} onClose={() => setRefreshProblem(null)}>
+            อัปเดตไม่สำเร็จ ยังใช้ข้อมูลเดิม (อัปเดต <TimeAgo at={refreshedAt} placeholder="-" />) · {refreshProblem.message}
+          </Notice>
+        )}
         <div className="grid gap-3 md:grid-cols-3">
           <PickList
             title="เทรดได้กำไร"
@@ -395,7 +398,7 @@ export function MarketScanner({
         </p>
         <p>คำแนะนำนับเฉพาะของที่ซื้อขาย 14 วัน ≥ {LIQUID_MIN_VOL} ชิ้น เพื่อกันของที่ราคาแกว่งเพราะไม่มีคนซื้อขาย · ข้อมูล: bdolytics (snapshot) / Pearl Abyss (ราคาย้อนหลัง)</p>
       </footer>
-    </main>
+    </Page>
   );
 }
 

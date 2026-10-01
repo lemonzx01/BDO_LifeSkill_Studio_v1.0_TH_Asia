@@ -10,6 +10,8 @@
   --muted: #9aa3b2;
   --accent: #e9bd23;
   --accent-hover: #f3cd48;
+  /* --accent at 7%, for the page glow behind the header (body, below) */
+  --accent-glow: rgb(233 189 35 / 0.07);
   --good: #4ade80;
   --bad: #f87171;
   --warn: #fbbf24;
@@ -63,10 +65,26 @@
   background-size: 0.875rem 0.875rem;
 }
 
+/* keep room for the scrollbar on short pages too, so the centred header does not shift sideways
+   when you switch between a page that scrolls and one that does not */
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
-  background: var(--background);
+  /* a faint gold glow behind the header, over the flat page colour (--accent-glow, not color-mix():
+     the build would fall back to the full-strength accent where color-mix is unsupported) */
+  background:
+    radial-gradient(1200px 360px at 50% -160px, var(--accent-glow), transparent),
+    var(--background);
   color: var(--foreground);
   font-family: var(--font-thai), system-ui, sans-serif;
+  /* viewport-fit=cover (layout.tsx): keep content out from under the notch and the status bar of
+     the installed app (statusBarStyle black-translucent). The bottom inset is taken by the phone tab
+     bar and the bottom padding of <main> (ui/Page.tsx). */
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 .num {

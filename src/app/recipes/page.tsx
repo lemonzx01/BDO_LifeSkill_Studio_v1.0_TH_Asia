@@ -12,7 +12,7 @@ export default async function RecipesPage() {
   const user = await requireUser();
   const [settings, inventory] = await Promise.all([getUserSettings(user.id), getUserInventory(user.id)]);
   return (
-    <UserDataProvider initialSettings={settings} initialInventory={inventory}>
+    <UserDataProvider userId={user.id} initialSettings={settings} initialInventory={inventory}>
       <Suspense fallback={<PageSkeleton label="กำลังโหลดสูตร…" />}>
         <Studio user={{ username: user.username, displayName: user.displayName, role: user.role }} />
       </Suspense>

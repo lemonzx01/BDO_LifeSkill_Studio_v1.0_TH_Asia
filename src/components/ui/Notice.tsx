@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { btn } from "./button";
 
@@ -14,11 +15,15 @@ const TONE: Record<NoticeTone, string> = {
 const GLYPH: Record<NoticeTone, string> = { bad: "⊘", warn: "⚠︎", good: "✓", info: "ℹ︎" };
 const WORD: Record<NoticeTone, string> = { bad: "ผิดพลาด", warn: "คำเตือน", good: "สำเร็จ", info: "หมายเหตุ" };
 
-export interface NoticeAction {
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-}
+/**
+ * A button, or a link (`href`). A link is a plain <a> by default, not <Link>, because most point at
+ * downloads and API routes (e.g. the admin backup) that must not be prefetched or opened as a
+ * client route. `route: true` marks a page of the app (e.g. /login): it opens client-side, which
+ * keeps this tab's unsaved changes (lib/save-queue) alive.
+ */
+export type NoticeAction =
+  | { label: string; onClick: () => void; disabled?: boolean }
+  | { label: string; href: string; title?: string; route?: boolean };
 
 /**
  * An error, warning or success message. Errors are announced at once (role="alert"), the other
@@ -47,11 +52,22 @@ export function Notice({
         <span className="sr-only">{WORD[tone]}: </span>
         {children}
       </div>
-      {action && (
-        <button type="button" onClick={action.onClick} disabled={action.disabled} className={`${btn("secondary", "sm")} -my-1 shrink-0`}>
-          {action.label}
-        </button>
-      )}
+      {action &&
+        ("href" in action ? (
+          action.route ? (
+            <Link href={action.href} title={action.title} className={`${btn("secondary", "sm")} -my-1 shrink-0`}>
+              {action.label}
+            </Link>
+          ) : (
+            <a href={action.href} title={action.title} className={`${btn("secondary", "sm")} -my-1 shrink-0`}>
+              {action.label}
+            </a>
+          )
+        ) : (
+          <button type="button" onClick={action.onClick} disabled={action.disabled} className={`${btn("secondary", "sm")} -my-1 shrink-0`}>
+            {action.label}
+          </button>
+        ))}
       {onClose && (
         <button
           type="button"

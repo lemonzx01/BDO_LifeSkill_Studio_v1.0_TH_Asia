@@ -7,8 +7,15 @@
  */
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "dangerGhost";
 export type ButtonSize = "sm" | "md";
+/** "start" left-aligns the label, for a full-width row in a menu (add w-full at the call site). */
+export type ButtonAlign = "center" | "start";
 
-const SHAPE = "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded font-medium transition-colors disabled:pointer-events-none disabled:opacity-50";
+const SHAPE = "inline-flex items-center gap-1.5 whitespace-nowrap rounded font-medium transition-colors disabled:pointer-events-none disabled:opacity-50";
+
+const ALIGN: Record<ButtonAlign, string> = {
+  center: "justify-center",
+  start: "justify-start text-left",
+};
 
 const SIZE: Record<ButtonSize, string> = {
   md: "min-h-10 md:min-h-9 px-3 text-sm",
@@ -25,12 +32,12 @@ const VARIANT: Record<ButtonVariant, string> = {
 };
 
 /** Shape and size of a button, without colours: pair it with toggleCls(). */
-export function btnShape(size: ButtonSize = "md"): string {
-  return `${SHAPE} ${SIZE[size]}`;
+export function btnShape(size: ButtonSize = "md", align: ButtonAlign = "center"): string {
+  return `${SHAPE} ${ALIGN[align]} ${SIZE[size]}`;
 }
 
-export function btn(variant: ButtonVariant, size: ButtonSize = "md"): string {
-  return `${SHAPE} ${SIZE[size]} ${VARIANT[variant]}`;
+export function btn(variant: ButtonVariant, size: ButtonSize = "md", align: ButtonAlign = "center"): string {
+  return `${SHAPE} ${ALIGN[align]} ${SIZE[size]} ${VARIANT[variant]}`;
 }
 
 /**

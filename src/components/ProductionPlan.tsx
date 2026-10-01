@@ -11,6 +11,7 @@ import { useUserData } from "./UserDataProvider";
 import { Badge } from "./ui/Badge";
 import { btn } from "./ui/button";
 import { Card, SectionLabel } from "./ui/Card";
+import { useConfirm } from "./ui/ConfirmDialog";
 import { checkboxCls, fieldCls } from "./ui/field";
 import { Money } from "./ui/Money";
 import { Notice } from "./ui/Notice";
@@ -32,6 +33,7 @@ export function ProductionPlan({
   inventory: Inventory;
 }) {
   const { setOwned } = useUserData();
+  const [confirm, confirmDialog] = useConfirm();
   const [qty, setQty] = useState(100);
   const rounds = Math.max(0, Math.ceil(qty / ev.expectedYield));
   const [addProduct, setAddProduct] = useState(true);
@@ -59,11 +61,23 @@ export function ProductionPlan({
   const productUnits = Math.round(rounds * ev.expectedYield);
 
   /** Record that the crafts happened: owned materials go out, the product comes in. */
-  const produce = () => {
+  const produce = async () => {
     const changes = planProduction(inventory, rows.map((r) => ({ id: r.id, need: r.need })), addProduct ? { id: ev.productId, units: productUnits } : undefined);
     if (changes.length === 0) return;
-    const lines = changes.map((c) => `${items[c.id]?.th ?? `#${c.id}`}: ${silver(c.before)} → ${silver(c.after)}`).join("\n");
-    if (!confirm(`บันทึกว่าผลิตแล้ว ${silver(rounds)} รอบ และปรับคลังตามนี้?\n\n${lines}`)) return;
+    const ok = await confirm({
+      title: `บันทึกว่าผลิตแล้ว ${silver(rounds)} รอบ?`,
+      body: "จำนวนในคลังจะเปลี่ยนตามนี้ (กดเลิกทำได้ทีหลัง)",
+      details: changes.map((c) => (
+        <span key={c.id} className="flex justify-between gap-3">
+          <span className="truncate">{items[c.id]?.th ?? `#${c.id}`}</span>
+          <span className="num shrink-0 text-foreground">
+            {silver(c.before)} → {silver(c.after)}
+          </span>
+        </span>
+      )),
+      confirmLabel: `ปรับคลัง ${changes.length} รายการ`,
+    });
+    if (!ok) return;
     const costs: Record<ItemId, number | undefined> = {};
     for (const c of changes) costs[c.id] = inventory[c.id]?.avgCost;
     for (const c of changes) setOwned(c.id, c.after);
@@ -80,6 +94,7 @@ export function ProductionPlan({
 
   return (
     <Card className="mt-4 p-3">
+      {confirmDialog}
       <div className="mb-2 flex flex-wrap items-center gap-3">
         <SectionLabel as="h4">แผนผลิต</SectionLabel>
         <label className="flex items-center gap-2 text-sm">

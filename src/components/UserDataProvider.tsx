@@ -1,7 +1,9 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { DEFAULT_SETTINGS, type Inventory, type ItemId, type Settings } from "@/lib/engine/types";
+import { fetchJson } from "@/lib/fetch-error";
+import { IDLE_SAVE, overlayFavorites, overlayInventory, overlaySettings, saveQueue, type SaveSnapshot } from "@/lib/save-queue";
 import { LEGACY_INVENTORY_KEY, LEGACY_SETTINGS_KEY, normalizeSettings } from "@/lib/settings";
 
 interface UserData {
@@ -15,6 +17,8 @@ interface UserData {
   favorites: ItemId[];
   favoriteItems: FavoriteItem[];
   toggleFavorite: (id: ItemId) => void;
+  /** sends every change that failed to save again (the ลองใหม่ of SaveStatus) */
+  retrySaves: () => void;
 }
 
 export interface FavoriteItem {
@@ -27,35 +31,101 @@ export interface FavoriteItem {
 
 const Ctx = createContext<UserData | null>(null);
 
+const SETTINGS_DELAY_MS = 600;
+const ITEM_DELAY_MS = 400;
+
+const serverSave = () => IDLE_SAVE;
+
 /**
- * Per-account settings and inventory. Initial values come from the database
- * (server render); changes apply immediately and are saved back with a short
- * debounce. Values saved by the old browser-only version are migrated once.
+ * Browser back/forward shows a page as it was first rendered (Next reuses that render), which can
+ * predate changes this tab saved since: the queue forgets confirmed changes at the next page change,
+ * so it cannot lay them over again. A provider mounted after back/forward reloads the account's
+ * settings and inventory instead. Set on every popstate; cleared once a reload has gone through
+ * (not when it starts, so React's development double mount does not lose it).
+ */
+let reloadAfterHistory = false;
+if (typeof window !== "undefined") {
+  window.addEventListener("popstate", () => {
+    reloadAfterHistory = true;
+  });
+}
+const needsHistoryReload = () => reloadAfterHistory;
+const historyReloadDone = () => {
+  reloadAfterHistory = false;
+};
+
+/**
+ * Per-account settings, inventory and starred items. Initial values come from the database
+ * (server render); changes apply on screen at once and go to the server through the tab's save
+ * queue (lib/save-queue), which checks every answer, keeps and retries what failed, and outlives
+ * the page. Changes the server render may not include yet are laid over it here. Values saved by
+ * the old browser-only version are migrated once.
+ *
+ * `userId` ties the queue to this account, so another account signing in on the same tab never
+ * receives its changes.
  */
 export function UserDataProvider({
+  userId,
   initialSettings,
   initialInventory,
   children,
 }: {
+  userId: number;
   initialSettings: Settings | null;
   initialInventory: Inventory;
   children: ReactNode;
 }) {
-  const [settings, setSettingsState] = useState<Settings>(initialSettings ?? DEFAULT_SETTINGS);
-  const [inventory, setInventory] = useState<Inventory>(initialInventory);
+  const [settings, setSettingsState] = useState<Settings>(() => overlaySettings(initialSettings ?? DEFAULT_SETTINGS, saveQueue.jobsFor(userId)));
+  const [inventory, setInventory] = useState<Inventory>(() => overlayInventory(initialInventory, saveQueue.jobsFor(userId)));
   const [favorites, setFavorites] = useState<ItemId[]>([]);
   const [favoriteItems, setFavoriteItems] = useState<FavoriteItem[]>([]);
+  // the list toggleFavorite reads, so the request says the same thing as the screen
+  const favoritesRef = useRef<ItemId[]>([]);
 
   const loadFavorites = useCallback(() => {
     fetch("/api/user/favorites", { cache: "no-store" })
       .then((r) => (r.ok ? (r.json() as Promise<{ ids: ItemId[]; items: FavoriteItem[] }>) : null))
       .then((j) => {
         if (!j) return;
-        setFavorites(j.ids);
+        // stars this tab has not got onto the server yet win over what the server sent
+        const ids = overlayFavorites(j.ids, saveQueue.jobsFor(userId));
+        favoritesRef.current = ids;
+        setFavorites(ids);
         setFavoriteItems(j.items);
       })
       .catch(() => {});
-  }, []);
+  }, [userId]);
+
+  // the queue: claim it for this account, resend what failed, and send what is waiting before the page goes
+  useEffect(() => {
+    saveQueue.claim(userId);
+    // this page rendered, so the session is good: send what a 401 held back or what failed earlier
+    // (e.g. before signing back in)
+    saveQueue.resume();
+    const flushForUnload = () => saveQueue.flush(true);
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flushForUnload();
+    };
+    window.addEventListener("pagehide", flushForUnload);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("online", saveQueue.retry);
+    // a starred item reached the server: reload the list with its name and price
+    const offDone = saveQueue.onDone((job) => {
+      if (job.kind === "favorite") loadFavorites();
+    });
+    return () => {
+      window.removeEventListener("pagehide", flushForUnload);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("online", saveQueue.retry);
+      offDone();
+      // leaving this page (providers are per page): send what is still waiting now, so the next
+      // page's server render is more likely to have it; the next provider lays the rest over.
+      // keepalive in case this unmount is the tab going away (a refused keepalive request just
+      // fails and is retried like any other)
+      saveQueue.flush(true);
+      saveQueue.markNavigation();
+    };
+  }, [userId, loadFavorites]);
 
   // starred items come from the account, fetched once after mount
   useEffect(() => {
@@ -63,70 +133,55 @@ export function UserDataProvider({
     return () => clearTimeout(t);
   }, [loadFavorites]);
 
-  const toggleFavorite = useCallback(
-    (id: ItemId) => {
-      let on = false;
-      setFavorites((cur) => {
-        on = !cur.includes(id);
-        return on ? [...cur, id] : cur.filter((x) => x !== id);
-      });
-      fetch("/api/user/favorites", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, on }) })
-        .then(loadFavorites)
-        .catch(() => {});
-    },
-    [loadFavorites],
-  );
-  const settingsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const itemTimers = useRef(new Map<ItemId, ReturnType<typeof setTimeout>>());
+  // after browser back/forward this page may show settings and inventory older than what this tab
+  // saved since: load the account's current ones and lay the changes not on the server yet over them
+  useEffect(() => {
+    if (!needsHistoryReload()) return;
+    const ctrl = new AbortController();
+    const opts = { cache: "no-store" as const, signal: ctrl.signal };
+    Promise.all([
+      fetchJson<{ settings: Settings | null }>("/api/user/settings", opts),
+      fetchJson<{ inventory: Inventory }>("/api/user/inventory", opts),
+    ])
+      .then(([s, inv]) => {
+        historyReloadDone();
+        const jobs = saveQueue.jobsFor(userId);
+        setSettingsState(overlaySettings(s.settings ?? DEFAULT_SETTINGS, jobs));
+        setInventory(overlayInventory(inv.inventory, jobs));
+      })
+      // aborted (the page went), or failed: the page keeps what it showed, and the next page tries again
+      .catch(() => {});
+    return () => ctrl.abort();
+  }, [userId]);
 
-  const saveSettings = useCallback((next: Settings) => {
-    if (settingsTimer.current) clearTimeout(settingsTimer.current);
-    settingsTimer.current = setTimeout(() => {
-      fetch("/api/user/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(next) }).catch(() => {});
-    }, 600);
+  const toggleFavorite = useCallback((id: ItemId) => {
+    const cur = favoritesRef.current;
+    const on = !cur.includes(id);
+    const next = on ? [...cur, id] : cur.filter((x) => x !== id);
+    favoritesRef.current = next;
+    setFavorites(next);
+    saveQueue.enqueue({ kind: "favorite", id, on });
   }, []);
 
-  const saveItem = useCallback((id: ItemId, qty: number, avgCost?: number | null) => {
-    const timers = itemTimers.current;
-    const t = timers.get(id);
-    if (t) clearTimeout(t);
-    timers.set(
-      id,
-      setTimeout(() => {
-        timers.delete(id);
-        fetch("/api/user/inventory", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, qty, avgCost }),
-        }).catch(() => {});
-      }, 400),
-    );
+  const setSettings = useCallback((next: Settings) => {
+    setSettingsState(next);
+    saveQueue.enqueue({ kind: "settings", settings: next }, SETTINGS_DELAY_MS);
   }, []);
 
-  const setSettings = useCallback(
-    (next: Settings) => {
-      setSettingsState(next);
-      saveSettings(next);
-    },
-    [saveSettings],
-  );
-
-  const setOwned = useCallback(
-    (id: ItemId, qty: number, avgCost?: number | null) => {
-      setInventory((cur) => {
-        const next: Inventory = { ...cur };
-        if (qty > 0) next[id] = { qty, avgCost: avgCost === null ? undefined : (avgCost ?? cur[id]?.avgCost), updatedAt: Date.now() };
-        else delete next[id];
-        return next;
-      });
-      saveItem(id, qty, avgCost);
-    },
-    [saveItem],
-  );
+  const setOwned = useCallback((id: ItemId, qty: number, avgCost?: number | null) => {
+    const updatedAt = Date.now();
+    setInventory((cur) => {
+      const next: Inventory = { ...cur };
+      if (qty > 0) next[id] = { qty, avgCost: avgCost === null ? undefined : (avgCost ?? cur[id]?.avgCost), updatedAt };
+      else delete next[id];
+      return next;
+    });
+    saveQueue.enqueue({ kind: "item", id, qty, avgCost, updatedAt }, ITEM_DELAY_MS);
+  }, []);
 
   const clearInventory = useCallback(() => {
     setInventory({});
-    fetch("/api/user/inventory", { method: "DELETE" }).catch(() => {});
+    saveQueue.enqueue({ kind: "clear" });
   }, []);
 
   // one-time migration from the browser-only version (runs in a callback after mount)
@@ -138,7 +193,7 @@ export function UserDataProvider({
           if (raw) {
             const migrated = normalizeSettings(JSON.parse(raw));
             setSettingsState(migrated);
-            saveSettings(migrated);
+            saveQueue.enqueue({ kind: "settings", settings: migrated }, SETTINGS_DELAY_MS);
             window.localStorage.removeItem(LEGACY_SETTINGS_KEY);
           }
         }
@@ -149,7 +204,7 @@ export function UserDataProvider({
             const entries = Object.entries(legacy).filter(([, v]) => v && v.qty > 0);
             if (entries.length) {
               setInventory(Object.fromEntries(entries) as Inventory);
-              for (const [id, v] of entries) saveItem(Number(id), v!.qty, v!.avgCost);
+              for (const [id, v] of entries) saveQueue.enqueue({ kind: "item", id: Number(id), qty: v!.qty, avgCost: v!.avgCost }, ITEM_DELAY_MS);
             }
             window.localStorage.removeItem(LEGACY_INVENTORY_KEY);
           }
@@ -163,13 +218,38 @@ export function UserDataProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return <Ctx.Provider value={{ settings, setSettings, inventory, setOwned, clearInventory, favorites, favoriteItems, toggleFavorite }}>{children}</Ctx.Provider>;
+  const value = useMemo<UserData>(
+    () => ({
+      settings,
+      setSettings,
+      inventory,
+      setOwned,
+      clearInventory,
+      favorites,
+      favoriteItems,
+      toggleFavorite,
+      retrySaves: saveQueue.retry,
+    }),
+    [settings, setSettings, inventory, setOwned, clearInventory, favorites, favoriteItems, toggleFavorite],
+  );
+
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 export function useUserData(): UserData {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error("useUserData must be used inside <UserDataProvider>");
   return ctx;
+}
+
+/** The same data, or null on a page without a provider (help, account, admin, the loading skeleton). */
+export function useOptionalUserData(): UserData | null {
+  return useContext(Ctx);
+}
+
+/** Whether this tab's changes have reached the server (for SaveStatus). Separate from the data, so a save does not re-render every page. */
+export function useSaveState(): SaveSnapshot {
+  return useSyncExternalStore(saveQueue.subscribe, saveQueue.getSnapshot, serverSave);
 }
 
 export function useSettings(): [Settings, (next: Settings) => void] {

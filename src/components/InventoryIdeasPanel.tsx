@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ideasFromInventory } from "@/lib/engine/ideas";
 import type { Item, ItemId, MarketPrice, Recipe } from "@/lib/engine/types";
+import { describeError, fetchJson, problemAction, type FetchProblem } from "@/lib/fetch-error";
 import { InventoryIdeas } from "./InventoryIdeas";
 import { Loading } from "./Loading";
 import { useInventory, useSettings } from "./UserDataProvider";
@@ -21,24 +22,35 @@ export function InventoryIdeasPanel() {
   const inventory = useInventory();
   const [data, setData] = useState<DataResponse | null>(null);
   const [prices, setPrices] = useState<Record<ItemId, MarketPrice> | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [problem, setProblem] = useState<FetchProblem | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
+  // State is only touched inside promise callbacks so the effect body stays pure. A retry loads
+  // whichever of the two is still missing.
   useEffect(() => {
-    fetch("/api/data", { cache: "no-cache" })
-      .then((r) => (r.ok ? (r.json() as Promise<DataResponse>) : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then(setData)
-      .catch((e: Error) => setError(e.message));
-    fetch("/api/prices?ids=all")
-      .then((r) => (r.ok ? (r.json() as Promise<{ prices: Record<ItemId, MarketPrice> }>) : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((j) => setPrices(j.prices))
-      .catch((e: Error) => setError(e.message));
-  }, []);
+    if (!data) {
+      fetchJson<DataResponse>("/api/data", { cache: "no-cache" })
+        .then(setData)
+        .catch((e) => setProblem(describeError(e)));
+    }
+    if (!prices) {
+      fetchJson<{ prices: Record<ItemId, MarketPrice> }>("/api/prices?ids=all")
+        .then((j) => setPrices(j.prices))
+        .catch((e) => setProblem(describeError(e)));
+    }
+    // data and prices are read once per attempt, not on every change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attempt]);
 
   const ideas = useMemo(
     () => (data && prices ? ideasFromInventory({ recipes: data.recipes, items: data.items, prices, inventory, settings }) : []),
     [data, prices, inventory, settings],
   );
   const ownedCount = Object.values(inventory).filter((v) => v && v.qty > 0).length;
+  const retry = () => {
+    setProblem(null);
+    setAttempt((a) => a + 1);
+  };
 
   return (
     <Card className="mt-6">
@@ -46,9 +58,11 @@ export function InventoryIdeasPanel() {
         title="ทำอะไรได้จากของในคลัง"
         hint={<>สูตรที่ทำได้ทันทีด้วยของที่มี ไม่ต้องซื้อเพิ่ม (นับวัตถุดิบทดแทนให้) · &ldquo;กำไร&rdquo; = ขายผลผลิตหลังหักภาษี − มูลค่าวัตถุดิบที่ใช้ไปถ้าขายตรง ๆ แทน</>}
       />
-      {error ? (
+      {problem ? (
         <div className="p-4">
-          <Notice tone="bad">โหลดข้อมูลไม่สำเร็จ: {error}</Notice>
+          <Notice tone="bad" action={problemAction(problem, retry)}>
+            โหลดข้อมูลไม่สำเร็จ: {problem.message}
+          </Notice>
         </div>
       ) : ownedCount === 0 ? (
         <EmptyState title="เพิ่มของที่มีเข้าคลังก่อน แล้วระบบจะบอกว่าเอาไปทำอะไรได้กำไรสุด" />

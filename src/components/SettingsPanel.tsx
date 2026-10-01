@@ -1,69 +1,96 @@
 "use client";
 
-import type { Settings, SkillGroup } from "@/lib/engine/types";
+import { useId } from "react";
+import type { Settings } from "@/lib/engine/types";
 import { netRate } from "@/lib/engine/cost";
 import { imperialBonus, massProcessCount, MASTERY_MAX, maxQuantityChance } from "@/lib/engine/mastery";
 import { pct } from "@/lib/format";
+import {
+  FAMILY_FAME,
+  FAMILY_FAME_OPTIONS,
+  MERCHANT_RING,
+  NET_RATE_LABEL,
+  OWNED_COST,
+  OWNED_COST_OPTIONS,
+  SKILL_TIERS,
+  SKILLS,
+  VALUE_PACK,
+} from "@/lib/settings-labels";
 import { NumberInput } from "./NumberInput";
 import { Card, CardHeader } from "./ui/Card";
 import { checkboxCls, fieldCls, selectCls, selectTightCls } from "./ui/field";
 
-const TIERS = ["มือใหม่", "ฝึกฝน", "คล่องแคล่ว", "เชี่ยวชาญ", "ช่าง", "ลือชื่อ", "เซียน"];
-const SKILLS: { key: SkillGroup; label: string }[] = [
-  { key: "alchemy", label: "แปรธาตุ" },
-  { key: "cooking", label: "ทำอาหาร" },
-  { key: "processing", label: "แปรรูป" },
-];
-
+/**
+ * Every character setting, in one column (it lives in SettingsDrawer). The skills are a table
+ * from sm up (one header row, one row per skill); below sm each skill is its own small card with a
+ * label over every field, so nothing is clipped on a 375px phone.
+ */
 export function SettingsPanel({ settings, onChange }: { settings: Settings; onChange: (s: Settings) => void }) {
   const set = (patch: Partial<Settings>) => onChange({ ...settings, ...patch });
   const rate = netRate(settings);
+  const costId = useId();
+  const costHint = OWNED_COST_OPTIONS.find((o) => o.value === settings.ownedCostMode)?.hint;
 
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className="space-y-4">
       <Card>
         <CardHeader as="h3" title="รายรับจากตลาด" />
         <div className="space-y-2 p-4 text-sm">
-          <label className="flex items-center justify-between gap-3">
-            <span>Value Pack (+30%)</span>
+          <label className="flex min-h-9 items-center justify-between gap-3">
+            <span>{VALUE_PACK.checkbox}</span>
             <input type="checkbox" checked={settings.valuePack} onChange={(e) => set({ valuePack: e.target.checked })} className={checkboxCls} />
           </label>
           <label className="flex items-center justify-between gap-3">
-            <span>Family Fame</span>
+            <span>{FAMILY_FAME}</span>
             <select value={settings.familyFame} onChange={(e) => set({ familyFame: Number(e.target.value) })} className={selectCls()}>
-              <option value={0}>ไม่มี</option>
-              <option value={0.005}>+0.5% (1,000–3,999)</option>
-              <option value={0.01}>+1% (4,000–6,999)</option>
-              <option value={0.015}>+1.5% (7,000+)</option>
+              {FAMILY_FAME_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
             </select>
           </label>
-          <label className="flex items-center justify-between gap-3">
-            <span>แหวนพ่อค้าผู้มั่งคั่ง (+5%)</span>
+          <label className="flex min-h-9 items-center justify-between gap-3">
+            <span>{MERCHANT_RING.checkbox}</span>
             <input type="checkbox" checked={settings.merchantRing} onChange={(e) => set({ merchantRing: e.target.checked })} className={checkboxCls} />
           </label>
           <div className="flex items-center justify-between border-t border-border pt-2 text-muted">
-            <span>ได้รับจริงหลังภาษี</span>
+            <span>{NET_RATE_LABEL}</span>
             <span className="num font-semibold text-foreground">{pct(rate, 2)}</span>
           </div>
-          <label className="flex items-center justify-between gap-3 border-t border-border pt-2">
-            <span>ของที่มีอยู่แล้ว คิดต้นทุน</span>
-            <select
-              value={settings.ownedCostMode}
-              onChange={(e) => set({ ownedCostMode: e.target.value as Settings["ownedCostMode"] })}
-              className={selectCls()}
-            >
-              <option value="market">ตามราคาตลาด (ค่าเสียโอกาส)</option>
-              <option value="zero">0 (ได้มาฟรี/เก็บเอง)</option>
-            </select>
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader as="h3" title="ต้นทุนของในคลัง" />
+        <div className="space-y-1.5 p-4 text-sm">
+          <label htmlFor={costId} className="block">
+            {OWNED_COST}
           </label>
+          <select
+            id={costId}
+            value={settings.ownedCostMode}
+            onChange={(e) => set({ ownedCostMode: e.target.value as Settings["ownedCostMode"] })}
+            aria-describedby={`${costId}-hint`}
+            className={`${selectCls()} w-full`}
+          >
+            {OWNED_COST_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <p id={`${costId}-hint`} className="text-xs text-muted">
+            {costHint}
+          </p>
         </div>
       </Card>
 
       <Card>
         <CardHeader as="h3" title="ทักษะและผลผลิต" />
-        <div className="space-y-3 p-4 text-sm">
-          {/* header row once, then one aligned row per skill: every cell is label-less so nothing wraps */}
-          <div className="grid grid-cols-[4.5rem_1fr_1fr_1fr] gap-2 text-xs text-muted">
+        <div className="space-y-3 p-4 text-sm sm:space-y-2">
+          {/* sm and up: one header row for the table below (each field also has its own hidden label) */}
+          <div aria-hidden className="hidden grid-cols-[4.5rem_1fr_1fr_1fr] gap-2 text-xs text-muted sm:grid">
             <span />
             <span>ระดับที่มี</span>
             <span>Mastery</span>
@@ -76,49 +103,64 @@ export function SettingsPanel({ settings, onChange }: { settings: Settings; onCh
                 ? `แปรรูปได้ครั้งละ ${massProcessCount(mastery)} ชุด`
                 : `โอกาสได้ผลผลิตเต็ม ${pct(maxQuantityChance(key, mastery), 1)} · โบนัสส่งราชวัง +${pct(imperialBonus(mastery))}`;
             return (
-              <div key={key} className="grid grid-cols-[4.5rem_1fr_1fr_1fr] items-start gap-2">
-                <span className="pt-2 font-medium">{label}</span>
-                <div>
-                  <select
-                    aria-label={`ระดับ${label}`}
-                    value={settings.skillTier[key] ?? 6}
-                    onChange={(e) => set({ skillTier: { ...settings.skillTier, [key]: Number(e.target.value) } })}
-                    className={`${selectTightCls()} w-full`}
-                  >
-                    {TIERS.map((t, i) => (
-                      <option key={t} value={i}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="mt-0.5 min-h-4 text-xs text-muted">ซ่อนสูตรที่เกินระดับ</div>
+              <section
+                key={key}
+                aria-label={label}
+                className="rounded-lg border border-border p-3 sm:grid sm:grid-cols-[4.5rem_1fr_1fr_1fr] sm:items-start sm:gap-2 sm:rounded-none sm:border-0 sm:p-0"
+              >
+                <h4 className="mb-2 font-medium sm:mb-0 sm:pt-2">{label}</h4>
+                {/* phones: tier on its own line, then Mastery and รอบ/ชม. side by side; sm and up: three table cells */}
+                <div className="grid grid-cols-2 gap-x-2 gap-y-3 sm:contents">
+                  <label className="col-span-2 block sm:col-span-1">
+                    <span className="mb-1 block text-xs text-muted sm:sr-only">
+                      ระดับ<span className="sr-only">{label}</span>
+                    </span>
+                    <select
+                      value={settings.skillTier[key] ?? 6}
+                      onChange={(e) => set({ skillTier: { ...settings.skillTier, [key]: Number(e.target.value) } })}
+                      className={`${selectTightCls()} w-full`}
+                    >
+                      {SKILL_TIERS.map((t, i) => (
+                        <option key={t} value={i}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="mt-0.5 block min-h-4 text-xs text-muted">ซ่อนสูตรที่เกินระดับ</span>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-muted sm:sr-only">
+                      Mastery<span className="sr-only"> {label}</span>
+                    </span>
+                    <NumberInput
+                      step={50}
+                      min={0}
+                      max={MASTERY_MAX}
+                      value={mastery}
+                      onChange={(v) => set({ mastery: { ...settings.mastery, [key]: v } })}
+                      className={`${fieldCls()} num`}
+                    />
+                    <span className="mt-0.5 line-clamp-2 min-h-4 text-xs text-muted max-sm:hidden" title={hint}>
+                      {hint}
+                    </span>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-muted sm:sr-only">
+                      รอบ/ชม.<span className="sr-only"> {label}</span>
+                    </span>
+                    <NumberInput
+                      step={50}
+                      min={0}
+                      value={settings.craftsPerHour[key] ?? 0}
+                      onChange={(v) => set({ craftsPerHour: { ...settings.craftsPerHour, [key]: v } })}
+                      className={`${fieldCls()} num`}
+                    />
+                    <span className="mt-0.5 block min-h-4 text-xs text-muted">ใช้คิดกำไร/ชม.</span>
+                  </label>
                 </div>
-                <div>
-                  <NumberInput
-                    aria-label={`Mastery ${label}`}
-                    step={50}
-                    min={0}
-                    max={MASTERY_MAX}
-                    value={mastery}
-                    onChange={(v) => set({ mastery: { ...settings.mastery, [key]: v } })}
-                    className={`${fieldCls()} num`}
-                  />
-                  <div className="mt-0.5 line-clamp-2 min-h-4 text-xs text-muted" title={hint}>
-                    {hint}
-                  </div>
-                </div>
-                <div>
-                  <NumberInput
-                    aria-label={`รอบต่อชั่วโมง ${label}`}
-                    step={50}
-                    min={0}
-                    value={settings.craftsPerHour[key] ?? 0}
-                    onChange={(v) => set({ craftsPerHour: { ...settings.craftsPerHour, [key]: v } })}
-                    className={`${fieldCls()} num`}
-                  />
-                  <div className="mt-0.5 min-h-4 text-xs text-muted">ใช้คิดกำไร/ชม.</div>
-                </div>
-              </div>
+                {/* phones: the Mastery hint across the whole card */}
+                <p className="mt-2 text-xs text-muted sm:hidden">{hint}</p>
+              </section>
             );
           })}
           <p className="text-xs text-muted">

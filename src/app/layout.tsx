@@ -26,6 +26,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#0f1115",
+  // draw edge to edge on notched phones; globals.css pads the body and the tab bar by the safe areas
+  viewportFit: "cover",
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

@@ -6,18 +6,21 @@ import { useEffect, useMemo, useState } from "react";
 import { oneOf, usePersistentState } from "@/lib/use-persistent";
 import type { ItemId, MarketPrice } from "@/lib/engine/types";
 import { downloadCsv, parseCsv, toCsv } from "@/lib/csv";
+import { describeError, fetchJson, isAbort, problemAction, type FetchProblem } from "@/lib/fetch-error";
 import { silver } from "@/lib/format";
+import { OWNED_COST, OWNED_COST_LABEL, SETTINGS_TITLE } from "@/lib/settings-labels";
 import type { SessionUser } from "./auth/UserMenu";
 import { InventoryIdeasPanel } from "./InventoryIdeasPanel";
 import { ItemIcon } from "./ItemIcon";
 import { NumberInput } from "./NumberInput";
-import { TopNav } from "./TopNav";
 import { useUserData } from "./UserDataProvider";
 import { Badge } from "./ui/Badge";
 import { btn } from "./ui/button";
+import { useConfirm } from "./ui/ConfirmDialog";
 import { EmptyState } from "./ui/EmptyState";
 import { fieldCls, selectCls } from "./ui/field";
 import { Notice, type NoticeTone } from "./ui/Notice";
+import { Page, PageHeader } from "./ui/Page";
 import { SearchInput } from "./ui/SearchInput";
 import { Segmented } from "./ui/Segmented";
 
@@ -38,9 +41,14 @@ export interface ItemLite {
 
 /** "คลังของ": everything the member owns, with quantity, recorded cost and current market value. */
 export function InventoryManager({ items, user }: { items: ItemLite[]; user: SessionUser }) {
-  const { inventory, setOwned, clearInventory } = useUserData();
+  const { inventory, setOwned, clearInventory, settings, setSettings } = useUserData();
+  const [confirm, confirmDialog] = useConfirm();
   const [query, setQuery] = useState("");
   const [prices, setPrices] = useState<Record<ItemId, MarketPrice>>({});
+  // which list of ids the prices were loaded for, and why the last load failed (cells then show "-")
+  const [pricesFor, setPricesFor] = useState<string | null>(null);
+  const [priceProblem, setPriceProblem] = useState<FetchProblem | null>(null);
+  const [priceAttempt, setPriceAttempt] = useState(0);
   const [sort, setSort] = usePersistentState<InventorySort>("inventory.sort", "name", oneOf(["name", "recent", "value"] as const));
   const [listFilter, setListFilter] = useState("");
   // the row just added from the search box: scrolled into view and tinted for a moment
@@ -75,11 +83,19 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
 
   useEffect(() => {
     if (!ownedKey) return;
-    fetch(`/api/prices?ids=${ownedKey}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((json: { prices: Record<ItemId, MarketPrice> }) => setPrices(json.prices))
-      .catch(() => {});
-  }, [ownedKey]);
+    const ctl = new AbortController();
+    fetchJson<{ prices: Record<ItemId, MarketPrice> }>(`/api/prices?ids=${ownedKey}`, { signal: ctl.signal })
+      .then((json) => {
+        setPrices(json.prices);
+        setPricesFor(ownedKey);
+        setPriceProblem(null);
+      })
+      .catch((e) => {
+        if (!isAbort(e)) setPriceProblem(describeError(e));
+      });
+    return () => ctl.abort();
+  }, [ownedKey, priceAttempt]);
+  const pricesLoading = !priceProblem && pricesFor !== ownedKey;
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -171,63 +187,83 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
   };
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-3 py-4 md:px-6">
-      <TopNav user={user} subtitle="ของที่มีอยู่ ใช้หักออกจากวัตถุดิบที่ต้องซื้อในแผนผลิต และคิดต้นทุนตามที่ตั้งค่า" />
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-base font-semibold">คลังของ ({owned.length} รายการ)</h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={importMode}
-            onChange={(e) => setImportMode(e.target.value as ImportMode)}
-            className={selectCls()}
-            aria-label="วิธีนำเข้า"
-            title="ของที่ซ้ำกับในคลัง: ทับด้วยตัวเลขในไฟล์ หรือบวกเพิ่มจากที่มี (ใช้เมื่อนำเข้าทีละคลังในเกม)"
-          >
-            <option value="replace">ไฟล์ทับจำนวนเดิม</option>
-            <option value="add">ไฟล์บวกเพิ่มจากที่มี</option>
-          </select>
-          <label className={`${btn("secondary")} cursor-pointer`}>
-            นำเข้า CSV
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void importCsv(f);
-                e.target.value = "";
-              }}
-            />
-          </label>
-          <button onClick={exportCsv} disabled={owned.length === 0} className={btn("secondary")}>
-            ส่งออก CSV
-          </button>
-          <button onClick={downloadTemplate} className={btn("secondary")} title="ไฟล์ตัวอย่างสำหรับกรอกแล้วนำเข้า">
-            ไฟล์ตัวอย่าง CSV
-          </button>
-          {customCount > 0 && (
-            <button
-              onClick={() => {
-                for (const o of owned) if (o.avgCost !== undefined) setOwned(o.id, o.qty, null);
-              }}
-              className={btn("secondary")}
-              title="เปลี่ยนต้นทุนทุกรายการให้ใช้ราคาตลาดปัจจุบันเสมอ"
+    <Page user={user} width="narrow">
+      <PageHeader
+        title={`คลังของ (${owned.length})`}
+        description="ของที่มีอยู่ ใช้หักออกจากวัตถุดิบที่ต้องซื้อในแผนผลิต และคิดต้นทุนตามที่ตั้งค่า"
+        actions={
+          <>
+            <select
+              value={importMode}
+              onChange={(e) => setImportMode(e.target.value as ImportMode)}
+              className={selectCls()}
+              aria-label="วิธีนำเข้า"
+              title="ของที่ซ้ำกับในคลัง: ทับด้วยตัวเลขในไฟล์ หรือบวกเพิ่มจากที่มี (ใช้เมื่อนำเข้าทีละคลังในเกม)"
             >
-              ต้นทุนทั้งหมดตามตลาด
+              <option value="replace">ไฟล์ทับจำนวนเดิม</option>
+              <option value="add">ไฟล์บวกเพิ่มจากที่มี</option>
+            </select>
+            <label className={`${btn("secondary")} cursor-pointer`}>
+              นำเข้า CSV
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void importCsv(f);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            <button onClick={exportCsv} disabled={owned.length === 0} className={btn("secondary")}>
+              ส่งออก CSV
             </button>
-          )}
-          {owned.length > 0 && (
-            <button
-              onClick={() => {
-                if (confirm("ล้างคลังทั้งหมด?")) clearInventory();
-              }}
-              className={btn("danger")}
-            >
-              ล้างทั้งหมด
+            <button onClick={downloadTemplate} className={btn("secondary")} title="ไฟล์ตัวอย่างสำหรับกรอกแล้วนำเข้า">
+              ไฟล์ตัวอย่าง CSV
             </button>
-          )}
-        </div>
-      </div>
+            {customCount > 0 && (
+              <button
+                onClick={() => {
+                  for (const o of owned) if (o.avgCost !== undefined) setOwned(o.id, o.qty, null);
+                }}
+                className={btn("secondary")}
+                title="เปลี่ยนต้นทุนทุกรายการให้ใช้ราคาตลาดปัจจุบันเสมอ"
+              >
+                ต้นทุนทั้งหมดตามตลาด
+              </button>
+            )}
+            {owned.length > 0 && (
+              <button
+                aria-haspopup="dialog"
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: "ล้างคลังทั้งหมด?",
+                    body: "ของทุกรายการด้านล่างจะออกจากคลัง รวมต้นทุนที่กรอกไว้ กู้คืนไม่ได้",
+                    details: owned.map((o) => byId.get(o.id)?.th ?? `#${o.id}`),
+                    confirmLabel: `ลบ ${owned.length} รายการ`,
+                    tone: "danger",
+                  });
+                  if (ok) clearInventory();
+                }}
+                className={btn("danger")}
+              >
+                ล้างทั้งหมด
+              </button>
+            )}
+          </>
+        }
+      />
+      {confirmDialog}
+      {customCount > 0 && settings.ownedCostMode !== "avg" && (
+        <Notice
+          tone="warn"
+          className="mb-3"
+          action={{ label: "ใช้ราคาที่จ่ายจริง", onClick: () => setSettings({ ...settings, ownedCostMode: "avg" }) }}
+        >
+          ต้นทุนที่กำหนดเองยังไม่ถูกใช้คิดกำไร · ตอนนี้คิดจาก &ldquo;{OWNED_COST_LABEL[settings.ownedCostMode]}&rdquo;
+        </Notice>
+      )}
       {importMsg && (
         <Notice tone={importMsg.tone} className="mb-3" onClose={() => setImportMsg(null)}>
           {importMsg.text}
@@ -270,6 +306,19 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
             </span>
           )}
         </div>
+      )}
+
+      {priceProblem && owned.length > 0 && (
+        <Notice
+          tone="warn"
+          className="mb-3"
+          action={problemAction(priceProblem, () => {
+            setPriceProblem(null);
+            setPriceAttempt((a) => a + 1);
+          })}
+        >
+          โหลดราคาตลาดไม่สำเร็จ: {priceProblem.message} · ราคาและมูลค่าในตารางจึงเป็น &ldquo;-&rdquo;
+        </Notice>
       )}
 
       <div className="overflow-x-auto rounded-lg border border-border bg-panel lg:overflow-visible">
@@ -337,8 +386,10 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
                       </div>
                     )}
                   </td>
-                  <td className="num px-2 py-1.5 text-right text-muted">{price ? silver(price) : it?.market ? "…" : "ไม่มีในตลาด"}</td>
-                  <td className="num px-2 py-1.5 text-right font-medium">{silver(o.qty * price)}</td>
+                  <td className="num px-2 py-1.5 text-right text-muted">
+                    {price ? silver(price) : !it?.market ? "ไม่มีในตลาด" : pricesLoading ? "…" : "-"}
+                  </td>
+                  <td className="num px-2 py-1.5 text-right font-medium">{price ? silver(o.qty * price) : "-"}</td>
                   <td className="px-2 py-1.5 text-right">
                     <button onClick={() => setOwned(o.id, 0)} className={btn("dangerGhost", "sm")}>
                       ลบ
@@ -370,7 +421,7 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
                 </td>
                 <td className="num px-2 py-2 text-right">{totalCost ? silver(totalCost) : "-"}</td>
                 <td />
-                <td className="num px-2 py-2 text-right">{silver(totalValue)}</td>
+                <td className="num px-2 py-2 text-right">{priceProblem ? "-" : silver(totalValue)}</td>
                 <td />
               </tr>
             </tfoot>
@@ -378,10 +429,10 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
         </table>
       </div>
       <p className="mt-3 text-xs text-muted">
-        ต้นทุน/ชิ้น: &ldquo;ตามตลาด&rdquo; = ใช้ราคาตลาดปัจจุบันเสมอ (ค่าเริ่มต้น) · &ldquo;กำหนดเอง&rdquo; = ใส่ราคาที่จ่ายจริง ใช้เมื่อตั้งค่า &ldquo;ของที่มีอยู่แล้ว
-        คิดต้นทุน = ตามที่บันทึก&rdquo; · ช่องจำนวน: พิมพ์แล้วกด Enter หรือคลิกออก
+        ต้นทุน/ชิ้น: &ldquo;ตามตลาด&rdquo; = ใช้ราคาตลาดปัจจุบันเสมอ (ค่าเริ่มต้น) · &ldquo;กำหนดเอง&rdquo; = ใส่ราคาที่จ่ายจริง ใช้คิดกำไรเมื่อตั้ง &ldquo;{OWNED_COST}&rdquo; เป็น
+        &ldquo;{OWNED_COST_LABEL.avg}&rdquo; ใน{SETTINGS_TITLE} · ช่องจำนวน: พิมพ์แล้วกด Enter หรือคลิกออก
       </p>
       <InventoryIdeasPanel />
-    </main>
+    </Page>
   );
 }

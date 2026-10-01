@@ -3,15 +3,17 @@
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { tradeMath } from "@/lib/engine/trade";
+import { fetchJson, isAbort } from "@/lib/fetch-error";
 import { pct, signedPct, silver } from "@/lib/format";
+import { FAMILY_FAME, FAMILY_FAME_OPTIONS, MERCHANT_RING, SETTINGS_TITLE, VALUE_PACK } from "@/lib/settings-labels";
 import type { SessionUser } from "./auth/UserMenu";
 import { ItemIcon } from "./ItemIcon";
 import { NumberInput } from "./NumberInput";
-import { TopNav } from "./TopNav";
 import { useSettings } from "./UserDataProvider";
 import { btn } from "./ui/button";
 import { fieldCls, selectCls } from "./ui/field";
 import { Money, pctCls } from "./ui/Money";
+import { Page, PageHeader } from "./ui/Page";
 
 interface MarketHit {
   id: number;
@@ -27,13 +29,6 @@ interface OrderRow {
   buyers: number;
 }
 
-const FAME_OPTIONS = [
-  { v: 0, label: "0" },
-  { v: 0.005, label: "+0.5% (1,000–3,999)" },
-  { v: 0.01, label: "+1% (4,000–6,999)" },
-  { v: 0.015, label: "+1.5% (7,000+)" },
-];
-
 const inputCls = `${fieldCls()} num`;
 const labelCls = "flex flex-col gap-1 text-sm";
 
@@ -41,10 +36,20 @@ export function TradeCalc({ user }: { user: SessionUser }) {
   const params = useSearchParams();
   const [settings] = useSettings();
 
-  // bonuses start from the member's saved settings but can be changed here without saving
-  const [valuePack, setValuePack] = useState(settings.valuePack);
-  const [merchantRing, setMerchantRing] = useState(settings.merchantRing);
-  const [familyFame, setFamilyFame] = useState(settings.familyFame);
+  // the bonuses follow ตั้งค่าตัวละคร (so a change made in the drawer applies here at once);
+  // changing one here is a page-only override (null = follow the settings), never saved
+  const [valuePackOverride, setValuePackOverride] = useState<boolean | null>(null);
+  const [merchantRingOverride, setMerchantRingOverride] = useState<boolean | null>(null);
+  const [familyFameOverride, setFamilyFameOverride] = useState<number | null>(null);
+  const valuePack = valuePackOverride ?? settings.valuePack;
+  const merchantRing = merchantRingOverride ?? settings.merchantRing;
+  const familyFame = familyFameOverride ?? settings.familyFame;
+  const overridden = valuePackOverride !== null || merchantRingOverride !== null || familyFameOverride !== null;
+  const resetBonuses = () => {
+    setValuePackOverride(null);
+    setMerchantRingOverride(null);
+    setFamilyFameOverride(null);
+  };
 
   const [qty, setQty] = useState(1);
   const [buy, setBuy] = useState(Number(params.get("buy")) || 0);
@@ -52,6 +57,9 @@ export function TradeCalc({ user }: { user: SessionUser }) {
 
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<MarketHit[]>([]);
+  // the last search failed (shown apart from "nothing found"); bumping searchAttempt runs it again
+  const [searchFailed, setSearchFailed] = useState(false);
+  const [searchAttempt, setSearchAttempt] = useState(0);
   const [item, setItem] = useState<MarketHit | null>(null);
   const [orders, setOrders] = useState<OrderRow[] | null>(null);
   const [loadingOrders, setLoadingOrders] = useState(false);
@@ -60,28 +68,36 @@ export function TradeCalc({ user }: { user: SessionUser }) {
   useEffect(() => {
     const q = query.trim();
     if (q.length < 2) {
-      const t = setTimeout(() => setHits([]), 0);
+      const t = setTimeout(() => {
+        setHits([]);
+        setSearchFailed(false);
+      }, 0);
       return () => clearTimeout(t);
     }
     const ctl = new AbortController();
     const t = setTimeout(() => {
-      fetch(`/api/market/search?q=${encodeURIComponent(q)}`, { signal: ctl.signal })
-        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-        .then((j: { items: MarketHit[] }) => setHits(j.items))
-        .catch(() => {});
+      fetchJson<{ items: MarketHit[] }>(`/api/market/search?q=${encodeURIComponent(q)}`, { signal: ctl.signal })
+        .then((j) => {
+          setHits(j.items);
+          setSearchFailed(false);
+        })
+        .catch((e) => {
+          if (isAbort(e)) return;
+          setHits([]);
+          setSearchFailed(true);
+        });
     }, 250);
     return () => {
       clearTimeout(t);
       ctl.abort();
     };
-  }, [query]);
+  }, [query, searchAttempt]);
 
   // "?item=ID" from the market page preselects an item
   const paramItem = Number(params.get("item"));
   useEffect(() => {
     if (!paramItem) return;
     const ctl = new AbortController();
-    fetch(`/api/market/search?q=${paramItem}`, { signal: ctl.signal }).catch(() => {});
     // the search endpoint matches names only; load the item via its order book instead
     fetch(`/api/market/${paramItem}`, { signal: ctl.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
@@ -119,9 +135,8 @@ export function TradeCalc({ user }: { user: SessionUser }) {
   const good = result.profit > 0;
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-3 py-4 md:px-6">
-      <TopNav user={user} subtitle="ซื้อราคานี้ ขายราคานี้ จะได้เงินเท่าไหร่ หลังหักภาษีตลาดกลาง" />
-      <h2 className="mb-3 text-base font-semibold">คิดภาษี / กำไรเทรด</h2>
+    <Page user={user} width="narrow">
+      <PageHeader title="คิดภาษี / กำไรเทรด" description="ซื้อราคานี้ ขายราคานี้ จะได้เงินเท่าไหร่ หลังหักภาษีตลาดกลาง" />
 
       <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
         <section className="space-y-4 rounded-lg border border-border bg-panel p-4">
@@ -131,6 +146,14 @@ export function TradeCalc({ user }: { user: SessionUser }) {
               <span className="font-medium">ไอเท็ม (ไม่บังคับ — เลือกแล้วจะเห็นช่องราคาจริงในตลาด)</span>
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="พิมพ์ชื่อไอเท็ม…" className={fieldCls()} />
             </label>
+            {searchFailed && (
+              <p role="status" className="mt-1 flex flex-wrap items-center gap-x-1 text-xs text-bad">
+                ค้นหาไม่สำเร็จ ·
+                <button type="button" onClick={() => setSearchAttempt((a) => a + 1)} className="underline hover:text-foreground">
+                  ลองใหม่
+                </button>
+              </p>
+            )}
             {hits.length > 0 && (
               <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded border border-border bg-panel shadow-lg">
                 {hits.map((h) => (
@@ -175,30 +198,41 @@ export function TradeCalc({ user }: { user: SessionUser }) {
 
           <div className="grid gap-3 sm:grid-cols-3">
             <label className={labelCls}>
-              <span className="font-medium">Value Pack</span>
-              <select value={valuePack ? "1" : "0"} onChange={(e) => setValuePack(e.target.value === "1")} className={`${selectCls()} w-full`}>
-                <option value="1">มี (+30%)</option>
-                <option value="0">ไม่มี</option>
+              <span className="font-medium">{VALUE_PACK.name}</span>
+              <select value={valuePack ? "1" : "0"} onChange={(e) => setValuePackOverride(e.target.value === "1")} className={`${selectCls()} w-full`}>
+                <option value="1">{VALUE_PACK.on}</option>
+                <option value="0">{VALUE_PACK.off}</option>
               </select>
             </label>
             <label className={labelCls}>
-              <span className="font-medium">แหวนพ่อค้าผู้มั่งคั่ง</span>
-              <select value={merchantRing ? "1" : "0"} onChange={(e) => setMerchantRing(e.target.value === "1")} className={`${selectCls()} w-full`}>
-                <option value="0">ไม่มี</option>
-                <option value="1">มี (+5%)</option>
+              <span className="font-medium">{MERCHANT_RING.name}</span>
+              <select value={merchantRing ? "1" : "0"} onChange={(e) => setMerchantRingOverride(e.target.value === "1")} className={`${selectCls()} w-full`}>
+                <option value="0">{MERCHANT_RING.off}</option>
+                <option value="1">{MERCHANT_RING.on}</option>
               </select>
             </label>
             <label className={labelCls}>
-              <span className="font-medium">Family Fame</span>
-              <select value={familyFame} onChange={(e) => setFamilyFame(Number(e.target.value))} className={`${selectCls()} w-full`}>
-                {FAME_OPTIONS.map((o) => (
-                  <option key={o.v} value={o.v}>
+              <span className="font-medium">{FAMILY_FAME}</span>
+              <select value={familyFame} onChange={(e) => setFamilyFameOverride(Number(e.target.value))} className={`${selectCls()} w-full`}>
+                {FAMILY_FAME_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
                     {o.label}
                   </option>
                 ))}
               </select>
             </label>
           </div>
+          <p className="-mt-1 flex flex-wrap items-center gap-x-1 text-xs text-muted">
+            ใช้ค่าจาก{SETTINGS_TITLE} · เปลี่ยนตรงนี้ไม่บันทึก
+            {overridden && (
+              <>
+                {" · "}
+                <button type="button" onClick={resetBonuses} className="text-accent underline hover:text-accent-hover">
+                  คืนค่า
+                </button>
+              </>
+            )}
+          </p>
         </section>
 
         <section className="space-y-2 rounded-lg border border-border bg-panel p-4">
@@ -219,7 +253,7 @@ export function TradeCalc({ user }: { user: SessionUser }) {
           </p>
         </section>
       </div>
-    </main>
+    </Page>
   );
 }
 

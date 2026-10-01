@@ -7,22 +7,24 @@ import { CostEngine } from "@/lib/engine/cost";
 import { IMPERIAL_TYPES, PROCESSING_TYPES, RECIPE_TYPE_TH } from "@/lib/engine/mastery";
 import type { Inventory, Item, ItemId, MarketPrice, Overrides, Recipe, RecipeEvaluation, RecipeType } from "@/lib/engine/types";
 import { downloadCsv, toCsv } from "@/lib/csv";
+import { describeError, fetchJson, problemAction, type FetchProblem } from "@/lib/fetch-error";
 import { signedPct, silver, silverShort, timeAgo } from "@/lib/format";
+import { SETTINGS_TITLE } from "@/lib/settings-labels";
 import type { TreeTools } from "./CostTree";
 import { FavoriteStar } from "./FavoriteStar";
 import { ItemIcon } from "./ItemIcon";
 import { RecipeDetail } from "./RecipeDetail";
-import { SettingsPanel } from "./SettingsPanel";
+import { SettingsDrawer } from "./SettingsDrawer";
 import type { SessionUser } from "./auth/UserMenu";
-import { TopNav } from "./TopNav";
 import { useInventory, useSettings } from "./UserDataProvider";
 import { Badge, type BadgeTone } from "./ui/Badge";
-import { btn, btnShape, toggleCls } from "./ui/button";
+import { btn } from "./ui/button";
 import { cardCls } from "./ui/Card";
 import { EmptyState } from "./ui/EmptyState";
 import { checkboxCls, selectCls } from "./ui/field";
 import { Money, pctCls } from "./ui/Money";
 import { Notice } from "./ui/Notice";
+import { Page, PageHeader } from "./ui/Page";
 import { SearchInput } from "./ui/SearchInput";
 import { Segmented } from "./ui/Segmented";
 import { SkeletonRows } from "./ui/Skeleton";
@@ -72,15 +74,16 @@ const TAB_KEYS: Tab[] = ["all", "alchemy", "cooking", "processing", "imperial"];
 
 export function Studio({ user }: { user: SessionUser }) {
   const params = useSearchParams();
-  const [settings, setSettings] = useSettings();
+  const [settings] = useSettings();
   const inventory = useInventory();
   const [data, setData] = useState<DataResponse | null>(null);
-  const [dataError, setDataError] = useState<string | null>(null);
+  const [dataProblem, setDataProblem] = useState<FetchProblem | null>(null);
+  const [dataAttempt, setDataAttempt] = useState(0);
   const [prices, setPrices] = useState<Record<ItemId, MarketPrice>>({});
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [source, setSource] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [problem, setProblem] = useState<FetchProblem | null>(null);
 
   // links from the home page can preselect a tab / market filter / search / an open recipe
   const paramTab = params.get("tab") as Tab | null;
@@ -98,27 +101,25 @@ export function Studio({ user }: { user: SessionUser }) {
   const limit = limitState.key === filterKey ? limitState.limit : PAGE;
   const showMore = () => setLimitState({ key: filterKey, limit: limit + PAGE });
   const [expanded, setExpanded] = useState<number | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // State is only touched inside promise callbacks so the effect bodies stay pure.
   const fetchPrices = useCallback((force: boolean) => {
-    return fetch(`/api/prices?ids=all${force ? "&force=1" : ""}`)
-      .then((res) => (res.ok ? (res.json() as Promise<PricesResponse>) : Promise.reject(new Error(`HTTP ${res.status}`))))
+    return fetchJson<PricesResponse>(`/api/prices?ids=all${force ? "&force=1" : ""}`)
       .then((json) => {
         setPrices(json.prices);
         setFetchedAt(json.fetchedAt);
         setSource(json.source);
-        setError(null);
+        setProblem(null);
       })
-      .catch((e: Error) => setError(e.message))
+      .catch((e) => setProblem(describeError(e)))
       .finally(() => setLoading(false));
   }, []);
   useEffect(() => {
     void fetchPrices(false);
   }, [fetchPrices]);
   useEffect(() => {
-    fetch("/api/data", { cache: "no-cache" })
-      .then((res) => (res.ok ? (res.json() as Promise<DataResponse>) : Promise.reject(new Error(`HTTP ${res.status}`))))
+    fetchJson<DataResponse>("/api/data", { cache: "no-cache" })
       .then((json) => {
         setData(json);
         // "?open=<recipeId>": show that recipe expanded, whatever the filters would have hidden
@@ -134,8 +135,8 @@ export function Studio({ user }: { user: SessionUser }) {
           }
         }
       })
-      .catch((e: Error) => setDataError(e.message));
-  }, [openId, setHideIncomplete]);
+      .catch((e) => setDataProblem(describeError(e)));
+  }, [openId, setHideIncomplete, dataAttempt]);
   const load = (force = false) => {
     setLoading(true);
     void fetchPrices(force);
@@ -246,41 +247,43 @@ export function Studio({ user }: { user: SessionUser }) {
   };
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-3 py-4 md:px-6">
-      <TopNav
-        user={user}
-        subtitle={`ตลาดกลาง Asia · ราคาอัปเดต ${loading ? "กำลังโหลด…" : timeAgo(fetchedAt)}${source ? ` · แหล่ง ${SOURCE_LABEL[source] ?? source}` : ""}`}
+    <Page user={user}>
+      <PageHeader
+        title="คำนวณสูตร"
+        description="จัดอันดับกำไรสูตร แปรธาตุ / ทำอาหาร / แปรรูป"
+        meta={["ตลาดกลาง Asia", `ราคาอัปเดต ${loading ? "กำลังโหลด…" : timeAgo(fetchedAt)}`, source && `แหล่ง ${SOURCE_LABEL[source] ?? source}`]}
+        actions={
+          <>
+            <button onClick={() => load(true)} disabled={loading} className={btn("secondary")}>
+              {loading ? "กำลังโหลด…" : "รีเฟรชราคา"}
+            </button>
+            <button onClick={exportCsv} disabled={busy || rows.length === 0} className={btn("secondary")}>
+              ส่งออก CSV
+            </button>
+            <button onClick={() => setSettingsOpen(true)} aria-haspopup="dialog" title={SETTINGS_TITLE} className={btn("secondary")}>
+              ตั้งค่า
+            </button>
+          </>
+        }
       />
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-base font-semibold">จัดอันดับกำไรสูตร แปรธาตุ / ทำอาหาร / แปรรูป</h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <button onClick={() => load(true)} disabled={loading} className={btn("secondary")}>
-            {loading ? "กำลังโหลด…" : "รีเฟรชราคา"}
-          </button>
-          <button onClick={exportCsv} disabled={busy || rows.length === 0} className={btn("secondary")}>
-            ส่งออก CSV
-          </button>
-          <button onClick={() => setShowSettings((s) => !s)} aria-pressed={showSettings} className={`${btnShape()} ${toggleCls(showSettings)}`}>
-            ตั้งค่า
-          </button>
-        </div>
-      </div>
+      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
-      {error && (
-        <Notice tone="bad" className="mb-3" action={{ label: loading ? "กำลังโหลด…" : "ลองใหม่", onClick: () => load(true), disabled: loading }}>
-          โหลดราคาไม่สำเร็จ: {error} ตัวเลขที่เห็นอาจไม่ครบ
+      {problem && (
+        <Notice tone="bad" className="mb-3" action={problemAction(problem, () => load(true), loading)}>
+          โหลดราคาไม่สำเร็จ: {problem.message} · ตัวเลขที่เห็นอาจไม่ครบ
         </Notice>
       )}
-      {dataError && (
-        <Notice tone="bad" className="mb-3">
-          โหลดฐานข้อมูลสูตรไม่สำเร็จ: {dataError}
+      {dataProblem && (
+        <Notice
+          tone="bad"
+          className="mb-3"
+          action={problemAction(dataProblem, () => {
+            setDataProblem(null);
+            setDataAttempt((a) => a + 1);
+          })}
+        >
+          โหลดฐานข้อมูลสูตรไม่สำเร็จ: {dataProblem.message}
         </Notice>
-      )}
-
-      {showSettings && (
-        <div className="mb-4">
-          <SettingsPanel settings={settings} onChange={setSettings} />
-        </div>
       )}
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -407,7 +410,7 @@ export function Studio({ user }: { user: SessionUser }) {
         สูตร {silver(recipes.length)} รายการ
         {data ? ` (นำเข้าเมื่อ ${new Date(data.meta.importedAt).toLocaleDateString("th-TH")})` : ""} · ราคาจาก Pearl Abyss / arsha.io / bdolytics · ข้อมูลสูตร bdocodex
       </footer>
-    </main>
+    </Page>
   );
 }
 

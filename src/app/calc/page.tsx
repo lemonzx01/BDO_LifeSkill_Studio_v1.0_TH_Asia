@@ -12,8 +12,8 @@ export default async function CalcPage() {
   const user = await requireUser();
   const settings = await getUserSettings(user.id);
   return (
-    <UserDataProvider initialSettings={settings} initialInventory={{}}>
-      <Suspense fallback={<PageSkeleton width="5xl" rows={4} />}>
+    <UserDataProvider userId={user.id} initialSettings={settings} initialInventory={{}}>
+      <Suspense fallback={<PageSkeleton width="narrow" rows={4} />}>
         <TradeCalc user={{ username: user.username, displayName: user.displayName, role: user.role }} />
       </Suspense>
     </UserDataProvider>

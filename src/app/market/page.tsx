@@ -53,7 +53,7 @@ export default async function MarketPage({ searchParams }: { searchParams: Promi
   // written after the response so measuring never slows the page itself
   after(() => recordTiming("timing_market_page", timing).catch(() => {}));
   return (
-    <UserDataProvider initialSettings={settings} initialInventory={{}}>
+    <UserDataProvider userId={user.id} initialSettings={settings} initialInventory={{}}>
       <MarketScanner
         rows={scan.rows}
         totalItems={scan.totalItems}

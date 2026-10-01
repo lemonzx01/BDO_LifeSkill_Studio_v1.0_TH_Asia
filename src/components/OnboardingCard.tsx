@@ -1,20 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import { netRate } from "@/lib/engine/cost";
 import { imperialBonus, massProcessCount, MASTERY_MAX, maxQuantityChance } from "@/lib/engine/mastery";
 import type { Settings, SkillGroup } from "@/lib/engine/types";
 import { pct } from "@/lib/format";
+import { NET_RATE_LABEL, SETTINGS_TITLE, SKILLS, VALUE_PACK } from "@/lib/settings-labels";
 import { NumberInput } from "./NumberInput";
 import { btn } from "./ui/button";
 import { checkboxCls, fieldCls } from "./ui/field";
 
-const SKILLS: { key: SkillGroup; label: string }[] = [
-  { key: "alchemy", label: "แปรธาตุ" },
-  { key: "cooking", label: "ทำอาหาร" },
-  { key: "processing", label: "แปรรูป" },
-];
-
-/** First-visit setup: the three numbers that change every result, nothing else. */
+/** First-visit setup only: the numbers that change every result, nothing else. Later changes go through ตั้งค่าตัวละคร. */
 export function OnboardingCard({ settings, onSave, onSkip }: { settings: Settings; onSave: (s: Settings) => void; onSkip: () => void }) {
   const [draft, setDraft] = useState<Settings>(settings);
   const setMastery = (key: SkillGroup, v: number) => setDraft({ ...draft, mastery: { ...draft.mastery, [key]: Math.max(0, Math.min(MASTERY_MAX, v || 0)) } });
@@ -22,7 +18,9 @@ export function OnboardingCard({ settings, onSave, onSkip }: { settings: Setting
   return (
     <section className="mb-4 rounded-lg border border-accent/50 bg-accent/5 p-4">
       <h2 className="text-base font-semibold text-accent">ตั้งค่าครั้งแรก 1 นาที</h2>
-      <p className="mt-1 text-sm text-muted">ใส่ Mastery ในเกมของคุณ ระบบจะคิดผลผลิต โบนัสราชวัง และภาษีให้ตรงกับตัวคุณ แก้ทีหลังได้ที่ปุ่ม &ldquo;ตั้งค่า&rdquo;</p>
+      <p className="mt-1 text-sm text-muted">
+        ใส่ Mastery ในเกมของคุณ ระบบจะคิดผลผลิต โบนัสราชวัง และภาษีให้ตรงกับตัวคุณ แก้ทีหลังได้ที่ปุ่ม &ldquo;{SETTINGS_TITLE}&rdquo;
+      </p>
       <div className="mt-3 grid gap-3 sm:grid-cols-4">
         {SKILLS.map(({ key, label }) => {
           const m = draft.mastery[key] ?? 0;
@@ -46,12 +44,14 @@ export function OnboardingCard({ settings, onSave, onSkip }: { settings: Setting
           );
         })}
         <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">Value Pack</span>
+          <span className="font-medium">{VALUE_PACK.name}</span>
           <span className="flex min-h-10 items-center gap-2 rounded border border-border bg-panel-2 px-3 md:min-h-9">
             <input type="checkbox" checked={draft.valuePack} onChange={(e) => setDraft({ ...draft, valuePack: e.target.checked })} className={checkboxCls} />
-            <span>{draft.valuePack ? "มี (ได้รับ 84.5%)" : "ไม่มี (ได้รับ 65%)"}</span>
+            <span>{draft.valuePack ? VALUE_PACK.on : VALUE_PACK.off}</span>
           </span>
-          <span className="text-xs text-muted">ภาษีตลาดกลางหลังหัก</span>
+          <span className="text-xs text-muted">
+            {NET_RATE_LABEL} {pct(netRate(draft), 1)}
+          </span>
         </label>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { fetchJson, isAbort } from "@/lib/fetch-error";
 import { silver } from "@/lib/format";
 import { ItemIcon } from "./ItemIcon";
 import { btn } from "./ui/button";
@@ -29,19 +30,29 @@ const PAGES = [
  * Ctrl+K from any page: type an item name, jump to its recipes, its market
  * row or the tax calculator. Searches the market snapshot on the server, so
  * nothing heavy is loaded until the box is opened.
+ *
+ * `compact`: the header version. Below md it is a 40x40 ⌕ button next to the avatar; from md up
+ * the "ค้นหา" label (lg) and the Ctrl K hint (xl) come back as room allows. Render one per page:
+ * each instance listens for Ctrl+K.
  */
-export function QuickSearch() {
+export function QuickSearch({ compact = false }: { compact?: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[]>([]);
   const [active, setActive] = useState(0);
   const [busy, setBusy] = useState(false);
+  // the last search failed (said apart from "nothing found"); bumping attempt runs it again
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // keyboard shortcut
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // a modal <dialog> (settings drawer, confirm) is open: the search would open behind it, out of
+      // reach, so it waits until that is closed
+      if (document.querySelector("dialog[open]")) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setOpen((o) => !o);
@@ -67,26 +78,31 @@ export function QuickSearch() {
       const t = setTimeout(() => {
         setHits([]);
         setActive(0);
+        setFailed(false);
       }, 0);
       return () => clearTimeout(t);
     }
     const ctrl = new AbortController();
     const t = setTimeout(() => {
       setBusy(true);
-      fetch(`/api/market/search?q=${encodeURIComponent(term)}`, { signal: ctrl.signal })
-        .then((r) => (r.ok ? (r.json() as Promise<{ items: Hit[] }>) : Promise.reject(new Error(String(r.status)))))
+      setFailed(false);
+      fetchJson<{ items: Hit[] }>(`/api/market/search?q=${encodeURIComponent(term)}`, { signal: ctrl.signal })
         .then((j) => {
           setHits(j.items ?? []);
           setActive(0);
         })
-        .catch(() => {})
+        .catch((e) => {
+          if (isAbort(e)) return;
+          setHits([]);
+          setFailed(true);
+        })
         .finally(() => setBusy(false));
     }, 180);
     return () => {
       clearTimeout(t);
       ctrl.abort();
     };
-  }, [q]);
+  }, [q, attempt]);
 
   const go = (href: string) => {
     setOpen(false);
@@ -125,17 +141,23 @@ export function QuickSearch() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 rounded border border-border bg-panel px-2.5 py-1.5 text-sm text-muted hover:text-foreground"
+        className={
+          compact
+            ? "flex h-10 w-10 items-center justify-center gap-1.5 rounded-full border border-border bg-panel text-lg text-muted hover:text-foreground md:h-8 md:w-auto md:rounded md:px-2.5 md:text-sm"
+            : "flex items-center gap-1.5 rounded border border-border bg-panel px-2.5 py-1.5 text-sm text-muted hover:text-foreground"
+        }
         title="ค้นหาไอเทมจากทุกหน้า (Ctrl+K)"
         aria-label="ค้นหาด่วน"
+        aria-haspopup="dialog"
       >
         <span aria-hidden>⌕</span>
-        <span className="hidden sm:inline">ค้นหา</span>
-        <kbd className="hidden rounded border border-border bg-panel-2 px-1 text-[10px] text-muted md:inline">Ctrl K</kbd>
+        <span className={compact ? "hidden lg:inline" : "hidden sm:inline"}>ค้นหา</span>
+        <kbd className={`hidden rounded border border-border bg-panel-2 px-1 text-[10px] text-muted ${compact ? "xl:inline" : "md:inline"}`}>Ctrl K</kbd>
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-3 pt-[12vh]" onClick={() => setOpen(false)} role="presentation">
+        // z-[60]: above the header menus (z-40) and the toasts (z-50)
+        <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/60 p-3 pt-[12vh]" onClick={() => setOpen(false)} role="presentation">
           <div
             className="w-full max-w-lg overflow-hidden rounded-lg border border-border bg-panel shadow-2xl"
             onClick={(e) => e.stopPropagation()}
@@ -169,7 +191,20 @@ export function QuickSearch() {
                   </li>
                 ))}
               {!showPages && hits.length === 0 && (
-                <li className="px-4 py-6 text-center text-sm text-muted">{busy ? "กำลังค้นหา…" : "ไม่พบไอเทมในตลาดที่ชื่อตรงกับคำนี้"}</li>
+                <li role="status" className="px-4 py-6 text-center text-sm text-muted">
+                  {busy ? (
+                    "กำลังค้นหา…"
+                  ) : failed ? (
+                    <span className="text-bad">
+                      ค้นหาไม่สำเร็จ ·{" "}
+                      <button type="button" onClick={() => setAttempt((a) => a + 1)} className="underline hover:text-foreground">
+                        ลองใหม่
+                      </button>
+                    </span>
+                  ) : (
+                    "ไม่พบไอเทมในตลาดที่ชื่อตรงกับคำนี้"
+                  )}
+                </li>
               )}
               {!showPages &&
                 hits.map((h, i) => (

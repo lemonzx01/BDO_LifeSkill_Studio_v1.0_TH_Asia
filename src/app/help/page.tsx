@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { TopNav } from "@/components/TopNav";
 import { btn } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/Card";
+import { Page, PageHeader } from "@/components/ui/Page";
 import { requireUser } from "@/lib/auth/session";
 import { APP_NAME } from "@/lib/brand";
+import { OWNED_COST, OWNED_COST_LABEL, SETTINGS_TITLE } from "@/lib/settings-labels";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ const SECTIONS: { href: string; title: string; lines: string[] }[] = [
     href: "/",
     title: "หน้าแรก",
     lines: [
-      "ตั้งค่า Mastery แปรธาตุ/ทำอาหาร/แปรรูป และ Value Pack ครั้งแรกให้ตรงกับตัวละคร ตัวเลขทุกหน้าจะคิดจากค่านี้",
+      `ตั้งค่า Mastery แปรธาตุ/ทำอาหาร/แปรรูป และ Value Pack ครั้งแรกให้ตรงกับตัวละคร ตัวเลขทุกหน้าจะคิดจากค่านี้ แก้ทีหลังได้ที่ปุ่ม "${SETTINGS_TITLE}"`,
       "การ์ด \"วันนี้ควรทำอะไร\" คือสูตรกำไรดีสุดของแต่ละสาย และของที่ตลาดกำลังขาด",
       "ถ้าใส่ของในคลังไว้ จะมีกล่อง \"ทำอะไรได้จากของในคลัง\" บอกว่าของที่มีทำอะไรแล้วได้เงินมากที่สุด",
     ],
@@ -24,7 +25,7 @@ const SECTIONS: { href: string; title: string; lines: string[] }[] = [
       "แท็บด้านบนเลือกสาย (แปรธาตุ / ทำอาหาร / แปรรูป / ราชวัง) เรียงตามกำไรต่อชิ้น ROI หรือกำไรต่อชั่วโมง",
       "กดแถวเพื่อดูวัตถุดิบเป็นชั้น ๆ ราคาที่ใช้คิด และสูตรทางเลือกอื่นของสินค้าเดียวกัน",
       "แผนผลิตด้านล่าง: ใส่จำนวนที่อยากได้ ระบบบอกว่าต้องซื้ออะไรเพิ่ม ใช้ของในคลังที่มีอยู่แล้วหักให้ พอผลิตจริงกด \"ผลิตแล้ว\" จะหักวัตถุดิบและเพิ่มผลผลิตเข้าคลัง",
-      "\"ตั้งค่า\" มุมขวาบน: Mastery, Value Pack, แหวนพ่อค้า, รอบต่อชั่วโมง และของในคลังคิดต้นทุนเป็น 0 หรือราคาตลาด",
+      `"ตั้งค่า" มุมขวาบน (หรือ "${SETTINGS_TITLE}" ในเมนูชื่อของคุณ ในหน้าแรก สูตร ตลาด คลัง และคิดภาษี): Mastery, Value Pack, แหวนพ่อค้า, รอบต่อชั่วโมง และ${OWNED_COST}: "${OWNED_COST_LABEL.market}", "${OWNED_COST_LABEL.avg}" หรือ "${OWNED_COST_LABEL.zero}"`,
     ],
   },
   {
@@ -42,7 +43,7 @@ const SECTIONS: { href: string; title: string; lines: string[] }[] = [
     title: "คลังของ",
     lines: [
       "พิมพ์ชื่อไอเทมเพื่อเพิ่ม แถวใหม่จะถูกเลื่อนมาให้เห็นและไฮไลต์ ค้นหาในคลังหรือเรียงตามชื่อ / เพิ่มล่าสุด / มูลค่าได้",
-      "ต้นทุนต่อชิ้น: \"ตามตลาด\" ใช้ราคาปัจจุบันเสมอ หรือ \"กำหนดเอง\" ใส่ราคาที่จ่ายจริง",
+      `ต้นทุนต่อชิ้น: "ตามตลาด" ใช้ราคาปัจจุบันเสมอ หรือ "กำหนดเอง" ใส่ราคาที่จ่ายจริง ซึ่งใช้คิดกำไรเมื่อตั้ง "${OWNED_COST}" เป็น "${OWNED_COST_LABEL.avg}" ใน${SETTINGS_TITLE}`,
       "นำเข้า CSV: เลือก \"ไฟล์ทับจำนวนเดิม\" เมื่อนำเข้าไฟล์เดิมซ้ำ หรือ \"ไฟล์บวกเพิ่มจากที่มี\" เมื่อทำ CSV ทีละคลังในเกมแล้วอยากรวมยอด ปุ่ม \"ไฟล์ตัวอย่าง CSV\" ให้ไฟล์แม่แบบ",
     ],
   },
@@ -51,14 +52,14 @@ const SECTIONS: { href: string; title: string; lines: string[] }[] = [
     title: "คิดภาษี",
     lines: [
       "พิมพ์ชื่อไอเทม เลือกช่องราคาซื้อ/ขายจากราคาจริงในตลาด ใส่จำนวน ระบบคิดภาษี เงินที่ได้รับ กำไร/ขาดทุน และราคาเท่าทุน",
-      "ติ๊ก Value Pack / แหวนพ่อค้า / Family Fame ให้ตรงกับตัวเอง",
+      `Value Pack / แหวนพ่อค้า / Family Fame ใช้ค่าจาก${SETTINGS_TITLE} เปลี่ยนในหน้านี้ได้ชั่วคราว (ไม่บันทึก) กด "คืนค่า" เพื่อกลับไปใช้ค่าที่ตั้งไว้`,
     ],
   },
   {
     href: "/account",
-    title: "บัญชี",
+    title: "บัญชีของฉัน",
     lines: [
-      "เปลี่ยนรหัสผ่าน ชื่อผู้ใช้สำหรับล็อกอิน และชื่อที่แสดง ได้ที่เมนู \"รหัสผ่าน\"",
+      "เปลี่ยนรหัสผ่าน ชื่อผู้ใช้สำหรับล็อกอิน และชื่อที่แสดง ได้ที่ \"บัญชีของฉัน\" ในเมนูชื่อของคุณมุมขวาบน",
       "ลืมรหัส: ให้แอดมินรีเซ็ตรหัสชั่วคราวให้ที่หน้า \"สมาชิก\" แล้วล็อกอินใหม่ ระบบจะให้ตั้งรหัสเอง",
     ],
   },
@@ -67,8 +68,8 @@ const SECTIONS: { href: string; title: string; lines: string[] }[] = [
 export default async function HelpPage() {
   const user = await requireUser();
   return (
-    <main className="mx-auto w-full max-w-4xl px-3 py-4 md:px-6">
-      <TopNav user={user} subtitle={`วิธีใช้ ${APP_NAME} แบบสั้น ๆ หน้าละไม่กี่บรรทัด`} />
+    <Page user={{ username: user.username, displayName: user.displayName, role: user.role }} width="narrow">
+      <PageHeader title="วิธีใช้" description={`${APP_NAME} แบบสั้น ๆ หน้าละไม่กี่บรรทัด`} />
       <div className="space-y-3">
         {SECTIONS.map((s) => (
           <Card key={s.href}>
@@ -96,6 +97,6 @@ export default async function HelpPage() {
           </ul>
         </Card>
       </div>
-    </main>
+    </Page>
   );
 }

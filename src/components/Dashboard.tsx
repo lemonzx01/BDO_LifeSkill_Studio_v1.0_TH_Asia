@@ -6,19 +6,23 @@ import { CostEngine } from "@/lib/engine/cost";
 import { ideasFromInventory } from "@/lib/engine/ideas";
 import { IMPERIAL_TYPES, PROCESSING_TYPES, RECIPE_TYPE_TH } from "@/lib/engine/mastery";
 import type { Item, ItemId, MarketPrice, Recipe, RecipeEvaluation, RecipeType } from "@/lib/engine/types";
-import { signed, signedPct, silverShort, timeAgo } from "@/lib/format";
+import { describeError, fetchJson, problemAction, type FetchProblem } from "@/lib/fetch-error";
+import { signed, signedPct, silverShort } from "@/lib/format";
+import { SETTINGS_TITLE, VALUE_PACK } from "@/lib/settings-labels";
 import type { SessionUser } from "./auth/UserMenu";
 import { InventoryIdeas } from "./InventoryIdeas";
 import { ItemIcon } from "./ItemIcon";
 import { OnboardingCard } from "./OnboardingCard";
-import { TopNav } from "./TopNav";
 import { FavoriteStar } from "./FavoriteStar";
+import { SettingsDrawer } from "./SettingsDrawer";
+import { TimeAgo } from "./TimeAgo";
 import { useInventory, useSettings, useUserData } from "./UserDataProvider";
 import { btn } from "./ui/button";
 import { Card, CardHeader } from "./ui/Card";
 import { EmptyState } from "./ui/EmptyState";
 import { Money } from "./ui/Money";
 import { Notice } from "./ui/Notice";
+import { Page, PageHeader } from "./ui/Page";
 import { SkeletonCards } from "./ui/Skeleton";
 
 interface DataResponse {
@@ -40,23 +44,33 @@ export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSetting
   const [prices, setPrices] = useState<Record<ItemId, MarketPrice>>({});
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [pricesLoaded, setPricesLoaded] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [problem, setProblem] = useState<FetchProblem | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [showSetup, setShowSetup] = useState(!hasSettings);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
+  // State is only touched inside promise callbacks so the effect body stays pure. A retry loads
+  // the recipe data again only if it is still missing.
   useEffect(() => {
-    fetch("/api/data", { cache: "no-cache" })
-      .then((r) => (r.ok ? (r.json() as Promise<DataResponse>) : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then(setData)
-      .catch((e: Error) => setError(e.message));
-    fetch("/api/prices?ids=all")
-      .then((r) => (r.ok ? (r.json() as Promise<PricesResponse>) : Promise.reject(new Error(`HTTP ${r.status}`))))
+    if (!data) {
+      fetchJson<DataResponse>("/api/data", { cache: "no-cache" })
+        .then(setData)
+        .catch((e) => setProblem(describeError(e)));
+    }
+    fetchJson<PricesResponse>("/api/prices?ids=all")
       .then((j) => {
         setPrices(j.prices);
         setFetchedAt(j.fetchedAt);
       })
-      .catch((e: Error) => setError(e.message))
+      .catch((e) => setProblem(describeError(e)))
       .finally(() => setPricesLoaded(true));
-  }, []);
+    // data is read once per attempt, not on every change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attempt]);
+  const retry = () => {
+    setProblem(null);
+    setAttempt((a) => a + 1);
+  };
 
   const items = useMemo(() => data?.items ?? ({} as Record<ItemId, Item>), [data]);
   const evaluations = useMemo(() => {
@@ -118,8 +132,16 @@ export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSetting
   }, [evaluations]);
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-3 py-4 md:px-6">
-      <TopNav user={user} subtitle={`สวัสดี ${user.displayName} · ตลาดกลาง Asia · ราคาอัปเดต ${fetchedAt ? timeAgo(fetchedAt) : "กำลังโหลด…"}`} />
+    <Page user={user}>
+      <PageHeader
+        title={`สวัสดี ${user.displayName}`}
+        meta={[
+          "ตลาดกลาง Asia",
+          <>
+            ราคาอัปเดต <TimeAgo at={fetchedAt} placeholder="กำลังโหลด…" />
+          </>,
+        ]}
+      />
 
       {showSetup && (
         <OnboardingCard
@@ -132,22 +154,23 @@ export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSetting
         />
       )}
 
-      {error && (
-        <Notice tone="bad" className="mb-3">
-          โหลดข้อมูลไม่สำเร็จ: {error}
+      {problem && (
+        <Notice tone="bad" className="mb-3" action={problemAction(problem, retry)}>
+          โหลดข้อมูลไม่สำเร็จ: {problem.message}
         </Notice>
       )}
 
       <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-muted">
         <span>
           คิดจาก Mastery ของคุณ: แปรธาตุ <b className="num text-foreground">{settings.mastery.alchemy ?? 0}</b> · ทำอาหาร{" "}
-          <b className="num text-foreground">{settings.mastery.cooking ?? 0}</b> · แปรรูป <b className="num text-foreground">{settings.mastery.processing ?? 0}</b> · Value Pack{" "}
-          <b className="text-foreground">{settings.valuePack ? "เปิด" : "ปิด"}</b>
+          <b className="num text-foreground">{settings.mastery.cooking ?? 0}</b> · แปรรูป <b className="num text-foreground">{settings.mastery.processing ?? 0}</b> · {VALUE_PACK.name}{" "}
+          <b className="text-foreground">{settings.valuePack ? VALUE_PACK.on : VALUE_PACK.off}</b>
         </span>
-        <button onClick={() => setShowSetup(true)} className={btn("secondary", "sm")}>
-          แก้ไข
+        <button onClick={() => setSettingsOpen(true)} aria-haspopup="dialog" className={btn("secondary", "sm")}>
+          {SETTINGS_TITLE}
         </button>
       </div>
+      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
       {!data || !pricesLoaded ? (
         <SkeletonCards n={6} label={!data ? "กำลังโหลดฐานสูตร…" : "กำลังโหลดราคาตลาด…"} className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" />
@@ -240,7 +263,7 @@ export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSetting
           คำนวณสูตร
         </Link>
       </footer>
-    </main>
+    </Page>
   );
 }
 

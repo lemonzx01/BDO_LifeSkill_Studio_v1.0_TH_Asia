@@ -1,3 +1,5 @@
+import { Page, type PageWidth } from "./Page";
+
 /**
  * Grey outlines of what is about to appear. They pulse (animate-pulse, which the reduced-motion
  * rule in globals.css stops) and tell screen readers what is loading.
@@ -48,21 +50,28 @@ export function SkeletonCards({ n = 6, label = "กำลังโหลด…",
   );
 }
 
-const WIDTH = { "7xl": "max-w-7xl", "5xl": "max-w-5xl" } as const;
-
-/** A whole page: title, a row of controls and a table. Used while a route or a page's client part loads. */
-export function PageSkeleton({ width = "7xl", rows = 8, label = "กำลังโหลดหน้า…" }: { width?: keyof typeof WIDTH; rows?: number; label?: string }) {
+/**
+ * A whole page, used while a route or a page's client part loads. It is the real page shell (the
+ * header and, on phones, the tab bar stay put, with the user menu as a grey placeholder), then the
+ * outline of a PageHeader (title, description, chips, buttons), a row of controls and a table.
+ */
+export function PageSkeleton({ width = "wide", rows = 8, label = "กำลังโหลดหน้า…" }: { width?: PageWidth; rows?: number; label?: string }) {
   return (
-    <main className={`mx-auto w-full ${WIDTH[width]} px-3 py-4 md:px-6`}>
+    <Page user={null} width={width}>
       <div aria-hidden className="animate-pulse">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
           <div className="space-y-2">
-            <div className="h-6 w-56 rounded bg-panel-2" />
-            <div className="h-3 w-80 max-w-full rounded bg-panel-2/70" />
+            <div className="h-7 w-48 rounded bg-panel-2" />
+            <div className="h-3.5 w-80 max-w-full rounded bg-panel-2/70" />
+            <div className="flex gap-1.5">
+              {Array.from({ length: 3 }, (_, i) => (
+                <div key={i} className="h-5 w-20 rounded bg-panel-2/70" />
+              ))}
+            </div>
           </div>
           <div className="hidden gap-2 md:flex">
-            {Array.from({ length: 5 }, (_, i) => (
-              <div key={i} className="h-8 w-20 rounded bg-panel-2" />
+            {Array.from({ length: 3 }, (_, i) => (
+              <div key={i} className="h-9 w-24 rounded bg-panel-2" />
             ))}
           </div>
         </div>
@@ -73,6 +82,6 @@ export function PageSkeleton({ width = "7xl", rows = 8, label = "กำลัง
         </div>
       </div>
       <SkeletonRows n={rows} label={label} />
-    </main>
+    </Page>
   );
 }

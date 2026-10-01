@@ -1,6 +1,6 @@
-import { AuthCard } from "@/components/auth/AuthCard";
 import { AdminUsers } from "@/components/auth/AdminUsers";
-import { btn } from "@/components/ui/button";
+import { Notice } from "@/components/ui/Notice";
+import { Page, PageHeader } from "@/components/ui/Page";
 import { listUsers } from "@/lib/auth/service";
 import { requireAdmin } from "@/lib/auth/session";
 import { meta } from "@/lib/data";
@@ -22,20 +22,26 @@ export default async function AdminPage() {
     lastLoginAt: u.lastLoginAt ? u.lastLoginAt.toISOString() : null,
   }));
   return (
-    <AuthCard title="จัดการสมาชิก" subtitle="ปิดใช้งานแล้วผู้ใช้จะหลุดจากระบบทันที เปิดกลับได้ภายหลัง ลบคือถาวร" wide>
-      <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-panel-2/60 px-3 py-2 text-xs text-muted">
-        <span>
-          ฐานข้อมูลสูตร: {meta.recipeCount.toLocaleString("th-TH")} สูตร · {meta.itemCount.toLocaleString("th-TH")} ไอเทม · นำเข้าเมื่อ{" "}
-          {new Date(meta.importedAt).toLocaleDateString("th-TH", { dateStyle: "medium" })} ({dataAgeDays} วันที่แล้ว
-          {dataAgeDays > 60 ? " · เกมอาจมีแพตช์ใหม่ ควรรัน npm run import:data" : ""})
-        </span>
-        {me.role === "owner" && (
-          <a href="/api/admin/backup" className={`ml-auto ${btn("secondary", "sm")}`} title="ดาวน์โหลดบัญชี ตั้งค่า และคลังของทุกคนเป็นไฟล์เดียว (Supabase ฟรีไม่มี backup อัตโนมัติ)">
-            สำรองข้อมูลทั้งหมด
-          </a>
-        )}
-      </div>
+    <Page user={{ username: me.username, displayName: me.displayName, role: me.role }} width="narrow">
+      <PageHeader title="จัดการสมาชิก" description="ปิดใช้งานแล้วผู้ใช้จะหลุดจากระบบทันที เปิดกลับได้ภายหลัง ลบคือถาวร" />
+      <Notice
+        tone="info"
+        className="mb-4"
+        action={
+          me.role === "owner"
+            ? {
+                label: "สำรองข้อมูลทั้งหมด",
+                href: "/api/admin/backup",
+                title: "ดาวน์โหลดบัญชี ตั้งค่า และคลังของทุกคนเป็นไฟล์เดียว (Supabase ฟรีไม่มี backup อัตโนมัติ)",
+              }
+            : undefined
+        }
+      >
+        ฐานข้อมูลสูตร: {meta.recipeCount.toLocaleString("th-TH")} สูตร · {meta.itemCount.toLocaleString("th-TH")} ไอเทม · นำเข้าเมื่อ{" "}
+        {new Date(meta.importedAt).toLocaleDateString("th-TH", { dateStyle: "medium" })} ({dataAgeDays} วันที่แล้ว
+        {dataAgeDays > 60 ? " · เกมอาจมีแพตช์ใหม่ ควรรัน npm run import:data" : ""})
+      </Notice>
       <AdminUsers users={users} meId={me.id} meRole={me.role} />
-    </AuthCard>
+    </Page>
   );
 }
