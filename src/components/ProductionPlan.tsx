@@ -3,11 +3,11 @@
 import { useMemo, useState } from "react";
 import { planProduction, type ConsumeChange } from "@/lib/engine/consume";
 import { flattenRequirements } from "@/lib/engine/cost";
-import type { Inventory, Item, ItemId, MarketPrice, RecipeEvaluation } from "@/lib/engine/types";
+import type { Inventory, Item, ItemId, MarketPrice, OwnedCostMode, RecipeEvaluation } from "@/lib/engine/types";
 import { silver } from "@/lib/format";
 import { ItemIcon } from "./ItemIcon";
 import { NumberInput } from "./NumberInput";
-import { useUserData } from "./UserDataProvider";
+import { useSettings, useUserData } from "./UserDataProvider";
 import { Badge } from "./ui/Badge";
 import { btn } from "./ui/button";
 import { Card, SectionLabel } from "./ui/Card";
@@ -16,6 +16,17 @@ import { checkboxCls, fieldCls } from "./ui/field";
 import { Money } from "./ui/Money";
 import { Notice } from "./ui/Notice";
 import { Stat } from "./ui/Stat";
+
+/**
+ * The profit at the recipe's own cost (qty × กำไร/ชิ้น), named after how that cost counts the
+ * stock you own (the "ของที่มีอยู่แล้ว คิดต้นทุน" setting), so it never claims market prices
+ * when the setting says otherwise.
+ */
+const FULL_PROFIT_LABEL: Record<OwnedCostMode, string> = {
+  market: "กำไรถ้าคิดของในคลังตามราคาตลาด",
+  avg: "กำไรถ้าคิดของในคลังตามราคาที่จ่ายจริง",
+  zero: "กำไรตามต้นทุน/ชิ้นของสูตร",
+};
 
 /**
  * "I want N of this" -> crafts needed, every raw material across all recipe
@@ -33,6 +44,7 @@ export function ProductionPlan({
   inventory: Inventory;
 }) {
   const { setOwned } = useUserData();
+  const [settings] = useSettings();
   const [confirm, confirmDialog] = useConfirm();
   const [qty, setQty] = useState(100);
   const rounds = Math.max(0, Math.ceil(qty / ev.expectedYield));
@@ -107,7 +119,61 @@ export function ProductionPlan({
         </span>
       </div>
 
-      <div className="overflow-x-auto">
+      {/* phones: one block per material instead of the wide table */}
+      <ul className="divide-y divide-border/60 border-y border-border/60 text-sm md:hidden">
+        {rows.map((r) => {
+          const th = r.item?.th ?? `#${r.id}`;
+          return (
+            <li key={r.id} className="py-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <ItemIcon id={r.id} grade={r.item?.grade} size={22} />
+                <span className="min-w-0 truncate">{th}</span>
+                {r.soldOut && (
+                  <Badge tone="warn" className="shrink-0">
+                    ของหมด
+                  </Badge>
+                )}
+                {!r.item?.market && !r.item?.npcBuy && (
+                  <Badge tone="warn" className="shrink-0">
+                    ต้องหาเอง
+                  </Badge>
+                )}
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
+                <span>
+                  ต้องใช้ <b className="num font-medium text-foreground">{silver(r.need)}</b>
+                </span>
+                <span aria-hidden>·</span>
+                <span className="flex items-center gap-1">
+                  มี
+                  <NumberInput
+                    min={0}
+                    value={r.owned}
+                    blankZero
+                    placeholder="0"
+                    onChange={(v) => setOwned(r.id, Math.floor(v))}
+                    aria-label={`มีอยู่แล้ว ${th}`}
+                    className={`${fieldCls("sm")} w-20`}
+                  />
+                </span>
+                <span aria-hidden>·</span>
+                <span>
+                  ซื้อ <b className={`num font-medium ${r.toBuy > 0 ? "text-foreground" : ""}`}>{silver(r.toBuy)}</b>
+                </span>
+                <span className="ml-auto" title={r.price ? `ราคา/ชิ้น ${silver(r.price)}` : undefined}>
+                  จ่าย <b className="num font-medium text-foreground">{silver(r.cost)}</b>
+                </span>
+              </div>
+            </li>
+          );
+        })}
+        <li className="flex justify-between gap-3 py-2 font-semibold">
+          <span>รวมต้องซื้อเพิ่ม</span>
+          <span className="num">{silver(buyCost)}</span>
+        </li>
+      </ul>
+
+      <div className="hidden overflow-x-auto md:block">
         <table className="w-full min-w-[640px] text-sm">
           <thead className="text-xs text-muted">
             <tr>
@@ -187,8 +253,8 @@ export function ProductionPlan({
       <div className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
         <Stat label={`ขายได้สุทธิ (${silver(qty)} ชิ้น)`} value={silver(revenue)} />
         <Stat label="เงินสดที่ต้องใช้ซื้อเพิ่ม" value={silver(buyCost)} />
-        <Stat label="กำไร (หักเฉพาะที่ซื้อเพิ่ม)" value={<Money value={cashProfit} tone="profit" />} emphasis />
-        <Stat label="กำไรเทียบต้นทุนเต็ม" value={<Money value={fullProfit} tone="profit" />} />
+        <Stat label="กำไรเงินสด (ของในคลังคิดฟรี)" value={<Money value={cashProfit} tone="profit" />} emphasis />
+        <Stat label={FULL_PROFIT_LABEL[settings.ownedCostMode]} value={<Money value={fullProfit} tone="profit" />} />
       </div>
       <p className="mt-2 text-xs text-muted">
         ช่อง &ldquo;มีอยู่แล้ว&rdquo; บันทึกไว้กับบัญชีของคุณ ใช้ร่วมกันทุกสูตรและทุกเครื่อง (ดู/แก้รวมได้ที่หน้า &ldquo;คลังของ&rdquo;) · ต้นทุนของของที่มีอยู่ตั้งได้ในตั้งค่า

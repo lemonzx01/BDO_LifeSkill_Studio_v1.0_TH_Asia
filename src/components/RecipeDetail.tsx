@@ -1,12 +1,16 @@
 "use client";
 
+import { skillGroup } from "@/lib/engine/mastery";
 import type { Inventory, Item, ItemId, MarketPrice, RecipeEvaluation } from "@/lib/engine/types";
 import { pct, signedPct, silver, silverShort } from "@/lib/format";
+import { GLOSSARY, perHourTip } from "@/lib/glossary";
 import { CostTree, type TreeTools } from "./CostTree";
 import { MarketPanel } from "./market/MarketPanel";
 import { ProductionPlan } from "./ProductionPlan";
+import { useSettings } from "./UserDataProvider";
 import { toggleCls } from "./ui/button";
 import { Card, SectionLabel } from "./ui/Card";
+import { WithTip } from "./ui/InfoTip";
 import { Money, pctTone } from "./ui/Money";
 import { Notice } from "./ui/Notice";
 import { Stat } from "./ui/Stat";
@@ -30,8 +34,10 @@ export function RecipeDetail({
   /** lets the cost tree peek into bought materials and force buy/craft per item */
   tools?: TreeTools;
 }) {
+  const [settings] = useSettings();
   const product = items[ev.productId];
   const mp = prices[ev.productId];
+  const imperial = ev.saleChannel === "imperial";
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
@@ -72,26 +78,32 @@ export function RecipeDetail({
           <Stat label="ต้นทุน/รอบ" value={silver(ev.materialCostPerCraft)} />
           <Stat label="ต้นทุน/ชิ้น" value={silver(ev.unitCost)} />
           <Stat
-            label={ev.saleChannel === "imperial" ? "ได้จาก NPC ราชวัง/กล่อง (รวมโบนัส Mastery)" : `ได้รับสุทธิ/ชิ้น (${pct(ev.netRate, 1)})`}
+            label={
+              imperial ? <WithTip label="ได้จาก NPC ราชวัง/กล่อง (รวมโบนัส Mastery)" tip={GLOSSARY.imperial} /> : `ได้รับสุทธิ/ชิ้น (${pct(ev.netRate, 1)})`
+            }
             value={silver(ev.netPerUnit)}
           />
-          <Stat label="กำไร/ชิ้น" value={<Money value={ev.profitPerUnit} tone="profit" />} emphasis />
-          <Stat label="กำไร/รอบ" value={<Money value={ev.profitPerCraft} tone="profit" />} />
-          <Stat label="ROI" value={signedPct(ev.roi, 1)} tone={pctTone(ev.roi, 1)} />
-          {ev.saleChannel === "imperial" ? (
-            <Stat label="กำไร/ชม." value="- (มีโควตาต่อวัน)" />
+          <Stat label={<WithTip label="กำไร/ชิ้น" tip={GLOSSARY.profitPerUnit} />} value={<Money value={ev.profitPerUnit} tone="profit" />} emphasis />
+          <Stat label={<WithTip label="กำไร/รอบ" tip={GLOSSARY.profitPerCraft} />} value={<Money value={ev.profitPerCraft} tone="profit" />} />
+          <Stat label={<WithTip label="ROI" tip={GLOSSARY.roi} />} value={signedPct(ev.roi, 1)} tone={pctTone(ev.roi, 1)} />
+          {imperial ? (
+            <Stat label={<WithTip label="กำไร/ชม." tip={GLOSSARY.imperialPerHour} />} value="- (มีโควตาต่อวัน)" />
           ) : (
-            <Stat label="กำไร/ชม." value={<Money value={ev.profitPerHour} tone="profit" />} />
+            <Stat
+              label={<WithTip label="กำไร/ชม." tip={perHourTip(settings.craftsPerHour, skillGroup(ev.recipe.type))} />}
+              value={<Money value={ev.profitPerHour} tone="profit" />}
+            />
           )}
         </div>
         <SectionLabel as="h4" className="mb-1">
           วัตถุดิบต่อ 1 รอบ (เลือกทางที่ถูกที่สุดให้แล้ว)
         </SectionLabel>
-        <div className="mb-1 flex justify-end gap-2 pr-1 text-xs text-muted">
-          <span className="w-16 text-right">จำนวน</span>
-          <span className="w-16" />
-          <span className="w-24 text-right">ราคา/ชิ้น</span>
-          <span className="w-28 text-right">รวม</span>
+        {/* the cost tree's columns (CostTree rows): name cell, then จำนวน / ราคา/ชิ้น (from sm) / รวม */}
+        <div className="mb-1 flex items-center gap-2 px-1 text-xs text-muted">
+          <span className="min-w-0 flex-1" />
+          <span className="w-14 shrink-0 text-right sm:w-16">จำนวน</span>
+          <span className="hidden w-24 shrink-0 text-right sm:block">ราคา/ชิ้น</span>
+          <span className="w-24 shrink-0 text-right sm:w-28">รวม</span>
         </div>
         {ev.tree.children && (
           <CostTree items={items} tools={tools}>

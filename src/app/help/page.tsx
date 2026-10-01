@@ -4,6 +4,8 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Page, PageHeader } from "@/components/ui/Page";
 import { requireUser } from "@/lib/auth/session";
 import { APP_NAME } from "@/lib/brand";
+import { IMPORT_MODE_LABEL } from "@/lib/inventory-import";
+import { SIGNAL_NAME } from "@/lib/market/signals";
 import { OWNED_COST, OWNED_COST_LABEL, SETTINGS_TITLE } from "@/lib/settings-labels";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +34,7 @@ const SECTIONS: { href: string; title: string; lines: string[] }[] = [
     href: "/market",
     title: "สแกนตลาด",
     lines: [
-      "\"แนะนำวันนี้\" 3 กล่อง: เทรดได้กำไร (ซื้อตอนนี้ขายราคาปกติยังกำไร), น่าซื้อเก็บ (ถูกกว่าปกติและมีหลักฐานว่าจะฟื้น), น่าขายตอนนี้ (แพงกว่าปกติ)",
+      `"แนะนำวันนี้" 3 กล่อง: ${SIGNAL_NAME.trade.name} (ซื้อตอนนี้ขายราคาปกติยังกำไร), ${SIGNAL_NAME.buy.name} (ถูกกว่าปกติและมีหลักฐานว่าจะฟื้น), ${SIGNAL_NAME.sell.name} (แพงกว่าปกติ)`,
       "กดแถวเพื่อดูหลักฐาน: ราคาเทียบ 90 วัน ของค้างขายหมดในกี่วัน แนวโน้ม 7 วัน และราคาย้อนหลัง",
       "ระบบมองแค่ราคาและปริมาณซื้อขาย ไม่รู้อีเวนต์หรือของแจกล่วงหน้า ใช้เป็นข้อมูลประกอบ ไม่ใช่คำทำนาย",
       "แสดงเฉพาะไอเทมที่มีการซื้อขายใน 14 วัน ราคาอัปเดตทุก 5 นาทีเมื่อมีคนเปิดหน้า",
@@ -44,7 +46,7 @@ const SECTIONS: { href: string; title: string; lines: string[] }[] = [
     lines: [
       "พิมพ์ชื่อไอเทมเพื่อเพิ่ม แถวใหม่จะถูกเลื่อนมาให้เห็นและไฮไลต์ ค้นหาในคลังหรือเรียงตามชื่อ / เพิ่มล่าสุด / มูลค่าได้",
       `ต้นทุนต่อชิ้น: "ตามตลาด" ใช้ราคาปัจจุบันเสมอ หรือ "กำหนดเอง" ใส่ราคาที่จ่ายจริง ซึ่งใช้คิดกำไรเมื่อตั้ง "${OWNED_COST}" เป็น "${OWNED_COST_LABEL.avg}" ใน${SETTINGS_TITLE}`,
-      "นำเข้า CSV: เลือก \"ไฟล์ทับจำนวนเดิม\" เมื่อนำเข้าไฟล์เดิมซ้ำ หรือ \"ไฟล์บวกเพิ่มจากที่มี\" เมื่อทำ CSV ทีละคลังในเกมแล้วอยากรวมยอด ปุ่ม \"ไฟล์ตัวอย่าง CSV\" ให้ไฟล์แม่แบบ",
+      `นำเข้า CSV: กด "นำเข้า / ส่งออก" แล้วเลือก "${IMPORT_MODE_LABEL.replace}" เมื่อนำเข้าไฟล์เดิมซ้ำ หรือ "${IMPORT_MODE_LABEL.add}" เมื่อทำ CSV ทีละคลังในเกมแล้วอยากรวมยอด ก่อนนำเข้าจะให้ดูว่าอะไรเปลี่ยน ปุ่ม "ไฟล์ตัวอย่าง" ให้ไฟล์แม่แบบ`,
     ],
   },
   {

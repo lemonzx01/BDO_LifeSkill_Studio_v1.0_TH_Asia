@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type InputHTMLAttributes } from "react";
+import { useState, type InputHTMLAttributes, type Ref } from "react";
 
 type Props = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "type"> & {
   value: number;
@@ -16,6 +16,8 @@ type Props = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | 
    * (e.g. an inventory row that is removed at quantity 0)
    */
   commitOnBlur?: boolean;
+  /** the <input> itself, e.g. to focus and select it (React 19 passes ref as a normal prop) */
+  ref?: Ref<HTMLInputElement>;
 };
 
 /**
@@ -23,7 +25,7 @@ type Props = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | 
  * controlled <input value={n}> snaps back to "0" the moment the field is
  * emptied, which makes it impossible to type a new number naturally.
  */
-export function NumberInput({ value, onChange, min, max, blankZero = false, commitOnBlur = false, inputMode = "numeric", onFocus, onBlur, onKeyDown, ...rest }: Props) {
+export function NumberInput({ ref, value, onChange, min, max, blankZero = false, commitOnBlur = false, inputMode = "numeric", onFocus, onBlur, onKeyDown, ...rest }: Props) {
   const [draft, setDraft] = useState<string | null>(null); // null = not editing, show the prop
   const shown = draft !== null ? draft : blankZero && value === 0 ? "" : String(value);
   const clamp = (n: number) => Math.min(max ?? Number.POSITIVE_INFINITY, Math.max(min ?? Number.NEGATIVE_INFINITY, n));
@@ -39,6 +41,7 @@ export function NumberInput({ value, onChange, min, max, blankZero = false, comm
   return (
     <input
       {...rest}
+      ref={ref}
       type="number"
       // phones show the digit pad; pass inputMode="decimal" for a field that takes fractions
       inputMode={inputMode}
@@ -55,10 +58,10 @@ export function NumberInput({ value, onChange, min, max, blankZero = false, comm
         if (!commitOnBlur) commit(text);
       }}
       onKeyDown={(e) => {
-        if (commitOnBlur && e.key === "Enter") {
-          commit((e.target as HTMLInputElement).value);
-          (e.target as HTMLInputElement).blur();
-        }
+        // Enter only leaves the field: onBlur below does the one commit. Committing here as well
+        // would report the value twice (blur runs inside this same event, before a re-render), and
+        // a quantity typed as 0 would then be removed twice
+        if (commitOnBlur && e.key === "Enter") (e.target as HTMLInputElement).blur();
         onKeyDown?.(e);
       }}
       onBlur={(e) => {

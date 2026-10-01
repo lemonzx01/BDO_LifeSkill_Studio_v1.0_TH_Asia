@@ -60,31 +60,64 @@ function TreeRow({ child, items, depth, tools }: { child: CostChild; items: Reco
   const craftOptions = useMemo(() => (craftable && open && tools ? tools.engine.craftOptions(node.id) : []), [craftable, open, tools, node.id]);
   const best = craftOptions[0];
 
+  const name = (
+    <>
+      <ItemIcon id={node.id} grade={item?.grade} size={24} />
+      <span className="min-w-0 truncate">
+        {item?.th ?? `#${node.id}`}
+        {node.substituteFor && slotItem && <span className="ml-1 text-xs text-muted">(แทน {slotItem.th})</span>}
+      </span>
+    </>
+  );
+
   return (
     <li>
-      <div className="flex flex-wrap items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-panel-2/60">
-        {canOpen ? (
-          <button onClick={() => setOpen((o) => !o)} className="w-4 text-xs text-muted" aria-label="toggle" title={isCraft ? "ดูวัตถุดิบ" : "ดูว่าทำเองต้องใช้อะไร"}>
-            {open ? "▾" : "▸"}
-          </button>
-        ) : (
-          <span className="w-4" />
-        )}
-        <ItemIcon id={node.id} grade={item?.grade} size={24} />
-        <button onClick={() => canOpen && setOpen((o) => !o)} className={`min-w-0 flex-1 truncate text-left ${canOpen ? "cursor-pointer" : "cursor-default"}`}>
-          {item?.th ?? `#${node.id}`}
-          {node.substituteFor && slotItem && <span className="ml-1 text-xs text-muted">(แทน {slotItem.th})</span>}
-        </button>
-        <span className="num w-16 text-right text-muted">× {formatUnits(child.units)}</span>
-        <Badge tone={src.tone}>{src.text}</Badge>
-        {override && (
-          <button onClick={() => tools?.onOverride(node.id, null)} className={`${badgeCls("special")} hover:bg-special/25`} title="ยกเลิกการบังคับ">
-            บังคับ{override.mode === "craft" ? "ทำเอง" : override.mode === "buy" ? "ซื้อ" : ""} ✕
-          </button>
-        )}
-        {node.soldOut && <Badge tone="warn">ของหมด</Badge>}
-        <span className="num w-24 text-right text-muted">{node.unknown ? "-" : silver(node.unitCost)}</span>
-        <span className="num w-28 text-right font-medium">{silver(child.lineCost)}</span>
+      {/* same columns as the header in RecipeDetail: the name cell takes the rest, the numbers keep
+          their widths at the right whatever pills a row has. On a phone the pills drop under the
+          name instead of squeezing it */}
+      <div className="flex items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-panel-2/60">
+        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 sm:flex-nowrap">
+          {canOpen ? (
+            <button
+              type="button"
+              onClick={() => setOpen((o) => !o)}
+              aria-expanded={open}
+              title={isCraft ? "ดูวัตถุดิบ" : "ดูว่าทำเองต้องใช้อะไร"}
+              className="flex min-h-9 max-w-full min-w-0 items-center gap-1.5 rounded text-left"
+            >
+              <span aria-hidden className="w-3 shrink-0 text-xs text-muted">
+                {open ? "▾" : "▸"}
+              </span>
+              {name}
+            </button>
+          ) : (
+            <span className="flex min-h-9 max-w-full min-w-0 items-center gap-1.5">
+              <span aria-hidden className="w-3 shrink-0" />
+              {name}
+            </span>
+          )}
+          <Badge tone={src.tone} className="shrink-0">
+            {src.text}
+          </Badge>
+          {override && (
+            <button
+              type="button"
+              onClick={() => tools?.onOverride(node.id, null)}
+              className={`${badgeCls("special")} shrink-0 hover:bg-special/25`}
+              title="ยกเลิกการบังคับ"
+            >
+              บังคับ{override.mode === "craft" ? "ทำเอง" : override.mode === "buy" ? "ซื้อ" : ""} ✕
+            </button>
+          )}
+          {node.soldOut && (
+            <Badge tone="warn" className="shrink-0">
+              ของหมด
+            </Badge>
+          )}
+        </span>
+        <span className="num w-14 shrink-0 text-right text-muted sm:w-16">× {formatUnits(child.units)}</span>
+        <span className="num hidden w-24 shrink-0 text-right text-muted sm:block">{node.unknown ? "-" : silver(node.unitCost)}</span>
+        <span className="num w-24 shrink-0 text-right font-medium sm:w-28">{silver(child.lineCost)}</span>
       </div>
 
       {isCraft && open && node.children && (
