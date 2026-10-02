@@ -49,9 +49,10 @@ export function num(n: number): string {
   return nf1.format(n);
 }
 
-export function timeAgo(ts: number | null | undefined): string {
+/** "5 นาทีที่แล้ว". Pass `now` when rendering (TimeAgo does), so render stays pure. */
+export function timeAgo(ts: number | null | undefined, now: number = Date.now()): string {
   if (!ts) return "-";
-  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  const s = Math.max(0, Math.round((now - ts) / 1000));
   if (s < 60) return `${s} วิ.ที่แล้ว`;
   const m = Math.round(s / 60);
   if (m < 60) return `${m} นาทีที่แล้ว`;

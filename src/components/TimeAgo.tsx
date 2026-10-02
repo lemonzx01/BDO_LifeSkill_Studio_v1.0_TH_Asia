@@ -21,5 +21,5 @@ export function TimeAgo({ at, placeholder = "…" }: { at: number | string | nul
   }, []);
   if (!at || now === null) return <>{placeholder}</>;
   const ts = typeof at === "string" ? new Date(at).getTime() : at;
-  return <>{timeAgo(ts)}</>;
+  return <>{timeAgo(ts, now)}</>;
 }

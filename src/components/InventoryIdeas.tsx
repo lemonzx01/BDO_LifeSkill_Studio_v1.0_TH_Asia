@@ -5,6 +5,7 @@ import type { Idea } from "@/lib/engine/ideas";
 import { RECIPE_TYPE_TH } from "@/lib/engine/mastery";
 import type { Item, ItemId } from "@/lib/engine/types";
 import { silver, silverShort } from "@/lib/format";
+import { NET } from "@/lib/settings-labels";
 import { ItemIcon } from "./ItemIcon";
 import { EmptyState } from "./ui/EmptyState";
 import { Money } from "./ui/Money";
@@ -24,7 +25,7 @@ export function InventoryIdeas({ ideas, items, limit, emptyText }: { ideas: Idea
               <div className="truncate font-medium">{items[idea.productId]?.th ?? idea.recipe.name}</div>
               <div className="line-clamp-2 text-xs text-muted">
                 {RECIPE_TYPE_TH[idea.recipe.type]} · ทำได้ {silver(idea.crafts)} รอบ → {silverShort(idea.units)} ชิ้น ·{" "}
-                {idea.ev.saleChannel === "imperial" ? "ส่งราชวังได้" : "ขายได้สุทธิ"} {silverShort(idea.revenue)}
+                {idea.ev.saleChannel === "imperial" ? "ส่งราชวังได้" : NET} {silverShort(idea.revenue)}
               </div>
               <div className="line-clamp-2 text-xs text-muted">
                 ใช้: {idea.uses.map((u) => `${items[u.id]?.th ?? `#${u.id}`} ×${silver(u.units)}`).join(", ")}

@@ -1,31 +1,24 @@
+import { redirect } from "next/navigation";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { ChangePasswordForm } from "@/components/auth/ChangePasswordForm";
 import { ChangeProfileForm } from "@/components/auth/ChangeProfileForm";
-import { ghostBtn } from "@/components/auth/ui";
+import { LogoutEverywhereForm } from "@/components/auth/LogoutEverywhereForm";
 import { Card, CardHeader, SectionLabel } from "@/components/ui/Card";
 import { Page, PageHeader } from "@/components/ui/Page";
-import { logoutEverywhereAction } from "@/lib/auth/actions";
 import { requireUser } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
 const LOGOUT_EVERYWHERE_HINT = "ลืมออกจากระบบที่เครื่องอื่น? กดปุ่มนี้เพื่อออกจากทุกเครื่อง รวมถึงเครื่องนี้";
 
-function LogoutEverywhereForm() {
-  return (
-    <form action={logoutEverywhereAction}>
-      <button type="submit" className={ghostBtn}>
-        ออกจากระบบทุกเครื่อง
-      </button>
-    </form>
-  );
-}
-
 export default async function AccountPage({ searchParams }: { searchParams: Promise<{ first?: string }> }) {
   // the one page open while the temporary password from the admin is still pending
   const user = await requireUser({ allowPendingPassword: true });
   const { first } = await searchParams;
-  const forced = first === "1" || user.mustChangePassword;
+  // only a pending temporary password forces the change; an old ?first=1 (Back after the change, a
+  // bookmark) just tidies the address
+  const forced = user.mustChangePassword;
+  if (first === "1" && !forced) redirect("/account");
 
   // forced change: a focused card with no app navigation, since every other page sends the member
   // back here until the new password is set

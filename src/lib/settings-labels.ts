@@ -32,7 +32,9 @@ export const FAMILY_FAME_OPTIONS: readonly { value: number; label: string }[] = 
   { value: 0.015, label: "+1.5% (7,000+)" },
 ];
 
-export const NET_RATE_LABEL = "ได้รับจริงหลังภาษี";
+/** What a sale pays after the market tax, everywhere it is shown (calculator, recipes, market, plan). */
+export const NET = "ได้รับจริง";
+export const NET_RATE_LABEL = `${NET}หลังภาษี`;
 
 export const OWNED_COST = "ของที่มีอยู่แล้ว คิดต้นทุน";
 export const OWNED_COST_OPTIONS: readonly { value: OwnedCostMode; label: string; hint: string }[] = [
@@ -49,6 +51,9 @@ export const OWNED_COST_LABEL: Record<OwnedCostMode, string> = {
   avg: OWNED_COST_OPTIONS[1].label,
   zero: OWNED_COST_OPTIONS[2].label,
 };
+
+/** The inventory page's sort options, also listed on the help page. */
+export const INVENTORY_SORT_LABEL = { name: "ชื่อ", recent: "เพิ่ม/แก้ล่าสุด", value: "มูลค่า" } as const;
 
 export const SKILLS: readonly { key: SkillGroup; label: string }[] = [
   { key: "alchemy", label: "แปรธาตุ" },

@@ -5,6 +5,7 @@ import { planProduction, type ConsumeChange } from "@/lib/engine/consume";
 import { flattenRequirements } from "@/lib/engine/cost";
 import type { Inventory, Item, ItemId, MarketPrice, OwnedCostMode, RecipeEvaluation } from "@/lib/engine/types";
 import { silver } from "@/lib/format";
+import { NET, OWNED_COST, SETTINGS_TITLE } from "@/lib/settings-labels";
 import { ItemIcon } from "./ItemIcon";
 import { NumberInput } from "./NumberInput";
 import { useSettings, useUserData } from "./UserDataProvider";
@@ -251,13 +252,13 @@ export function ProductionPlan({
       )}
 
       <div className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-        <Stat label={`ขายได้สุทธิ (${silver(qty)} ชิ้น)`} value={silver(revenue)} />
+        <Stat label={`${NET} (${silver(qty)} ชิ้น)`} value={silver(revenue)} />
         <Stat label="เงินสดที่ต้องใช้ซื้อเพิ่ม" value={silver(buyCost)} />
         <Stat label="กำไรเงินสด (ของในคลังคิดฟรี)" value={<Money value={cashProfit} tone="profit" />} emphasis />
         <Stat label={FULL_PROFIT_LABEL[settings.ownedCostMode]} value={<Money value={fullProfit} tone="profit" />} />
       </div>
       <p className="mt-2 text-xs text-muted">
-        ช่อง &ldquo;มีอยู่แล้ว&rdquo; บันทึกไว้กับบัญชีของคุณ ใช้ร่วมกันทุกสูตรและทุกเครื่อง (ดู/แก้รวมได้ที่หน้า &ldquo;คลังของ&rdquo;) · ต้นทุนของของที่มีอยู่ตั้งได้ในตั้งค่า
+        ช่อง &ldquo;มีอยู่แล้ว&rdquo; บันทึกไว้กับบัญชีของคุณ ใช้ร่วมกันทุกสูตรและทุกเครื่อง (ดู/แก้รวมได้ที่หน้า &ldquo;คลังของ&rdquo;) · &ldquo;{OWNED_COST}&rdquo; ตั้งได้ใน{SETTINGS_TITLE}
       </p>
     </Card>
   );

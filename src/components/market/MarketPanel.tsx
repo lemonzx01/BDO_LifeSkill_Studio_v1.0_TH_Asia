@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { describeError, fetchJson, problemAction, type FetchProblem } from "@/lib/fetch-error";
 import { pct, silver, silverShort } from "@/lib/format";
 import { Card, SectionLabel } from "../ui/Card";
+import { Notice } from "../ui/Notice";
 import { Sparkline } from "../ui/Sparkline";
 import { Stat } from "../ui/Stat";
 
@@ -17,26 +19,32 @@ interface MarketDetail {
  * The one copy used by both the market scanner and the recipe detail.
  */
 export function MarketPanel({ id, name, price, stock, market }: { id: number; name: string; price: number | undefined; stock: number | undefined; market: boolean }) {
-  const [state, setState] = useState<{ status: "loading" | "done" | "error"; detail: MarketDetail | null }>({ status: "loading", detail: null });
+  // `key` is the load the answer belongs to (item + attempt), so a stale one reads as loading
+  const [state, setState] = useState<{ key: string; detail: MarketDetail | null; problem: FetchProblem | null } | null>(null);
+  // ลองใหม่ bumps this to load again
+  const [attempt, setAttempt] = useState(0);
+  const loadKey = `${id}:${attempt}`;
 
   useEffect(() => {
     if (!market) return;
     let cancelled = false;
-    fetch(`/api/market/${id}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((d: MarketDetail) => {
-        if (!cancelled) setState({ status: "done", detail: d });
+    fetchJson<MarketDetail>(`/api/market/${id}`)
+      .then((d) => {
+        if (!cancelled) setState({ key: loadKey, detail: d, problem: null });
       })
-      .catch(() => {
-        if (!cancelled) setState({ status: "error", detail: null });
+      .catch((e) => {
+        if (!cancelled) setState({ key: loadKey, detail: null, problem: describeError(e) });
       });
     return () => {
       cancelled = true;
     };
-  }, [id, market]);
+  }, [id, market, loadKey]);
 
-  const detail = state.detail;
-  const loading = state.status === "loading";
+  const current = state?.key === loadKey ? state : null;
+  const detail = current?.detail ?? null;
+  const problem = current?.problem ?? null;
+  const loading = current === null;
+  const retry = () => setAttempt((a) => a + 1);
   // the official history when it has points, else our own daily snapshots
   const series = detail?.history && detail.history.length > 1 ? detail.history : (detail?.daily?.map((d) => d.price) ?? []);
   const min = series.length ? Math.min(...series) : 0;
@@ -60,7 +68,12 @@ export function MarketPanel({ id, name, price, stock, market }: { id: number; na
             <Stat label="รอซื้อ (ทุกช่วงราคา)" value={detail ? silver(buyers) : loading ? "…" : "-"} />
             <Stat label="รอขาย (ทุกช่วงราคา)" value={detail ? silver(sellers) : loading ? "…" : "-"} />
           </div>
-          {series.length > 1 ? (
+          {problem ? (
+            // a failed load is not "no history": say what happened and offer ลองใหม่ / ล็อกอินใหม่
+            <Notice tone="warn" action={problemAction(problem, retry)}>
+              โหลดราคาย้อนหลังไม่สำเร็จ: {problem.message}
+            </Notice>
+          ) : series.length > 1 ? (
             <>
               <Sparkline data={series} />
               <div className="mt-1 grid grid-cols-3 gap-1 text-xs text-muted">

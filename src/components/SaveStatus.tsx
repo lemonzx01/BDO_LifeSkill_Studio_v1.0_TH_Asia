@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { SaveState } from "@/lib/save-queue";
-import { useOptionalUserData, useSaveState } from "./UserDataProvider";
+import { saveQueue, type SaveState } from "@/lib/save-queue";
+import { useSaveState } from "./UserDataProvider";
 import { btn } from "./ui/button";
 
 /** what a screen reader hears when the state changes */
@@ -24,7 +24,9 @@ const ROOMY = "max-md:hidden lg:max-xl:hidden";
 const TIGHT = "md:max-lg:hidden xl:hidden";
 
 /**
- * The save indicator in the header (TopNav), on pages with a UserDataProvider only: กำลังบันทึก…
+ * The save indicator in the header (TopNav), on every page: the save queue outlives the page a
+ * change was made on, so a save that fails after moving to /help, /account or /admin still shows
+ * here. กำลังบันทึก…
  * while changes are on their way, บันทึกแล้ว ✓ for two seconds, a red button to try again when a
  * save failed, and a link to sign in again when the session has ended.
  *
@@ -34,7 +36,6 @@ const TIGHT = "md:max-lg:hidden xl:hidden";
  * sentence is in the polite live region, which is announced once and takes no room in the header.
  */
 export function SaveStatus() {
-  const data = useOptionalUserData();
   const { state, savedSeq } = useSaveState();
   // which "saved" note has started fading / is gone (savedSeq goes up once per save)
   const [faded, setFaded] = useState({ seq: -1, gone: false });
@@ -48,8 +49,6 @@ export function SaveStatus() {
       clearTimeout(gone);
     };
   }, [state, savedSeq]);
-
-  if (!data) return null;
 
   const fading = state === "saved" && faded.seq === savedSeq;
   const hidden = state === "idle" || (fading && faded.gone);
@@ -73,7 +72,7 @@ export function SaveStatus() {
       )}
       {/* the accessible name is the text that is showing (the other span is display:none) */}
       {state === "error" && (
-        <button type="button" onClick={data.retrySaves} className={btn("danger", "sm")}>
+        <button type="button" onClick={saveQueue.retry} className={btn("danger", "sm")}>
           <span className="max-xl:hidden">บันทึกไม่สำเร็จ · ลองใหม่</span>
           <span className="xl:hidden">ลองบันทึกใหม่</span>
         </button>

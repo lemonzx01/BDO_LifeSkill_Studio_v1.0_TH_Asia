@@ -1,16 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { logoutAction } from "@/lib/auth/actions";
 import { isAdmin } from "@/lib/auth/roles";
 import type { Role } from "@/lib/db/schema";
-import { saveQueue } from "@/lib/save-queue";
 import { SETTINGS_TITLE } from "@/lib/settings-labels";
 import { SettingsDrawer } from "../SettingsDrawer";
 import { useOptionalUserData } from "../UserDataProvider";
 import { RoleBadge } from "../ui/Badge";
 import { btn } from "../ui/button";
+import { useSignOutSubmit } from "./use-sign-out";
 
 export interface SessionUser {
   username: string;
@@ -19,9 +19,6 @@ export interface SessionUser {
 }
 
 const ITEM = `${btn("ghost", "md", "start")} w-full`;
-
-/** how long signing out waits for the saves still on their way */
-const SIGN_OUT_WAIT_MS = 2000;
 
 /** The avatar letter: skip a leading Thai vowel (เ แ โ ใ ไ), so "เจ้าพ่อ" shows จ, not เ. */
 function initial(name: string): string {
@@ -45,10 +42,9 @@ export function UserMenu({ user }: { user: SessionUser }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
-  // signing out is waiting for the last saves (the ref lets the second submit through)
-  const [leaving, setLeaving] = useState(false);
-  const leavingRef = useRef(false);
-  const signOutRef = useRef<HTMLFormElement>(null);
+  // signing out waits for the last saves, and asks before dropping changes that failed to save;
+  // the menu stays on screen meanwhile, so the form is still there. Staying: back to the menu button.
+  const { onSubmit: onSignOut, leaving, confirmDialog } = useSignOutSubmit(() => buttonRef.current?.focus());
 
   const items = () => Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
 
@@ -122,21 +118,6 @@ export function UserMenu({ user }: { user: SessionUser }) {
       e.preventDefault();
       setOpen(true);
     }
-  };
-
-  /**
-   * Signing out: first send the changes still waiting to be saved and let the ones on their way
-   * finish (2 seconds at most), so they reach the server while the session still exists; then submit
-   * the form again for real. The menu stays on screen meanwhile, so the form is still there.
-   */
-  const onSignOut = (e: FormEvent<HTMLFormElement>) => {
-    if (leavingRef.current) return;
-    saveQueue.flush(false);
-    if (saveQueue.isSettled()) return;
-    e.preventDefault();
-    leavingRef.current = true;
-    setLeaving(true);
-    void saveQueue.whenSettled(SIGN_OUT_WAIT_MS).then(() => signOutRef.current?.requestSubmit());
   };
 
   const shown = open || leaving;
@@ -214,7 +195,7 @@ export function UserMenu({ user }: { user: SessionUser }) {
               วิธีใช้
             </Link>
             <div role="separator" className="my-0.5 h-px bg-border" />
-            <form ref={signOutRef} action={logoutAction} onSubmit={onSignOut} role="none" className="w-full">
+            <form action={logoutAction} onSubmit={onSignOut} role="none" className="w-full">
               <button type="submit" role="menuitem" tabIndex={-1} disabled={leaving} className={ITEM}>
                 {leaving ? "กำลังบันทึก…" : "ออกจากระบบ"}
               </button>
@@ -222,6 +203,8 @@ export function UserMenu({ user }: { user: SessionUser }) {
           </div>
         </div>
       )}
+
+      {confirmDialog}
 
       {data && (
         <SettingsDrawer

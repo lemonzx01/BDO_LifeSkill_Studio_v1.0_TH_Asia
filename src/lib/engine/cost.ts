@@ -31,13 +31,6 @@ export function mainProduct(recipe: Recipe) {
   return recipe.products.find((p) => p.kind === "main") ?? recipe.products[0];
 }
 
-/** Average main-product units per craft before any mastery multiplier. */
-export function baseYield(recipe: Recipe): number {
-  const p = mainProduct(recipe);
-  if (!p) return 1;
-  return (p.min + p.max) / 2;
-}
-
 export function expectedYield(recipe: Recipe, settings: Settings): number {
   const p = mainProduct(recipe);
   if (!p) return 1;

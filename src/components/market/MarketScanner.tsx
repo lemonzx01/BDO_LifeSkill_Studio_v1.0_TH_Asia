@@ -10,8 +10,10 @@ import { pct, readsAsZero, signedPct, silver, silverShort } from "@/lib/format";
 import { mainCategoryLabel, subCategoryLabel } from "@/lib/market/categories";
 import { assessRecovery, sellEvidence, type Assessment, type EvidenceLine } from "@/lib/market/evidence";
 import { SIGNAL_KEYS, SIGNAL_NAME, type SignalKey } from "@/lib/market/signals";
+import { priceSourceLabel } from "@/lib/market/source-label";
 import type { ScanRow } from "@/lib/market/snapshot";
 import { hiddenUnder, revealUnder, scrollBehavior } from "@/lib/scroll";
+import { NET } from "@/lib/settings-labels";
 import type { SessionUser } from "../auth/UserMenu";
 import { FavoriteStar } from "../FavoriteStar";
 import { ItemIcon } from "../ItemIcon";
@@ -19,11 +21,12 @@ import { PerfBeacon } from "../PerfBeacon";
 import { TimeAgo } from "../TimeAgo";
 import { useSettings } from "../UserDataProvider";
 import { Badge, type BadgeTone } from "../ui/Badge";
-import { btn, btnShape, toggleCls } from "../ui/button";
+import { btn } from "../ui/button";
 import { Card, CardHeader, cardCls, SectionLabel } from "../ui/Card";
 import { EmptyState, type EmptyAction } from "../ui/EmptyState";
 import { WithTip } from "../ui/InfoTip";
 import { checkboxCls, selectCls } from "../ui/field";
+import { filterPanelCls, FilterToggle, FocusChip } from "../ui/FilterControls";
 import { Money } from "../ui/Money";
 import { Notice } from "../ui/Notice";
 import { Page, PageHeader } from "../ui/Page";
@@ -469,12 +472,13 @@ export function MarketScanner({
       <PerfBeacon page="market" rows={rows.length} />
       <PageHeader
         title="สแกนตลาด"
+        description="ราคาตอนนี้เทียบปกติ 90 วัน และของที่น่าซื้อ/น่าขาย"
         meta={[
           "ตลาดกลาง Asia",
           <>
-            อัปเดต <TimeAgo at={refreshedAt} placeholder="-" />
+            ราคาอัปเดต <TimeAgo at={refreshedAt} placeholder="-" />
           </>,
-          source && `แหล่ง ${source}`,
+          source && `แหล่ง ${priceSourceLabel(source)}`,
           `ซื้อขายใน 14 วัน ${silver(rows.length)} จาก ${silver(totalItems)} ไอเท็ม`,
           `มีประวัติแล้ว ${silver(withHistory)} ไอเท็ม`,
         ]}
@@ -548,22 +552,7 @@ export function MarketScanner({
             </div>
             <div className="flex min-w-[200px] flex-1 items-center gap-2">
               <SearchInput label="ค้นหาชื่อไอเท็ม" value={query} onChange={changeQuery} placeholder="ค้นหาชื่อไอเท็ม…" className="min-w-0 flex-1" />
-              <button
-                type="button"
-                aria-expanded={filtersOpen}
-                aria-controls="market-filters"
-                onClick={toggleFilters}
-                className={`${btnShape()} ${toggleCls(filtersOpen)} shrink-0 md:hidden`}
-              >
-                ตัวกรอง
-                {filterCount > 0 && (
-                  <span>
-                    <span aria-hidden>• </span>
-                    {filterCount}
-                    <span className="sr-only"> ตัวที่เปลี่ยนไว้</span>
-                  </span>
-                )}
-              </button>
+              <FilterToggle open={filtersOpen} count={filterCount} controls="market-filters" onClick={toggleFilters} />
             </div>
           </div>
         </div>
@@ -573,11 +562,7 @@ export function MarketScanner({
         <div
           ref={filtersRef}
           id="market-filters"
-          className={
-            filtersOpen
-              ? "flex flex-wrap items-center gap-2 rounded-lg border border-border bg-panel p-3 md:mt-2 md:rounded-none md:border-0 md:bg-transparent md:p-0"
-              : "hidden flex-wrap items-center gap-2 md:mt-2 md:flex"
-          }
+          className={filterPanelCls(filtersOpen)}
         >
           <select aria-label="หมวด" value={cat} onChange={(e) => changeCat(e.target.value)} className={`${selectCls("md", cat !== DEFAULTS.cat)} w-full md:w-auto`}>
             <option value="all">หมวด: ทั้งหมด</option>
@@ -626,19 +611,7 @@ export function MarketScanner({
           </p>
         </div>
 
-        {focus && (
-          <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
-            <button type="button" onClick={closeFocus} className={`${btnShape("sm")} ${toggleCls(true)} max-w-full`}>
-              <span className="min-w-0 truncate">
-                กำลังดู: {focus.name}
-                {focus.ids.length > 1 ? ` (${focus.ids.length} รายการ)` : ""}
-              </span>
-              <span aria-hidden>✕</span>
-              <span className="sr-only">(กดเพื่อกลับไปที่รายการ)</span>
-            </button>
-            <span className="text-xs text-muted">ตัวกรองที่ตั้งไว้ไม่เปลี่ยน</span>
-          </div>
-        )}
+        {focus && <FocusChip name={focus.name} count={focus.ids.length} onClose={closeFocus} className="mb-2" />}
 
         {/* phones: cards */}
         <div className="space-y-2 md:hidden">
@@ -660,7 +633,7 @@ export function MarketScanner({
                 </th>
                 <th className="px-2 py-2 text-right font-medium">เทียบปกติ</th>
                 <th className="px-2 py-2 text-right font-medium">
-                  <WithTip label="กำไรถ้าเทรด" tip={`ขายที่ราคาปกติ × อัตราได้รับจริง ${pct(rate, 1)} − ราคาซื้อตอนนี้`} />
+                  <WithTip label="กำไรถ้าเทรด" tip={`ขายที่ราคาปกติ × อัตรา${NET} ${pct(rate, 1)} − ราคาซื้อตอนนี้`} />
                 </th>
                 <th className="px-2 py-2 text-right font-medium">ซื้อขาย 14 วัน</th>
                 <th className="px-2 py-2 text-left font-medium">คำแนะนำ</th>
@@ -691,7 +664,7 @@ export function MarketScanner({
 
       <footer className="mt-6 space-y-1 text-xs text-muted">
         <p>
-          <b>ราคาปกติ</b> = ราคาเฉลี่ย 90 วันของไอเท็มนั้น · <b>กำไรถ้าเทรด</b> = ขายที่ราคาปกติ × อัตราได้รับจริง {pct(rate, 1)} − ราคาซื้อตอนนี้ (ราคาต้องขึ้นเกิน{" "}
+          <b>ราคาปกติ</b> = ราคาเฉลี่ย 90 วันของไอเท็มนั้น · <b>กำไรถ้าเทรด</b> = ขายที่ราคาปกติ × อัตรา{NET} {pct(rate, 1)} − ราคาซื้อตอนนี้ (ราคาต้องขึ้นเกิน{" "}
           {pct(1 / rate - 1)} ถึงคุ้มภาษี)
         </p>
         <p>คำแนะนำนับเฉพาะของที่ซื้อขาย 14 วัน ≥ {LIQUID_MIN_VOL} ชิ้น เพื่อกันของที่ราคาแกว่งเพราะไม่มีคนซื้อขาย · ข้อมูล: bdolytics (snapshot) / Pearl Abyss (ราคาย้อนหลัง)</p>
@@ -936,7 +909,7 @@ function Detail({ c, rate }: { c: Computed; rate: number }) {
           <Stat label="ต่ำสุด 90 วัน" value={r.min90 !== null ? silver(r.min90) : "-"} />
           <Stat label="สูงสุด 90 วัน" value={r.max90 !== null ? silver(r.max90) : "-"} />
           <Stat label="เฉลี่ย 30 วัน" value={r.avg30 !== null ? silver(r.avg30) : "-"} />
-          <Stat label={`ได้รับสุทธิถ้าขายราคาปกติ (${pct(rate, 1)})`} value={c.net !== null ? silver(c.net) : "-"} />
+          <Stat label={`${NET}ถ้าขายราคาปกติ (${pct(rate, 1)})`} value={c.net !== null ? silver(c.net) : "-"} />
         </div>
 
         <Card as="div" className="mb-2 p-3">

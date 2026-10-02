@@ -5,11 +5,11 @@ import { ideasFromInventory } from "@/lib/engine/ideas";
 import type { Item, ItemId, MarketPrice, Recipe } from "@/lib/engine/types";
 import { describeError, fetchJson, problemAction, type FetchProblem } from "@/lib/fetch-error";
 import { InventoryIdeas } from "./InventoryIdeas";
-import { Loading } from "./Loading";
 import { useInventory, useSettings } from "./UserDataProvider";
 import { Card, CardHeader } from "./ui/Card";
 import { EmptyState } from "./ui/EmptyState";
 import { Notice } from "./ui/Notice";
+import { SkeletonList } from "./ui/Skeleton";
 
 interface DataResponse {
   recipes: Recipe[];
@@ -67,7 +67,7 @@ export function InventoryIdeasPanel() {
       ) : ownedCount === 0 ? (
         <EmptyState title="เพิ่มของที่มีเข้าคลังก่อน แล้วระบบจะบอกว่าเอาไปทำอะไรได้กำไรสุด" />
       ) : !data || !prices ? (
-        <Loading text="กำลังคำนวณจากของในคลัง…" className="border-0" />
+        <SkeletonList n={4} label="กำลังคำนวณจากของในคลัง…" />
       ) : (
         <InventoryIdeas ideas={ideas} items={data.items} emptyText="ของที่มีตอนนี้ยังประกอบเป็นสูตรไหนไม่ครบ (ต้องมีวัตถุดิบครบทุกอย่างของสูตร)" />
       )}

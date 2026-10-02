@@ -4,6 +4,7 @@ import { skillGroup } from "@/lib/engine/mastery";
 import type { Inventory, Item, ItemId, MarketPrice, RecipeEvaluation } from "@/lib/engine/types";
 import { pct, signedPct, silver, silverShort } from "@/lib/format";
 import { GLOSSARY, perHourTip } from "@/lib/glossary";
+import { NET } from "@/lib/settings-labels";
 import { CostTree, type TreeTools } from "./CostTree";
 import { MarketPanel } from "./market/MarketPanel";
 import { ProductionPlan } from "./ProductionPlan";
@@ -79,7 +80,7 @@ export function RecipeDetail({
           <Stat label="ต้นทุน/ชิ้น" value={silver(ev.unitCost)} />
           <Stat
             label={
-              imperial ? <WithTip label="ได้จาก NPC ราชวัง/กล่อง (รวมโบนัส Mastery)" tip={GLOSSARY.imperial} /> : `ได้รับสุทธิ/ชิ้น (${pct(ev.netRate, 1)})`
+              imperial ? <WithTip label="ได้จาก NPC ราชวัง/กล่อง (รวมโบนัส Mastery)" tip={GLOSSARY.imperial} /> : `${NET}/ชิ้น (${pct(ev.netRate, 1)})`
             }
             value={silver(ev.netPerUnit)}
           />

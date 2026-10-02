@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { DEFAULT_SETTINGS, type Inventory, type ItemId, type Settings } from "@/lib/engine/types";
 import { fetchJson } from "@/lib/fetch-error";
 import { IDLE_SAVE, overlayFavorites, overlayInventory, overlaySettings, saveQueue, type SaveSnapshot } from "@/lib/save-queue";
+import { dismissActionToasts } from "./ui/Toast";
 import { LEGACY_INVENTORY_KEY, LEGACY_SETTINGS_KEY, normalizeSettings } from "@/lib/settings";
 
 interface UserData {
@@ -17,8 +18,6 @@ interface UserData {
   favorites: ItemId[];
   favoriteItems: FavoriteItem[];
   toggleFavorite: (id: ItemId) => void;
-  /** sends every change that failed to save again (the ลองใหม่ of SaveStatus) */
-  retrySaves: () => void;
 }
 
 export interface FavoriteItem {
@@ -62,7 +61,8 @@ const historyReloadDone = () => {
  * the old browser-only version are migrated once.
  *
  * `userId` ties the queue to this account, so another account signing in on the same tab never
- * receives its changes.
+ * receives its changes. `initialInventory` is null on a page that does not load the inventory
+ * (market, calc): it is then neither shown as empty to the old-version migration nor migrated.
  */
 export function UserDataProvider({
   userId,
@@ -72,11 +72,11 @@ export function UserDataProvider({
 }: {
   userId: number;
   initialSettings: Settings | null;
-  initialInventory: Inventory;
+  initialInventory: Inventory | null;
   children: ReactNode;
 }) {
   const [settings, setSettingsState] = useState<Settings>(() => overlaySettings(initialSettings ?? DEFAULT_SETTINGS, saveQueue.jobsFor(userId)));
-  const [inventory, setInventory] = useState<Inventory>(() => overlayInventory(initialInventory, saveQueue.jobsFor(userId)));
+  const [inventory, setInventory] = useState<Inventory>(() => overlayInventory(initialInventory ?? {}, saveQueue.jobsFor(userId)));
   const [favorites, setFavorites] = useState<ItemId[]>([]);
   const [favoriteItems, setFavoriteItems] = useState<FavoriteItem[]>([]);
   // the list toggleFavorite reads, so the request says the same thing as the screen
@@ -124,6 +124,9 @@ export function UserDataProvider({
       // fails and is retried like any other)
       saveQueue.flush(true);
       saveQueue.markNavigation();
+      // an undo (เลิกทำ) acts on this page's data: it must not outlive the page and change data the
+      // next page does not show
+      dismissActionToasts();
     };
   }, [userId, loadFavorites]);
 
@@ -197,7 +200,9 @@ export function UserDataProvider({
             window.localStorage.removeItem(LEGACY_SETTINGS_KEY);
           }
         }
-        if (Object.keys(initialInventory).length === 0) {
+        // only where the inventory was loaded and is really empty (not on the market or calc page,
+        // whose empty placeholder would push old browser-only rows over the account's real ones)
+        if (initialInventory && Object.keys(initialInventory).length === 0) {
           const raw = window.localStorage.getItem(LEGACY_INVENTORY_KEY);
           if (raw) {
             const legacy = JSON.parse(raw) as Inventory;
@@ -228,7 +233,6 @@ export function UserDataProvider({
       favorites,
       favoriteItems,
       toggleFavorite,
-      retrySaves: saveQueue.retry,
     }),
     [settings, setSettings, inventory, setOwned, clearInventory, favorites, favoriteItems, toggleFavorite],
   );

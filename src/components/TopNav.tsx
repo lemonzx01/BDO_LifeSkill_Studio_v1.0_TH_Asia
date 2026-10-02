@@ -81,7 +81,7 @@ const TABS: { href: string; label: string; icon: ReactNode }[] = [
  * the page links on md and up, then search and the user menu. Below md the page links move to a
  * tab bar fixed at the bottom of the screen.
  *
- * SaveStatus sits left of search; it shows only on pages with a UserDataProvider and grows to the
+ * SaveStatus sits left of search; it shows on every page (the save queue outlives a page) and grows to the
  * left, so search and the user menu never move. `user` is null only in the loading skeleton: the
  * menu shows as a grey placeholder exactly as wide as the real button, so nothing jumps when the
  * page arrives.

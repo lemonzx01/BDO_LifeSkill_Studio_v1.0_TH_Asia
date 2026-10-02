@@ -11,7 +11,7 @@ export function profitTone(n: number, unknown = false): ProfitTone {
 const TONE_CLS: Record<ProfitTone, string> = { good: "text-good", bad: "text-bad", muted: "text-muted" };
 
 /** The colour class for a profit-like number, matching <Money tone="profit">. */
-export function profitCls(n: number, unknown = false): string {
+function profitCls(n: number, unknown = false): string {
   return TONE_CLS[profitTone(n, unknown)];
 }
 

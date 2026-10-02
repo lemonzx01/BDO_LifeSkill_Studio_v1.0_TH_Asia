@@ -2,28 +2,32 @@
 
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { isBoolean, oneOf, usePersistentState } from "@/lib/use-persistent";
+import { isBoolean, usePersistentState } from "@/lib/use-persistent";
 import { CostEngine, mainProduct } from "@/lib/engine/cost";
 import { IMPERIAL_TYPES, PROCESSING_TYPES, RECIPE_TYPE_TH } from "@/lib/engine/mastery";
 import type { Inventory, Item, ItemId, MarketPrice, Overrides, Recipe, RecipeEvaluation, RecipeType, SkillGroup } from "@/lib/engine/types";
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { describeError, fetchJson, problemAction, type FetchProblem } from "@/lib/fetch-error";
-import { signedPct, silver, silverShort, timeAgo } from "@/lib/format";
+import { signedPct, silver, silverShort } from "@/lib/format";
 import { GLOSSARY, perHourTip } from "@/lib/glossary";
+import { isRecipeSort, RECIPE_SORT_KEY, type RecipeSort } from "@/lib/home-picks";
+import { priceSourceLabel } from "@/lib/market/source-label";
 import { hiddenUnder, revealUnder } from "@/lib/scroll";
-import { SETTINGS_TITLE } from "@/lib/settings-labels";
+import { NET, SETTINGS_TITLE } from "@/lib/settings-labels";
 import type { TreeTools } from "./CostTree";
 import { FavoriteStar } from "./FavoriteStar";
 import { ItemIcon } from "./ItemIcon";
 import { RecipeDetail } from "./RecipeDetail";
 import { SettingsDrawer } from "./SettingsDrawer";
+import { TimeAgo } from "./TimeAgo";
 import type { SessionUser } from "./auth/UserMenu";
 import { useInventory, useSettings } from "./UserDataProvider";
 import { Badge, type BadgeTone } from "./ui/Badge";
-import { btn, btnShape, toggleCls } from "./ui/button";
+import { btn } from "./ui/button";
 import { cardCls } from "./ui/Card";
 import { EmptyState, type EmptyAction } from "./ui/EmptyState";
 import { checkboxCls, selectCls } from "./ui/field";
+import { filterPanelCls, FilterToggle, FocusChip } from "./ui/FilterControls";
 import { WithTip } from "./ui/InfoTip";
 import { Money, pctCls } from "./ui/Money";
 import { Notice } from "./ui/Notice";
@@ -33,7 +37,8 @@ import { Segmented } from "./ui/Segmented";
 import { SkeletonRows } from "./ui/Skeleton";
 
 type Tab = "all" | "alchemy" | "cooking" | "processing" | "imperial";
-type SortKey = "profitPerHour" | "profitPerUnit" | "profitPerCraft" | "roi" | "unitCost";
+// the saved sort is shared with the home page (lib/home-picks), so its names live there
+type SortKey = RecipeSort;
 type MarketFilter = "all" | "soldout" | "instock";
 
 const TABS: { value: Tab; label: string }[] = [
@@ -56,11 +61,6 @@ const MARKET_FILTERS: { key: MarketFilter; label: string }[] = [
   { key: "instock", label: "มีของค้างขาย" },
 ];
 const PAGE = 100;
-const SOURCE_LABEL: Record<string, string> = {
-  snapshot: "ฐานข้อมูลตลาด (อัปเดตทุก 5 นาที)",
-  official: "Pearl Abyss",
-  arsha: "arsha.io",
-};
 
 interface PricesResponse {
   prices: Record<ItemId, MarketPrice>;
@@ -152,7 +152,7 @@ export function Studio({ user }: { user: SessionUser }) {
   const [hideIncomplete, setHideIncomplete] = usePersistentState<boolean>("recipes.hideIncomplete", true, isBoolean);
   const [hideSoldOut, setHideSoldOut] = usePersistentState<boolean>("recipes.hideSoldOut", false, isBoolean);
   const [marketFilter, setMarketFilter] = useState<MarketFilter>(params.get("market") === "soldout" ? "soldout" : "all");
-  const [sortKey, setSortKey] = usePersistentState<SortKey>("recipes.sort", "profitPerUnit", oneOf(["profitPerHour", "profitPerUnit", "profitPerCraft", "roi", "unitCost"] as const));
+  const [sortKey, setSortKey] = usePersistentState<SortKey>(RECIPE_SORT_KEY, "profitPerUnit", isRecipeSort);
   const [focus, setFocus] = useState<Focus | null>(null);
   const filterKey = JSON.stringify([tab, method, query, hideIncomplete, hideSoldOut, marketFilter, sortKey, focus]);
   const [limitState, setLimitState] = useState({ key: filterKey, limit: PAGE });
@@ -381,7 +381,7 @@ export function Studio({ user }: { user: SessionUser }) {
   const perHourText = !focus && tab === "imperial" ? GLOSSARY.imperialPerHour : perHourTip(settings.craftsPerHour, group);
 
   const exportCsv = () => {
-    const header = ["สูตร", "ประเภท", "ระดับทักษะ", "ผลผลิต/รอบ", "ต้นทุน/ชิ้น", "ราคาขาย", "ได้รับสุทธิ/ชิ้น", "กำไร/ชิ้น", "ROI %", "กำไร/รอบ", "กำไร/ชม.", "สถานะ"];
+    const header = ["สูตร", "ประเภท", "ระดับทักษะ", "ผลผลิต/รอบ", "ต้นทุน/ชิ้น", "ราคาขาย", `${NET}/ชิ้น`, "กำไร/ชิ้น", "ROI %", "กำไร/รอบ", "กำไร/ชม.", "สถานะ"];
     const body = rows.map((ev) => [
       items[ev.productId]?.th ?? ev.recipe.name,
       RECIPE_TYPE_TH[ev.recipe.type],
@@ -412,7 +412,11 @@ export function Studio({ user }: { user: SessionUser }) {
       <PageHeader
         title="คำนวณสูตร"
         description="จัดอันดับกำไรสูตร แปรธาตุ / ทำอาหาร / แปรรูป"
-        meta={["ตลาดกลาง Asia", `ราคาอัปเดต ${loading ? "กำลังโหลด…" : timeAgo(fetchedAt)}`, source && `แหล่ง ${SOURCE_LABEL[source] ?? source}`]}
+        meta={[
+          "ตลาดกลาง Asia",
+          <>ราคาอัปเดต {loading ? "กำลังโหลด…" : <TimeAgo at={fetchedAt} placeholder="-" />}</>,
+          source && `แหล่ง ${priceSourceLabel(source)}`,
+        ]}
         actions={
           <>
             <button type="button" onClick={() => load(true)} disabled={loading} className={btn("secondary")}>
@@ -430,17 +434,11 @@ export function Studio({ user }: { user: SessionUser }) {
       />
       <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
-      {problem &&
-        (problem.status === 429 ? (
-          // รีเฟรชราคา pressed again too soon: the prices on screen stay, it only has to wait
-          <Notice tone="info" className="mb-3" onClose={() => setProblem(null)}>
-            {problem.message}
-          </Notice>
-        ) : (
-          <Notice tone="bad" className="mb-3" action={problemAction(problem, () => load(true), loading)}>
-            โหลดราคาไม่สำเร็จ: {problem.message} · ตัวเลขที่เห็นอาจไม่ครบ
-          </Notice>
-        ))}
+      {problem && (
+        <Notice tone="bad" className="mb-3" action={problemAction(problem, () => load(true), loading)}>
+          โหลดราคาไม่สำเร็จ: {problem.message} · ตัวเลขที่เห็นอาจไม่ครบ
+        </Notice>
+      )}
       {dataProblem && (
         <Notice
           tone="bad"
@@ -465,25 +463,11 @@ export function Studio({ user }: { user: SessionUser }) {
           <Segmented label="สายอาชีพ" options={TABS} value={tab} onChange={changeTab} />
           <div className="flex w-full min-w-0 items-center gap-2 md:w-auto md:min-w-[200px] md:flex-1">
             <SearchInput label="ค้นหาชื่อไอเท็ม" value={query} onChange={changeQuery} placeholder="ค้นหาชื่อไอเท็ม…" className="min-w-0 flex-1" />
-            <button
-              type="button"
-              onClick={toggleFilters}
-              aria-expanded={filtersOpen}
-              aria-controls="recipe-filters"
-              className={`${btnShape()} ${toggleCls(filtersOpen)} shrink-0 md:hidden`}
-            >
-              ตัวกรอง
-              {panelChanged > 0 && (
-                <span className="num text-accent">
-                  • {panelChanged}
-                  <span className="sr-only"> ที่เปลี่ยนไว้</span>
-                </span>
-              )}
-            </button>
+            <FilterToggle open={filtersOpen} count={panelChanged} controls="recipe-filters" onClick={toggleFilters} />
           </div>
         </div>
       </div>
-      <div ref={filtersRef} id="recipe-filters" className={`${filtersOpen ? "flex" : "hidden"} mb-3 flex-wrap items-center gap-2 md:mt-2 md:flex`}>
+      <div ref={filtersRef} id="recipe-filters" className={`mb-3 ${filterPanelCls(filtersOpen)}`}>
         {tab === "processing" && (
           <select aria-label="วิธีแปรรูป" value={method} onChange={(e) => changeMethod(e.target.value as RecipeType | "all")} className={selectCls("md", method !== "all")}>
             <option value="all">วิธีแปรรูป: ทั้งหมด</option>
@@ -526,22 +510,7 @@ export function Studio({ user }: { user: SessionUser }) {
         </button>
       </div>
 
-      {focus && (
-        <div className="mb-3 flex">
-          <div className="inline-flex max-w-full items-center gap-1 rounded-full border border-accent/40 bg-accent/10 py-0.5 pl-3 pr-0.5 text-sm text-accent">
-            <span className="truncate">กำลังดู: {focus.name}</span>
-            <button
-              type="button"
-              onClick={closeFocus}
-              aria-label={`เลิกดู ${focus.name} กลับไปใช้ตัวกรองที่ตั้งไว้`}
-              title="กลับไปใช้ตัวกรองที่ตั้งไว้"
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full leading-none hover:bg-accent/20 md:h-7 md:w-7"
-            >
-              <span aria-hidden>✕</span>
-            </button>
-          </div>
-        </div>
-      )}
+      {focus && <FocusChip name={focus.name} onClose={closeFocus} className="mb-3" />}
 
       {busy && rows.length === 0 && <SkeletonRows n={8} label={!data ? "กำลังโหลดฐานสูตร…" : "กำลังโหลดราคาตลาด…"} className="mb-3" />}
 

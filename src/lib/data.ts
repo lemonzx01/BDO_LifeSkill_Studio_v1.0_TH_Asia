@@ -23,9 +23,3 @@ export function allItemIds(): ItemId[] {
   _allIds = [...set];
   return _allIds;
 }
-
-export function itemName(id: ItemId, lang: "th" | "en" = "th"): string {
-  const it = items[id];
-  if (!it) return `#${id}`;
-  return lang === "th" ? it.th : it.en;
-}

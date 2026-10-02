@@ -17,7 +17,7 @@ import type { ItemId, MarketPrice } from "@/lib/engine/types";
 import { downloadCsv, parseCsv, toCsv } from "@/lib/csv";
 import { describeError, fetchJson, isAbort, problemAction, type FetchProblem } from "@/lib/fetch-error";
 import { silver } from "@/lib/format";
-import { OWNED_COST, OWNED_COST_LABEL, SETTINGS_TITLE } from "@/lib/settings-labels";
+import { INVENTORY_SORT_LABEL, OWNED_COST, OWNED_COST_LABEL, SETTINGS_TITLE } from "@/lib/settings-labels";
 import type { SessionUser } from "./auth/UserMenu";
 import { InventoryIdeasPanel } from "./InventoryIdeasPanel";
 import { ItemIcon } from "./ItemIcon";
@@ -36,12 +36,8 @@ import { Segmented } from "./ui/Segmented";
 import { Stat } from "./ui/Stat";
 import { toast } from "./ui/Toast";
 
-type InventorySort = "name" | "recent" | "value";
-const SORTS: { value: InventorySort; label: string }[] = [
-  { value: "name", label: "ชื่อ" },
-  { value: "recent", label: "เพิ่ม/แก้ล่าสุด" },
-  { value: "value", label: "มูลค่า" },
-];
+type InventorySort = keyof typeof INVENTORY_SORT_LABEL;
+const SORTS: { value: InventorySort; label: string }[] = (["name", "recent", "value"] as const).map((value) => ({ value, label: INVENTORY_SORT_LABEL[value] }));
 
 const IMPORT_MODES: { value: ImportMode; hint: string }[] = [
   { value: "replace", hint: "ใช้เมื่อนำเข้าไฟล์เดิมซ้ำ" },
@@ -389,7 +385,7 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
               {IMPORT_MODES.map((m) => (
                 <label
                   key={m.value}
-                  className={`flex cursor-pointer items-start gap-2 rounded border px-3 py-2 ${importMode === m.value ? "border-accent bg-accent/10" : "border-border hover:bg-panel-2"}`}
+                  className={`${toggleCls(importMode === m.value)} flex cursor-pointer items-start gap-2 rounded px-3 py-2`}
                 >
                   <input
                     type="radio"
@@ -401,6 +397,7 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
                   />
                   <span className="min-w-0">
                     <span className="block text-sm font-medium">{IMPORT_MODE_LABEL[m.value]}</span>
+                    {/* grey in both states: only the choice itself turns gold */}
                     <span className="block text-xs text-muted">{m.hint}</span>
                   </span>
                 </label>
@@ -587,7 +584,7 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
                               type="button"
                               onClick={() => setOwned(o.id, o.qty, price || 0)}
                               aria-label={`กำหนดเอง (ต้นทุน ${name})`}
-                              className="text-xs text-muted hover:text-foreground"
+                              className={btn("ghost", "sm")}
                               title="กำหนดต้นทุนที่จ่ายจริงเอง"
                             >
                               กำหนดเอง
@@ -607,7 +604,7 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
                               type="button"
                               onClick={() => setOwned(o.id, o.qty, null)}
                               aria-label={`ตามตลาด (ต้นทุน ${name})`}
-                              className="text-xs text-muted hover:text-foreground"
+                              className={btn("ghost", "sm")}
                               title="กลับไปใช้ราคาตลาดเสมอ"
                             >
                               ตามตลาด
@@ -737,7 +734,7 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
                         </div>
                       </div>
                       <div className="mt-1 flex justify-end">
-                        <button type="button" onClick={() => removeRow(o)} aria-label={`ลบ ${name}`} className={btn("ghost", "sm")}>
+                        <button type="button" onClick={() => removeRow(o)} aria-label={`ลบ ${name}`} className={btn("dangerGhost", "sm")}>
                           ลบ
                         </button>
                       </div>

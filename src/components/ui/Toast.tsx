@@ -68,6 +68,14 @@ export function dismissToast(id: number) {
   emit();
 }
 
+/**
+ * Closes every message that has a button (e.g. เลิกทำ). Called when a page's data goes away
+ * (UserDataProvider unmounting), since such a button acts on that page's data.
+ */
+export function dismissActionToasts() {
+  for (const t of items) if (t.action) dismissToast(t.id);
+}
+
 /** While the member is on a message, none of them time out; leaving restarts the full time. */
 function pause(on: boolean) {
   if (paused === on) return;

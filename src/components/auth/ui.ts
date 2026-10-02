@@ -6,5 +6,4 @@ import { fieldCls } from "../ui/field";
 export const inputCls = fieldCls();
 export const labelCls = "flex flex-col gap-1 text-xs text-muted";
 export const primaryBtn = btn("primary");
-export const ghostBtn = btn("secondary");
-export const dangerBtn = btn("danger");
+export const secondaryBtn = btn("secondary");

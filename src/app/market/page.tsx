@@ -53,7 +53,8 @@ export default async function MarketPage() {
   // written after the response so measuring never slows the page itself
   after(() => recordTiming("timing_market_page", timing).catch(() => {}));
   return (
-    <UserDataProvider userId={user.id} initialSettings={settings} initialInventory={{}}>
+    // this page does not load the inventory (null: the provider must not treat it as empty)
+    <UserDataProvider userId={user.id} initialSettings={settings} initialInventory={null}>
       <MarketScanner
         rows={scan.rows}
         totalItems={scan.totalItems}

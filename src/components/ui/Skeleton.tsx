@@ -24,6 +24,24 @@ export function SkeletonRows({ n = 8, label = "กำลังโหลด…", 
   );
 }
 
+/** `n` list rows with no frame of their own: inside a card, under its CardHeader. */
+export function SkeletonList({ n = 4, label = "กำลังโหลด…" }: { n?: number; label?: string }) {
+  return (
+    <div role="status" className="animate-pulse divide-y divide-border">
+      {Array.from({ length: n }, (_, i) => (
+        <div key={i} aria-hidden className="flex items-center gap-3 px-4 py-2.5">
+          <div className="h-8 w-8 shrink-0 rounded bg-panel-2" />
+          <div className="flex-1 space-y-1.5">
+            <div className="h-3 w-3/4 rounded bg-panel-2" />
+            <div className="h-2.5 w-1/2 rounded bg-panel-2/70" />
+          </div>
+        </div>
+      ))}
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+}
+
 /** `n` cards with a title bar and a few list rows; `className` sets the grid they sit in. */
 export function SkeletonCards({ n = 6, label = "กำลังโหลด…", className = "" }: { n?: number; label?: string; className?: string }) {
   return (
