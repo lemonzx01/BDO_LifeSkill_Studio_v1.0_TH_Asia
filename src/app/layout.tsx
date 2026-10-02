@@ -1,3 +1,4 @@
+import { UsageBeacon } from "@/components/UsageBeacon";
 import { APP_NAME, APP_SHORT } from "@/lib/brand";
 import type { Metadata, Viewport } from "next";
 import { Noto_Sans_Thai } from "next/font/google";
@@ -15,7 +16,7 @@ export const metadata: Metadata = {
   description: "คำนวณต้นทุน กำไร และ ROI ของสูตร Life Skill จากราคาตลาดกลางเซิร์ฟเวอร์ Asia แบบสด ๆ",
   manifest: "/manifest.webmanifest",
   applicationName: APP_NAME,
-  // members-only guild tool: keep it out of search engines
+  // open to anyone with the link, but not meant to be found through search engines: keep it out of them
   robots: { index: false, follow: false },
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: APP_SHORT },
   icons: {
@@ -36,7 +37,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   await connection();
   return (
     <html lang="th" className={`${notoThai.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        {/* counts visitors for /admin/stats (guests and members); renders nothing */}
+        <UsageBeacon />
+      </body>
     </html>
   );
 }

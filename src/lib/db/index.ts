@@ -24,6 +24,10 @@ export const APP_TABLES = [
   "user_inventory",
   "user_favorites",
   "login_attempts",
+  "usage_visitor_days",
+  "usage_visitors",
+  "usage_page_views",
+  "usage_capped_days",
 ] as const;
 
 export const SCHEMA_SQL = [
@@ -100,6 +104,29 @@ export const SCHEMA_SQL = [
     key TEXT PRIMARY KEY,
     count INTEGER NOT NULL,
     reset_at TIMESTAMPTZ NOT NULL
+  )`,
+  // usage counting (src/lib/usage): hashed browser ids only, never an IP, user id or username
+  `CREATE TABLE IF NOT EXISTS usage_visitor_days (
+    day DATE NOT NULL,
+    visitor TEXT NOT NULL,
+    member BOOLEAN NOT NULL DEFAULT FALSE,
+    PRIMARY KEY (day, visitor)
+  )`,
+  `CREATE TABLE IF NOT EXISTS usage_visitors (
+    visitor TEXT PRIMARY KEY,
+    first_day DATE NOT NULL,
+    last_day DATE NOT NULL,
+    days INTEGER NOT NULL DEFAULT 1
+  )`,
+  `CREATE TABLE IF NOT EXISTS usage_page_views (
+    day DATE NOT NULL,
+    path TEXT NOT NULL,
+    views INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, path)
+  )`,
+  `CREATE TABLE IF NOT EXISTS usage_capped_days (
+    day DATE PRIMARY KEY,
+    reports INTEGER NOT NULL DEFAULT 0
   )`,
   // Row level security. Supabase publishes the public schema through its REST API to the
   // anon/authenticated roles; with RLS on and no policies those roles see and change no rows.

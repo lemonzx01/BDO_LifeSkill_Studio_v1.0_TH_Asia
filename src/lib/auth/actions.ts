@@ -19,6 +19,7 @@ import {
   deleteUser,
   deleteUserSessions,
   getUserById,
+  getUserBySessionToken,
   isRememberedSession,
   setUserActive,
   setUserRole,
@@ -26,7 +27,7 @@ import {
   verifyCredentials,
 } from "./service";
 import { parseRole, ROLE_TH } from "./roles";
-import { clearSessionCookie, getSessionToken, requireAdmin, requireUser, setSessionCookie } from "./session";
+import { clearSessionCookie, getSessionToken, requireAdmin, requireUser, safeNextPath, setSessionCookie } from "./session";
 
 export interface ActionState {
   error?: string;
@@ -99,14 +100,16 @@ export async function loginAction(_prev: ActionState, fd: FormData): Promise<Act
   }
   const token = await createSession(result.user.id, h.get("user-agent"), { remember });
   await setSessionCookie(token, { remember });
-  redirect(result.user.mustChangePassword ? "/account?first=1" : "/");
+  // back to the page the member came from (?next=, same-site paths only); a temporary password first
+  redirect(result.user.mustChangePassword ? "/account?first=1" : safeNextPath(str(fd, "next")));
 }
 
+/** Signs out on this device, then home: the site is open to everyone, so it carries on as a visitor. */
 export async function logoutAction() {
   const token = await getSessionToken();
   if (token) await deleteSession(token).catch(() => {});
   await clearSessionCookie();
-  redirect("/login");
+  redirect("/");
 }
 
 /** Ends every session of the signed-in account, on every device, this one included. */
@@ -114,7 +117,24 @@ export async function logoutEverywhereAction() {
   const me = await requireUser({ allowPendingPassword: true });
   await deleteUserSessions(me.id);
   await clearSessionCookie();
-  redirect("/login");
+  redirect("/");
+}
+
+/**
+ * "Carry on without signing in" after a session ended (SessionEndedNotice): drops the session cookie
+ * so pages stop saying the session ended. Only a cookie whose session really is gone is dropped: if
+ * the member signed in again meanwhile (another tab), the new session is left alone, and so is a
+ * cookie that cannot be checked right now (database unreachable).
+ */
+export async function forgetEndedSessionAction(): Promise<void> {
+  const token = await getSessionToken();
+  if (!token) return;
+  try {
+    if ((await getUserBySessionToken(token)) !== null) return;
+  } catch {
+    return;
+  }
+  await clearSessionCookie();
 }
 
 /** First-run only: creates the first admin while the user table is empty. */

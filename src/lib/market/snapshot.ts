@@ -135,16 +135,25 @@ export const MANUAL_REFRESH_COOLDOWN_MS = 120_000;
 const MANUAL_CLAIM_KEY = "manual_refresh_started_at";
 
 /**
- * Claims the shared manual-refresh slot with one atomic upsert that only succeeds when the last claim is
- * at least `cooldownMs` old, so members on different server instances cannot start refreshes side by side.
- * The claim stays whether the refresh then succeeds or fails. Returns 0 when claimed, else the seconds to wait.
+ * Page views (anyone's, signed in or not) refresh a snapshot older than this in the background, and
+ * at most once per this long across all server instances. The daily cron and a member's manual
+ * refresh come on top. Every refresh is one bdolytics request plus the database upserts.
  */
-export async function claimManualRefresh(cooldownMs = MANUAL_REFRESH_COOLDOWN_MS): Promise<number> {
+export const AUTO_REFRESH_MS = 15 * 60 * 1000;
+/** market_meta row holding when the last page-triggered refresh was started */
+const AUTO_CLAIM_KEY = "auto_refresh_started_at";
+
+/**
+ * Claims a shared slot (a market_meta row) with one atomic upsert that only succeeds when the last
+ * claim is at least `cooldownMs` old, so server instances cannot start the same work side by side.
+ * The claim stays whether the work then succeeds or fails. Returns 0 when claimed, else the seconds to wait.
+ */
+async function claimSlot(key: string, cooldownMs: number): Promise<number> {
   const db = await getDb();
   const window = sql`make_interval(secs => ${cooldownMs / 1000}::float8)`;
   const claimed = await db
     .insert(marketMeta)
-    .values({ key: MANUAL_CLAIM_KEY, value: sql`now()::text`, updatedAt: sql`now()` })
+    .values({ key, value: sql`now()::text`, updatedAt: sql`now()` })
     .onConflictDoUpdate({
       target: marketMeta.key,
       set: { value: sql`now()::text`, updatedAt: sql`now()` },
@@ -156,8 +165,29 @@ export async function claimManualRefresh(cooldownMs = MANUAL_REFRESH_COOLDOWN_MS
   const [row] = await db
     .select({ wait: sql<number>`CEIL(EXTRACT(EPOCH FROM (${marketMeta.updatedAt} + ${window} - now())))::int` })
     .from(marketMeta)
-    .where(eq(marketMeta.key, MANUAL_CLAIM_KEY));
+    .where(eq(marketMeta.key, key));
   return Math.min(full, Math.max(1, Number(row?.wait ?? full)));
+}
+
+/** The shared manual-refresh slot, so members on different server instances cannot start refreshes side by side. */
+export function claimManualRefresh(cooldownMs = MANUAL_REFRESH_COOLDOWN_MS): Promise<number> {
+  return claimSlot(MANUAL_CLAIM_KEY, cooldownMs);
+}
+
+/** The shared slot for page-triggered background refreshes (see AUTO_REFRESH_MS). */
+export function claimAutoRefresh(cooldownMs = AUTO_REFRESH_MS): Promise<number> {
+  return claimSlot(AUTO_CLAIM_KEY, cooldownMs);
+}
+
+/**
+ * The background refresh a page view or a price request starts once the snapshot is older than
+ * AUTO_REFRESH_MS: only when it wins the shared slot, so however many visitors and server instances
+ * there are, it runs at most once per AUTO_REFRESH_MS. `backfill` history items are merged in too
+ * (default none: the cron and members' views fill the history). Null when another run has the slot.
+ */
+export async function autoRefreshMarket(opts: { backfill?: number } = {}, deps: RefreshDeps = {}): Promise<RefreshResult | null> {
+  if ((await claimAutoRefresh()) > 0) return null;
+  return refreshMarket({ backfill: opts.backfill ?? 0 }, deps);
 }
 
 export type ManualRefreshOutcome = { ok: true; result: RefreshResult } | { ok: false; retryAfterSec: number };

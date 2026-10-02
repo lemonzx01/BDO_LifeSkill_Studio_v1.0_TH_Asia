@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getApiUser } from "@/lib/auth/session";
 import { recipes } from "@/lib/data";
 import { searchMarketItems } from "@/lib/market/snapshot";
+import { limitGuest } from "@/lib/public-rate-limit";
 import { recipeProductIds } from "@/lib/recipe-products";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +20,13 @@ function hasRecipe(id: number): boolean {
 /**
  * GET /api/market/search?q=... -> up to 12 market items matching the name. `hasRecipe` says whether
  * the recipes page lists the item, so quick search opens the recipes or the market for it.
+ * Open to everyone (visitors who are not signed in are rate limited per address).
  */
 export async function GET(req: Request) {
-  if (!(await getApiUser())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await getApiUser())) {
+    const limited = await limitGuest("search", req.headers);
+    if (limited) return limited;
+  }
   const q = (new URL(req.url).searchParams.get("q") ?? "").trim().slice(0, MAX_QUERY);
   try {
     const items = await searchMarketItems(q);

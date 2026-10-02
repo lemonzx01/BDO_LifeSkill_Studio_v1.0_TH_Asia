@@ -7,6 +7,9 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    testTimeout: 30000,
+    // the first test or hook of a file starts its in-memory database, which can take over 30 s
+    // while every other test file starts its own in parallel on a busy machine
+    testTimeout: 60000,
+    hookTimeout: 60000,
   },
 });

@@ -120,3 +120,49 @@ export const userFavorites = pgTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.itemId] })],
 );
+
+/**
+ * Usage counting (src/lib/usage). No raw browser id, IP address, user id or username is ever
+ * stored: `visitor` is the sha256 of the random id a browser keeps in localStorage, and days are
+ * calendar days in Asia/Bangkok.
+ */
+
+/** One row per browser per day it visited; `member` once it came with a valid session that day. */
+export const usageVisitorDays = pgTable(
+  "usage_visitor_days",
+  {
+    day: date("day").notNull(),
+    visitor: text("visitor").notNull(),
+    member: boolean("member").notNull().default(false),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.visitor] })],
+);
+
+/** One row per browser ever counted: first and last day seen and on how many days. */
+export const usageVisitors = pgTable("usage_visitors", {
+  visitor: text("visitor").primaryKey(),
+  firstDay: date("first_day").notNull(),
+  lastDay: date("last_day").notNull(),
+  days: integer("days").notNull().default(1),
+});
+
+/** Page views per day per known page (paths outside the app's pages are counted as "other"). */
+export const usagePageViews = pgTable(
+  "usage_page_views",
+  {
+    day: date("day").notNull(),
+    path: text("path").notNull(),
+    views: integer("views").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.path] })],
+);
+
+/**
+ * Days on which a cap against inflated counts held back new visitors (src/lib/usage/record.ts):
+ * `reports` is how many reports from browsers new that day were not counted as a visitor (a browser
+ * held back sends one per page it opens), so the stats page can say those days are incomplete.
+ */
+export const usageCappedDays = pgTable("usage_capped_days", {
+  day: date("day").primaryKey(),
+  reports: integer("reports").notNull().default(0),
+});

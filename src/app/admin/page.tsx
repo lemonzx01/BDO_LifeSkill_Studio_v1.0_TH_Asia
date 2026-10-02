@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { AdminUsers } from "@/components/auth/AdminUsers";
+import { btn } from "@/components/ui/button";
 import { Notice } from "@/components/ui/Notice";
 import { Page, PageHeader } from "@/components/ui/Page";
 import { listUsers } from "@/lib/auth/service";
@@ -23,7 +25,15 @@ export default async function AdminPage() {
   }));
   return (
     <Page user={{ username: me.username, displayName: me.displayName, role: me.role }} width="narrow">
-      <PageHeader title="จัดการสมาชิก" description="ปิดใช้งานแล้วผู้ใช้จะหลุดจากระบบทันที เปิดกลับได้ภายหลัง ลบคือถาวร" />
+      <PageHeader
+        title="จัดการสมาชิก"
+        description="ปิดใช้งานแล้วผู้ใช้จะหลุดจากระบบทันที เปิดกลับได้ภายหลัง ลบคือถาวร"
+        actions={
+          <Link href="/admin/stats" className={btn("secondary")}>
+            สถิติการใช้งาน
+          </Link>
+        }
+      />
       <Notice
         tone="info"
         className="mb-4"

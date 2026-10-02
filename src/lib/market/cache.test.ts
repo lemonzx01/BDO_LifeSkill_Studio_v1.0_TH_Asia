@@ -80,3 +80,27 @@ describe("getPrices force", () => {
     expect(mixed.missing).toEqual(madeUp.slice(0, 5));
   });
 });
+
+describe("getPrices without upstream (visitors who are not signed in)", () => {
+  it("answers from a stale snapshot instead of asking the market APIs", async () => {
+    const age = 3 * 60 * 60_000;
+    await snapshotAged(age);
+    const fromItemList = Number(Object.keys(itemList)[0]);
+    const r = await getPrices([1, 2, fromItemList], { upstream: false });
+    expect(upstream.calls).toBe(0);
+    expect(r.source).toBe("snapshot");
+    expect(r.prices[1]?.price).toBe(150);
+    // not on the market: "unknown" (price 0), like a fresh snapshot answers it
+    expect(r.prices[fromItemList]?.price).toBe(0);
+    expect(r.missing).toEqual([]);
+    expect(r.snapshotAt).not.toBeNull();
+    expect(Date.now() - (r.snapshotAt ?? 0)).toBeGreaterThanOrEqual(age);
+    expect(r.fetchedAt).toBe(r.snapshotAt);
+
+    // a member's request still goes upstream on a snapshot this old (an id this instance has not fetched yet)
+    const another = Number(Object.keys(itemList)[1]);
+    await getPrices([another], {});
+    expect(upstream.calls).toBe(1);
+    expect(upstream.asked).toEqual([another]);
+  });
+});

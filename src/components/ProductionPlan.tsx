@@ -5,6 +5,7 @@ import { planProduction, type ConsumeChange } from "@/lib/engine/consume";
 import { flattenRequirements } from "@/lib/engine/cost";
 import type { Inventory, Item, ItemId, MarketPrice, OwnedCostMode, RecipeEvaluation } from "@/lib/engine/types";
 import { silver } from "@/lib/format";
+import { GUEST_STORAGE_NOTE } from "@/lib/guest/storage";
 import { NET, OWNED_COST, SETTINGS_TITLE } from "@/lib/settings-labels";
 import { ItemIcon } from "./ItemIcon";
 import { NumberInput } from "./NumberInput";
@@ -44,7 +45,7 @@ export function ProductionPlan({
   prices: Record<ItemId, MarketPrice>;
   inventory: Inventory;
 }) {
-  const { setOwned } = useUserData();
+  const { setOwned, guest } = useUserData();
   const [settings] = useSettings();
   const [confirm, confirmDialog] = useConfirm();
   const [qty, setQty] = useState(100);
@@ -258,7 +259,12 @@ export function ProductionPlan({
         <Stat label={FULL_PROFIT_LABEL[settings.ownedCostMode]} value={<Money value={fullProfit} tone="profit" />} />
       </div>
       <p className="mt-2 text-xs text-muted">
-        ช่อง &ldquo;มีอยู่แล้ว&rdquo; บันทึกไว้กับบัญชีของคุณ ใช้ร่วมกันทุกสูตรและทุกเครื่อง (ดู/แก้รวมได้ที่หน้า &ldquo;คลังของ&rdquo;) · &ldquo;{OWNED_COST}&rdquo; ตั้งได้ใน{SETTINGS_TITLE}
+        {guest ? (
+          <>ช่อง &ldquo;มีอยู่แล้ว&rdquo; {GUEST_STORAGE_NOTE} ใช้ร่วมกันทุกสูตร</>
+        ) : (
+          <>ช่อง &ldquo;มีอยู่แล้ว&rdquo; บันทึกไว้กับบัญชีของคุณ ใช้ร่วมกันทุกสูตรและทุกเครื่อง</>
+        )}{" "}
+        (ดู/แก้รวมได้ที่หน้า &ldquo;คลังของ&rdquo;) · &ldquo;{OWNED_COST}&rdquo; ตั้งได้ใน{SETTINGS_TITLE}
       </p>
     </Card>
   );

@@ -4,7 +4,10 @@ import { getDb, resetDbCache } from "@/lib/db";
 import { marketMeta } from "@/lib/db/schema";
 import { SourceUnavailableError } from "./client";
 import {
+  AUTO_REFRESH_MS,
+  autoRefreshMarket,
   backfillHistory,
+  claimAutoRefresh,
   claimManualRefresh,
   manualRefresh,
   getDailyHistory,
@@ -219,5 +222,46 @@ describe("manual refresh claim", () => {
     const next = await manualRefresh({ fetchSnapshot: async () => snapshot, now }, 0);
     expect(next).toMatchObject({ ok: false });
     expect(next.ok === false && next.retryAfterSec).toBeGreaterThan(110);
+  });
+});
+
+describe("page-triggered refresh (autoRefreshMarket)", () => {
+  /** pretends the last page-triggered start was `secondsAgo` seconds ago */
+  async function startedAgo(secondsAgo: number) {
+    const db = await getDb();
+    await db
+      .update(marketMeta)
+      .set({ updatedAt: sql`now() - make_interval(secs => ${secondsAgo}::float8)` })
+      .where(eq(marketMeta.key, "auto_refresh_started_at"));
+  }
+
+  it("runs once per AUTO_REFRESH_MS however many views ask, with no history backfill", async () => {
+    let fetched = 0;
+    let histories = 0;
+    // an hour after the last snapshot, so it is stale
+    const later = new Date(Date.now() + 60 * 60_000);
+    const counting = {
+      fetchSnapshot: async (lang: "th" | "en") => {
+        if (lang === "th") fetched += 1;
+        return snapshot;
+      },
+      fetchHistory: async () => {
+        histories += 1;
+        return [];
+      },
+      now: () => later,
+    };
+    const results = await Promise.all(Array.from({ length: 6 }, () => autoRefreshMarket({}, counting)));
+    expect(results.filter((r) => r !== null)).toHaveLength(1);
+    expect(results.find((r) => r !== null)?.refreshed).toBe(true);
+    expect(fetched).toBe(1);
+    expect(histories).toBe(0);
+
+    // the next view within the cooldown starts nothing
+    expect(await autoRefreshMarket({}, counting)).toBeNull();
+    expect(await claimAutoRefresh()).toBeGreaterThan(AUTO_REFRESH_MS / 1000 - 10);
+    // once it is over, the next one may run
+    await startedAgo(AUTO_REFRESH_MS / 1000 + 1);
+    expect(await claimAutoRefresh()).toBe(0);
   });
 });

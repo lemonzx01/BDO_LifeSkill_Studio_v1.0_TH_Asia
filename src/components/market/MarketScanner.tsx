@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { isBoolean, isNumber, oneOf, usePersistentState } from "@/lib/use-persistent";
 import { netRate } from "@/lib/engine/cost";
-import { describeError, httpError, problemAction, type FetchProblem } from "@/lib/fetch-error";
+import { describeError, HttpError, httpError, problemAction, waitText, type FetchProblem } from "@/lib/fetch-error";
 import { pct, readsAsZero, signedPct, silver, silverShort } from "@/lib/format";
 import { mainCategoryLabel, subCategoryLabel } from "@/lib/market/categories";
 import { assessRecovery, sellEvidence, type Assessment, type EvidenceLine } from "@/lib/market/evidence";
@@ -212,7 +212,8 @@ export function MarketScanner({
   refreshedAt: string | null;
   source: string | null;
   refreshError: string | null;
-  user: SessionUser;
+  /** null: a visitor who is not signed in (no forced refresh, no timing report) */
+  user: SessionUser | null;
 }) {
   const router = useRouter();
   const [settings] = useSettings();
@@ -348,8 +349,14 @@ export function MarketScanner({
     } catch (e) {
       const p = describeError(e);
       // the server counts its 2-minute wait from this failed start too, so an immediate ลองใหม่
-      // would only be refused: say when instead, with no button
-      setRefreshProblem(p.status !== null && p.status >= 500 ? { ...p, message: "เซิร์ฟเวอร์ไม่ว่าง ลองใหม่ได้ในอีก 2 นาที", action: null } : p);
+      // would only be refused: say when instead, with no button. A 429 here means someone just refreshed.
+      setRefreshProblem(
+        p.status !== null && p.status >= 500
+          ? { ...p, message: "เซิร์ฟเวอร์ไม่ว่าง ลองใหม่ได้ในอีก 2 นาที", action: null }
+          : p.status === 429
+            ? { ...p, message: `เพิ่งอัปเดตไป ลองอีกครั้ง${waitText(e instanceof HttpError ? e.retryAfterSec : null)}` }
+            : p,
+      );
     } finally {
       setRefreshing(false);
     }
@@ -469,7 +476,8 @@ export function MarketScanner({
 
   return (
     <Page user={user}>
-      <PerfBeacon page="market" rows={rows.length} />
+      {/* members only: /api/perf takes reports from signed-in members */}
+      {user && <PerfBeacon page="market" rows={rows.length} />}
       <PageHeader
         title="สแกนตลาด"
         description="ราคาตอนนี้เทียบปกติ 90 วัน และของที่น่าซื้อ/น่าขาย"
@@ -483,9 +491,12 @@ export function MarketScanner({
           `มีประวัติแล้ว ${silver(withHistory)} ไอเท็ม`,
         ]}
         actions={
-          <button type="button" onClick={refresh} disabled={refreshing} className={btn("secondary")}>
-            {refreshing ? "กำลังอัปเดต…" : "อัปเดตตลาดตอนนี้"}
-          </button>
+          // forcing a whole-market refresh is for signed-in members; everyone gets the 5-minute updates
+          user && (
+            <button type="button" onClick={refresh} disabled={refreshing} className={btn("secondary")}>
+              {refreshing ? "กำลังอัปเดต…" : "อัปเดตตลาดตอนนี้"}
+            </button>
+          )
         }
       />
 
@@ -811,7 +822,7 @@ function Row({ c, rate, open, onToggle }: { c: Computed; rate: number; open: boo
                 </span>
               </span>
             </button>
-            <FavoriteStar id={r.id} name={r.th} />
+            <FavoriteStar id={r.id} name={r.th} grade={r.grade} />
           </div>
         </td>
         <td className="num px-2 py-1.5 text-right">{silver(r.price)}</td>
@@ -886,7 +897,7 @@ function MarketCard({ c, rate, open, onToggle }: { c: Computed; rate: number; op
           </span>
         </button>
         <div className="shrink-0 pr-1 pt-2">
-          <FavoriteStar id={r.id} name={r.th} />
+          <FavoriteStar id={r.id} name={r.th} grade={r.grade} />
         </div>
       </div>
       {open && (

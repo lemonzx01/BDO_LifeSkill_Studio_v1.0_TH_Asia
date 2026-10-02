@@ -42,7 +42,8 @@ interface MarketDetail {
 const inputCls = `${fieldCls()} num`;
 const labelCls = "flex flex-col gap-1 text-sm";
 
-export function TradeCalc({ user }: { user: SessionUser }) {
+/** `user` null: a visitor who is not signed in. */
+export function TradeCalc({ user }: { user: SessionUser | null }) {
   const params = useSearchParams();
   const [settings] = useSettings();
 

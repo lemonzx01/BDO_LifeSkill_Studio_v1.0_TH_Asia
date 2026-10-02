@@ -47,18 +47,34 @@ const RANK_OPTIONS: readonly SegmentedOption<HomeRank>[] = [
   { value: "profitPerHour", label: "กำไร/ชม." },
 ];
 
-export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSettings: boolean }) {
+/** `user` null: a visitor who is not signed in (their settings, inventory and stars are in this browser). */
+export function Dashboard({ user }: { user: SessionUser | null }) {
   const [settings, setSettings] = useSettings();
   const inventory = useInventory();
-  const { favorites, favoriteItems } = useUserData();
+  const { favorites, favoriteItems, guest, hasSavedSettings } = useUserData();
   const [data, setData] = useState<DataResponse | null>(null);
   const [prices, setPrices] = useState<Record<ItemId, MarketPrice>>({});
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [pricesLoaded, setPricesLoaded] = useState(false);
   const [problem, setProblem] = useState<FetchProblem | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const [showSetup, setShowSetup] = useState(!hasSettings);
+  // The first-time setup card: wanted while no settings have been saved. A guest's are only known
+  // once the page is live (null until then). Besides its own buttons, it follows saved settings
+  // arriving from elsewhere (copied in from this browser after signing in, a guest's first change);
+  // a member's changes in the drawer do not close it. Set during render, guarded by the last value
+  // seen, as React documents for state derived from props.
+  const [setupWanted, setSetupWanted] = useState<boolean | null>(hasSavedSettings === null ? null : !hasSavedSettings);
+  const [savedSeen, setSavedSeen] = useState(hasSavedSettings);
+  if (savedSeen !== hasSavedSettings) {
+    setSavedSeen(hasSavedSettings);
+    setSetupWanted(hasSavedSettings === null ? null : !hasSavedSettings);
+  }
+  const showSetup = setupWanted === true;
+  const setShowSetup = (on: boolean) => setSetupWanted(on);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // a guest's stars outside the recipe data have no price in ?ids=all: ask for those separately
+  const [favPrices, setFavPrices] = useState<Record<ItemId, MarketPrice>>({});
+  const extraFavKey = guest && pricesLoaded ? favorites.filter((id) => !prices[id]).join(",") : "";
   // the same saved sort as the recipes page; home offers per unit and per hour only
   const [sortKey, setSortKey] = usePersistentState<RecipeSort>(RECIPE_SORT_KEY, "profitPerUnit", isRecipeSort);
   const rank = homeRank(sortKey);
@@ -81,6 +97,15 @@ export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSetting
     // data is read once per attempt, not on every change
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attempt]);
+  useEffect(() => {
+    if (!extraFavKey) return;
+    const ctl = new AbortController();
+    fetchJson<PricesResponse>(`/api/prices?ids=${extraFavKey}`, { signal: ctl.signal })
+      .then((j) => setFavPrices((cur) => ({ ...cur, ...j.prices })))
+      // the card then says "ไม่มีในตลาด" for them, as for any item without a price
+      .catch(() => {});
+    return () => ctl.abort();
+  }, [extraFavKey]);
   const retry = () => {
     setProblem(null);
     // loading again: the cards show their outlines, not "nothing profitable", until the answer
@@ -139,7 +164,8 @@ export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSetting
   return (
     <Page user={user}>
       <PageHeader
-        title={`สวัสดี ${user.displayName}`}
+        title={user ? `สวัสดี ${user.displayName}` : "สวัสดี"}
+        description={user ? undefined : "ใช้ได้เลยไม่ต้องล็อกอิน ข้อมูลของคุณเก็บไว้ในเครื่องนี้"}
         meta={[
           "ตลาดกลาง Asia",
           <>
@@ -263,8 +289,8 @@ export function Dashboard({ user, hasSettings }: { user: SessionUser; hasSetting
                   const it = items[id];
                   const fav = favoriteItems.find((f) => f.id === id);
                   const name = it?.th ?? fav?.th ?? `#${id}`;
-                  const price = prices[id]?.price ?? fav?.price ?? null;
-                  const stock = prices[id]?.stock ?? fav?.stock ?? null;
+                  const price = prices[id]?.price ?? favPrices[id]?.price ?? fav?.price ?? null;
+                  const stock = prices[id]?.stock ?? favPrices[id]?.stock ?? fav?.stock ?? null;
                   const best = bestByProduct.get(id);
                   return (
                     // tighter on phones: two buttons and the 40px star leave the name enough room

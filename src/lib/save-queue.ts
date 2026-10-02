@@ -17,6 +17,8 @@ import type { Inventory, ItemId, Settings } from "./engine/types";
  * - "clear inventory" replaces every inventory change not sent yet, waits for the item requests
  *   already in flight, and holds back later item changes until it has gone through
  * - the queue belongs to one account (claim): another account signing in on this tab drops it
+ * - on a page for a visitor who is not signed in (enterGuest) it shows nothing and sends nothing;
+ *   changes an account left behind stay, and go out once that account signs in again (claim)
  */
 
 export type SaveState = "idle" | "saving" | "saved" | "error" | "authExpired";
@@ -117,6 +119,8 @@ export class SaveQueue {
   private entries: Entry[] = [];
   private n = 0;
   private owner: number | null = null;
+  /** a page for a visitor who is not signed in is showing (see enterGuest) */
+  private guest = false;
   private authExpired = false;
   private justSaved = false;
   private savedSeq = 0;
@@ -162,6 +166,18 @@ export class SaveQueue {
       this.autoTimer = null;
     }
     this.owner = owner;
+    this.guest = false;
+    // sends what a guest page held back (anything else queued has been sent already or waits on a 401)
+    this.pump(false);
+  }
+
+  /**
+   * A page for a visitor who is not signed in: their changes stay in the browser (lib/guest), never
+   * here. Whatever an account left in this tab (e.g. its session ended) is neither shown nor sent
+   * (it would only meet a 401), and is kept for when that account signs in again (claim).
+   */
+  enterGuest(): void {
+    this.guest = true;
     this.emit();
   }
 
@@ -178,9 +194,14 @@ export class SaveQueue {
     return this.entries.some((e) => e.status === "failed");
   }
 
-  /** Nothing more is on its way: no change waiting, queued or being sent (or a 401 holds them all back). */
+  /** Every change made in this tab has been confirmed by the server (nothing waiting, sending or failed). */
+  allSaved(): boolean {
+    return this.entries.every((e) => e.status === "done");
+  }
+
+  /** Nothing more is on its way: no change waiting, queued or being sent (or a 401 or a guest page holds them all back). */
   isSettled(): boolean {
-    return this.authExpired || !this.entries.some((e) => e.status === "waiting" || e.status === "queued" || e.status === "sending");
+    return this.authExpired || this.guest || !this.entries.some((e) => e.status === "waiting" || e.status === "queued" || e.status === "sending");
   }
 
   /**
@@ -301,7 +322,7 @@ export class SaveQueue {
   }
 
   private pump(keepalive: boolean): void {
-    if (!this.authExpired) {
+    if (!this.authExpired && !this.guest) {
       for (const e of this.entries) {
         if (e.status === "queued" && this.canSend(e)) this.send(e, keepalive);
       }
@@ -363,17 +384,20 @@ export class SaveQueue {
 
   private emit(): void {
     if (this.settledWaiters.size > 0 && this.isSettled()) for (const fn of [...this.settledWaiters]) fn();
-    const pending = this.entries.filter((e) => e.status !== "done").length;
-    const failed = this.entries.filter((e) => e.status === "failed").length;
-    const state: SaveState = this.authExpired
-      ? "authExpired"
-      : failed > 0
-        ? "error"
-        : pending > 0
-          ? "saving"
-          : this.justSaved
-            ? "saved"
-            : "idle";
+    // a visitor who is not signed in is shown nothing about an account's saves
+    const pending = this.guest ? 0 : this.entries.filter((e) => e.status !== "done").length;
+    const failed = this.guest ? 0 : this.entries.filter((e) => e.status === "failed").length;
+    const state: SaveState = this.guest
+      ? "idle"
+      : this.authExpired
+        ? "authExpired"
+        : failed > 0
+          ? "error"
+          : pending > 0
+            ? "saving"
+            : this.justSaved
+              ? "saved"
+              : "idle";
     const s = this.snapshot;
     if (s.state === state && s.pending === pending && s.failed === failed && s.savedSeq === this.savedSeq) return;
     this.snapshot = { state, pending, failed, savedSeq: this.savedSeq };

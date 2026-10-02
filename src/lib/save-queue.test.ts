@@ -60,6 +60,22 @@ describe("SaveQueue", () => {
     expect(q.getSnapshot()).toMatchObject({ state: "saved", pending: 0, savedSeq: 1 });
   });
 
+  it("allSaved() is true only once every change has been confirmed (a failed one keeps it false)", async () => {
+    const { q, calls } = setup();
+    expect(q.allSaved()).toBe(true);
+    q.enqueue({ kind: "item", id: 1, qty: 2 }, 400);
+    q.enqueue({ kind: "favorite", id: 1, on: true });
+    expect(q.allSaved()).toBe(false);
+    q.flush(false);
+    await calls[0].answer(200);
+    expect(q.allSaved()).toBe(false);
+    await calls[1].answer(500);
+    expect(q.allSaved()).toBe(false);
+    q.retry();
+    await calls[2].answer(200);
+    expect(q.allSaved()).toBe(true);
+  });
+
   it("checks the answer: a 500 is kept as failed and sent again by retry()", async () => {
     const { q, calls } = setup();
     q.enqueue({ kind: "favorite", id: 5, on: true });
@@ -229,6 +245,27 @@ describe("SaveQueue", () => {
     expect(q.jobsFor(1)).toHaveLength(1);
     q.markNavigation();
     expect(q.jobsFor(1)).toHaveLength(0);
+  });
+
+  it("on a guest page shows and sends nothing, and keeps the account's changes for when it signs back in", async () => {
+    const { q, calls } = setup();
+    q.enqueue({ kind: "favorite", id: 5, on: true });
+    await calls[0].answer(401);
+    expect(q.getSnapshot().state).toBe("authExpired");
+    // the session ended and the member is now browsing the public pages without it
+    q.enterGuest();
+    expect(q.getSnapshot()).toMatchObject({ state: "idle", pending: 0, failed: 0 });
+    expect(q.isSettled()).toBe(true);
+    q.retry();
+    vi.advanceTimersByTime(60_000);
+    expect(calls).toHaveLength(1);
+    expect(q.getSnapshot().state).toBe("idle");
+    // signed back in as the same account: the change goes out
+    q.claim(1);
+    q.resume();
+    expect(calls).toHaveLength(2);
+    expect(calls[1].body).toEqual({ id: 5, on: true });
+    expect(q.getSnapshot().state).toBe("saving");
   });
 
   it("drops another account's changes", async () => {

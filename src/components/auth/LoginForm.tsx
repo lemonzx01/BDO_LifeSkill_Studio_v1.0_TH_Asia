@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useEffect, useRef } from "react";
 import { loginAction, type ActionState } from "@/lib/auth/actions";
 import { Notice } from "../ui/Notice";
@@ -9,8 +10,11 @@ import { inputCls, labelCls, primaryBtn } from "./ui";
  * After a failed sign-in the username and the remember box stay (the action hands them back;
  * React's form reset restores the defaultValue / defaultChecked) and the password is cleared; focus
  * goes to the password, ready to retype.
+ *
+ * `next`: the page to go back to after signing in (already checked by the login page, and checked
+ * again by the action); also where "ใช้ต่อโดยไม่ล็อกอิน" goes.
  */
-export function LoginForm() {
+export function LoginForm({ next = "/" }: { next?: string }) {
   const [state, formAction, pending] = useActionState<ActionState, FormData>(loginAction, {});
   const userRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
@@ -22,6 +26,7 @@ export function LoginForm() {
 
   return (
     <form action={formAction} className="space-y-3">
+      <input type="hidden" name="next" value={next} />
       <label className={labelCls}>
         ชื่อผู้ใช้
         <input
@@ -58,6 +63,11 @@ export function LoginForm() {
         {pending ? "กำลังเข้าสู่ระบบ…" : "เข้าสู่ระบบ"}
       </button>
       <p className="text-xs text-muted">ยังไม่มีบัญชี? ขอให้แอดมินของกิลสร้างให้</p>
+      <p className="border-t border-border pt-3 text-center text-sm">
+        <Link href={next} className="text-muted underline hover:text-foreground">
+          ใช้ต่อโดยไม่ล็อกอิน
+        </Link>
+      </p>
     </form>
   );
 }

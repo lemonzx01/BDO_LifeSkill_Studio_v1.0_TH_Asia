@@ -50,13 +50,17 @@ export function isAbort(e: unknown): boolean {
   return typeof e === "object" && e !== null && (e as { name?: unknown }).name === "AbortError";
 }
 
+/** "ใน 2 นาที" (whole minutes, rounded up) or "ในอีกสักครู่" when the wait is not known. */
+export function waitText(retryAfterSec: number | null): string {
+  return retryAfterSec ? `ใน ${Math.max(1, Math.ceil(retryAfterSec / 60))} นาที` : "ในอีกสักครู่";
+}
+
 export function describeStatus(status: number, retryAfterSec: number | null = null): FetchProblem {
   if (status === 401) return { message: "หมดเวลาเข้าสู่ระบบ", action: "login", status };
   if (status === 403) return { message: "บัญชีนี้ไม่มีสิทธิ์ทำรายการนี้", action: null, status };
-  if (status === 429) {
-    const when = retryAfterSec ? `ใน ${Math.max(1, Math.ceil(retryAfterSec / 60))} นาที` : "ในอีกสักครู่";
-    return { message: `เพิ่งอัปเดตไป ลองอีกครั้ง${when}`, action: null, status };
-  }
+  // any rate limit (a visitor's requests per address, or a market refresh just started): a page with
+  // its own case, like the market refresh button, words it for that case
+  if (status === 429) return { message: `ใช้งานถี่เกินไป ลองอีกครั้ง${waitText(retryAfterSec)}`, action: null, status };
   if (status >= 500) return { message: "เซิร์ฟเวอร์ไม่ว่าง ลองใหม่อีกครั้ง", action: "retry", status };
   return { message: `ทำรายการไม่สำเร็จ (รหัส ${status}) ลองใหม่อีกครั้ง`, action: "retry", status };
 }
@@ -75,12 +79,27 @@ export function describeError(e: unknown): FetchProblem {
 export type ProblemAction = { label: string; href: string; route: true } | { label: string; onClick: () => void; disabled?: boolean };
 
 /**
- * The button for a problem's next step: ล็อกอินใหม่ (a client-side link to /login, so this tab's
- * unsaved changes survive the sign-in), or ลองใหม่ calling `retry` (none when no retry function is
- * given). `busy` shows that a retry is already running.
+ * The sign-in page, coming back to `path` (this site's path and query) afterwards. Home needs no
+ * ?next=, since signing in goes there anyway.
+ */
+export function loginHref(path: string | null | undefined): string {
+  if (!path || path === "/" || !path.startsWith("/") || path.startsWith("/login")) return "/login";
+  return `/login?next=${encodeURIComponent(path)}`;
+}
+
+/** This page's path and query, in the browser (null on the server). */
+function currentPath(): string | null {
+  return typeof window === "undefined" ? null : `${window.location.pathname}${window.location.search}`;
+}
+
+/**
+ * The button for a problem's next step: ล็อกอินใหม่ (a client-side link to /login that comes back
+ * to this page, so this tab's unsaved changes survive the sign-in), or ลองใหม่ calling `retry`
+ * (none when no retry function is given). `busy` shows that a retry is already running.
  */
 export function problemAction(p: FetchProblem, retry?: () => void, busy = false): ProblemAction | undefined {
-  if (p.action === "login") return { label: "ล็อกอินใหม่", href: "/login", route: true };
+  // problems only come from requests made in the browser, so this reads the page's real address
+  if (p.action === "login") return { label: "ล็อกอินใหม่", href: loginHref(currentPath()), route: true };
   if (p.action === "retry" && retry) return { label: busy ? "กำลังโหลด…" : "ลองใหม่", onClick: retry, disabled: busy };
   return undefined;
 }

@@ -5,7 +5,7 @@ import { ideasFromInventory } from "@/lib/engine/ideas";
 import type { Item, ItemId, MarketPrice, Recipe } from "@/lib/engine/types";
 import { describeError, fetchJson, problemAction, type FetchProblem } from "@/lib/fetch-error";
 import { InventoryIdeas } from "./InventoryIdeas";
-import { useInventory, useSettings } from "./UserDataProvider";
+import { useInventory, useSettings, useUserData } from "./UserDataProvider";
 import { Card, CardHeader } from "./ui/Card";
 import { EmptyState } from "./ui/EmptyState";
 import { Notice } from "./ui/Notice";
@@ -20,6 +20,8 @@ interface DataResponse {
 export function InventoryIdeasPanel() {
   const [settings] = useSettings();
   const inventory = useInventory();
+  // false while a guest's inventory has not been read from this browser yet
+  const { ready } = useUserData();
   const [data, setData] = useState<DataResponse | null>(null);
   const [prices, setPrices] = useState<Record<ItemId, MarketPrice> | null>(null);
   const [problem, setProblem] = useState<FetchProblem | null>(null);
@@ -64,9 +66,9 @@ export function InventoryIdeasPanel() {
             โหลดข้อมูลไม่สำเร็จ: {problem.message}
           </Notice>
         </div>
-      ) : ownedCount === 0 ? (
+      ) : ready && ownedCount === 0 ? (
         <EmptyState title="เพิ่มของที่มีเข้าคลังก่อน แล้วระบบจะบอกว่าเอาไปทำอะไรได้กำไรสุด" />
-      ) : !data || !prices ? (
+      ) : !ready || !data || !prices ? (
         <SkeletonList n={4} label="กำลังคำนวณจากของในคลัง…" />
       ) : (
         <InventoryIdeas ideas={ideas} items={data.items} emptyText="ของที่มีตอนนี้ยังประกอบเป็นสูตรไหนไม่ครบ (ต้องมีวัตถุดิบครบทุกอย่างของสูตร)" />

@@ -187,9 +187,14 @@ export function UserMenu({ user }: { user: SessionUser }) {
               บัญชีของฉัน
             </Link>
             {isAdmin(user.role) && (
-              <Link href="/admin" role="menuitem" tabIndex={-1} onClick={() => setOpen(false)} className={ITEM}>
-                สมาชิก
-              </Link>
+              <>
+                <Link href="/admin" role="menuitem" tabIndex={-1} onClick={() => setOpen(false)} className={ITEM}>
+                  สมาชิก
+                </Link>
+                <Link href="/admin/stats" role="menuitem" tabIndex={-1} onClick={() => setOpen(false)} className={ITEM}>
+                  สถิติการใช้งาน
+                </Link>
+              </>
             )}
             <Link href="/help" role="menuitem" tabIndex={-1} onClick={() => setOpen(false)} className={ITEM}>
               วิธีใช้

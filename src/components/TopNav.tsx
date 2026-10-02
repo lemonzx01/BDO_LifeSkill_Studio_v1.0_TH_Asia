@@ -1,14 +1,22 @@
 "use client";
 
 import { APP_NAME } from "@/lib/brand";
+import { loginHref } from "@/lib/fetch-error";
+import { SETTINGS_TITLE } from "@/lib/settings-labels";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { UserMenu, type SessionUser } from "./auth/UserMenu";
 import { QuickSearch } from "./QuickSearch";
 import { SaveStatus } from "./SaveStatus";
+import { SettingsDrawer } from "./SettingsDrawer";
+import { useOptionalUserData } from "./UserDataProvider";
+import { btn } from "./ui/button";
 
-/** Desktop links, in order. วิธีใช้ is also in the user menu, which is where phones reach it. */
+/**
+ * Desktop links, in order. วิธีใช้ is also in the user menu, which is where phones reach it (a
+ * visitor who is not signed in gets a ? button for it instead).
+ */
 const LINKS = [
   { href: "/", label: "หน้าแรก" },
   { href: "/recipes", label: "คำนวณสูตร" },
@@ -77,23 +85,31 @@ const TABS: { href: string; label: string; icon: ReactNode }[] = [
 ];
 
 /**
- * The header of every signed-in page (rendered by <Page>): a skip link, the brand (a link home),
- * the page links on md and up, then search and the user menu. Below md the page links move to a
- * tab bar fixed at the bottom of the screen.
+ * The header of every app page (rendered by <Page>): a skip link, the brand (a link home), the page
+ * links on md and up, then search and the user menu. Below md the page links move to a tab bar
+ * fixed at the bottom of the screen.
  *
- * SaveStatus sits left of search; it shows on every page (the save queue outlives a page) and grows to the
- * left, so search and the user menu never move. `user` is null only in the loading skeleton: the
- * menu shows as a grey placeholder exactly as wide as the real button, so nothing jumps when the
- * page arrives.
+ * SaveStatus sits left of search; it shows on every member page (the save queue outlives a page) and
+ * grows to the left, so search and the user menu never move. A visitor who is not signed in
+ * (`user` null) gets a เข้าสู่ระบบ button that comes back to this page, a ตั้งค่าตัวละคร button on
+ * pages with a UserDataProvider (members have it in the user menu), and no SaveStatus (their data
+ * never goes to the server). In the loading skeleton (`loading`) the menu shows as a grey
+ * placeholder exactly as wide as the real button, so nothing jumps when the page arrives.
  */
-export function TopNav({ user }: { user: SessionUser | null }) {
+export function TopNav({ user, loading = false }: { user: SessionUser | null; loading?: boolean }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  // the loading skeleton (no user) also shows on the way to the pages that have no app navigation:
-  // login, first-time setup and the forced password change (/account?first=1)
-  if (user === null && (pathname === "/login" || pathname === "/setup" || (pathname === "/account" && searchParams.get("first") === "1"))) {
+  // a guest's way to the character settings on every page with a provider (members use UserMenu)
+  const data = useOptionalUserData();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // the loading skeleton also shows on the way to the pages that have no app navigation: login,
+  // first-time setup and the forced password change (/account?first=1)
+  if (loading && (pathname === "/login" || pathname === "/setup" || (pathname === "/account" && searchParams.get("first") === "1"))) {
     return null;
   }
+  const guest = !loading && user === null;
+  const query = searchParams.toString();
+  const signInHref = loginHref(query ? `${pathname}?${query}` : pathname);
   return (
     <>
       <header className="flex h-14 items-center gap-3 lg:gap-6">
@@ -133,10 +149,40 @@ export function TopNav({ user }: { user: SessionUser | null }) {
         </nav>
 
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          <SaveStatus />
+          {!guest && <SaveStatus />}
           <QuickSearch compact />
           {user ? (
             <UserMenu user={user} />
+          ) : guest ? (
+            <>
+              {data && (
+                <button
+                  type="button"
+                  onClick={() => setSettingsOpen(true)}
+                  aria-haspopup="dialog"
+                  aria-label={SETTINGS_TITLE}
+                  title={SETTINGS_TITLE}
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-panel text-muted hover:text-foreground md:h-8 md:w-8"
+                >
+                  <svg aria-hidden viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
+                </button>
+              )}
+              <Link
+                href="/help"
+                aria-label="วิธีใช้"
+                title="วิธีใช้"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-panel text-lg text-muted hover:text-foreground md:hidden"
+              >
+                <span aria-hidden>?</span>
+              </Link>
+              <Link href={signInHref} className={btn("secondary", "md")}>
+                เข้าสู่ระบบ
+              </Link>
+              {data && <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />}
+            </>
           ) : (
             // the same size as UserMenu's button (md:w-28, lg:w-40)
             <span aria-hidden className="block h-10 w-10 animate-pulse rounded-full bg-panel-2 md:h-8 md:w-28 md:rounded lg:w-40" />

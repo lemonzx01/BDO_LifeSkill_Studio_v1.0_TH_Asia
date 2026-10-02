@@ -130,7 +130,8 @@ function recipeFilter(f: Filters, items: Record<ItemId, Item>, prices: Record<It
   };
 }
 
-export function Studio({ user }: { user: SessionUser }) {
+/** `user` null: a visitor who is not signed in. */
+export function Studio({ user }: { user: SessionUser | null }) {
   const params = useSearchParams();
   const [settings] = useSettings();
   const inventory = useInventory();

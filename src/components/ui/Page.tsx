@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import type { SessionUser } from "../auth/UserMenu";
+import { GuestImportNotice } from "../GuestImportNotice";
+import { SessionEndedNotice } from "../SessionEndedNotice";
 import { TopNav } from "../TopNav";
 import { Badge } from "./Badge";
 import { ToastHost } from "./Toast";
@@ -10,26 +12,31 @@ export type PageWidth = "wide" | "narrow";
 const WIDTH: Record<PageWidth, string> = { wide: "max-w-7xl", narrow: "max-w-5xl" };
 
 /**
- * The shell of every signed-in page: the header, then the page content in <main id="main"> (the
- * skip link's target).
+ * The shell of every app page: the header, then the page content in <main id="main"> (the skip
+ * link's target).
  *
  * The header always sits in the same max-w-7xl column, whatever the content width, so it does not
  * shift sideways when you switch pages. On phones the content leaves room at the bottom for the
  * fixed tab bar and the home indicator.
  *
- * `user` is null only for the loading skeleton (PageSkeleton), which has no session to show.
+ * `user` null is a visitor who is not signed in (the header offers เข้าสู่ระบบ). `loading` marks the
+ * loading skeleton (PageSkeleton), which does not know yet who is visiting.
  */
-export function Page({ user, width = "wide", children }: { user: SessionUser | null; width?: PageWidth; children: ReactNode }) {
+export function Page({ user, loading = false, width = "wide", children }: { user: SessionUser | null; loading?: boolean; width?: PageWidth; children: ReactNode }) {
   return (
     <>
       <div className="mx-auto w-full max-w-7xl px-3 md:px-6">
-        <TopNav user={user} />
+        <TopNav user={user} loading={loading} />
       </div>
       <main
         id="main"
         tabIndex={-1}
         className={`mx-auto w-full ${WIDTH[width]} px-3 pb-[calc(5rem+env(safe-area-inset-bottom))] pt-2 outline-hidden md:px-6 md:pb-6 md:pt-4`}
       >
+        {/* a member who just signed in on a browser holding guest data: offer to copy it in */}
+        {!loading && user && <GuestImportNotice />}
+        {/* a visitor whose browser still has a session cookie that no longer works: say so */}
+        {!loading && !user && <SessionEndedNotice />}
         {children}
       </main>
       {/* the one place toast() messages show, on every page */}

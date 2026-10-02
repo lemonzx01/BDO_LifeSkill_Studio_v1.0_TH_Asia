@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeError, describeStatus, HttpError, httpError, isAbort, problemAction } from "./fetch-error";
+import { describeError, describeStatus, HttpError, httpError, isAbort, loginHref, problemAction, waitText } from "./fetch-error";
 
 describe("describeStatus", () => {
   it("401 says the session ended and offers to sign in again", () => {
@@ -9,10 +9,20 @@ describe("describeStatus", () => {
   });
 
   it("429 says how many minutes to wait, rounded up, and offers no button", () => {
-    expect(describeStatus(429, 45).message).toBe("เพิ่งอัปเดตไป ลองอีกครั้งใน 1 นาที");
-    expect(describeStatus(429, 61).message).toBe("เพิ่งอัปเดตไป ลองอีกครั้งใน 2 นาที");
-    expect(describeStatus(429).message).toBe("เพิ่งอัปเดตไป ลองอีกครั้งในอีกสักครู่");
+    expect(describeStatus(429, 45).message).toBe("ใช้งานถี่เกินไป ลองอีกครั้งใน 1 นาที");
+    expect(describeStatus(429, 61).message).toBe("ใช้งานถี่เกินไป ลองอีกครั้งใน 2 นาที");
+    expect(describeStatus(429).message).toBe("ใช้งานถี่เกินไป ลองอีกครั้งในอีกสักครู่");
     expect(problemAction(describeStatus(429, 30), () => {})).toBeUndefined();
+    expect(waitText(120)).toBe("ใน 2 นาที");
+    expect(waitText(null)).toBe("ในอีกสักครู่");
+  });
+
+  it("the sign-in link comes back to the page it was pressed on", () => {
+    expect(loginHref("/inventory?sort=value")).toBe("/login?next=%2Finventory%3Fsort%3Dvalue");
+    expect(loginHref("/")).toBe("/login");
+    expect(loginHref(null)).toBe("/login");
+    expect(loginHref("/login?next=%2Fcalc")).toBe("/login");
+    expect(loginHref("https://evil.example/")).toBe("/login");
   });
 
   it("5xx asks to try again, with a retry button when there is something to retry", () => {

@@ -1,10 +1,26 @@
-import { DEFAULT_SETTINGS, type Settings } from "@/lib/engine/types";
+import { DEFAULT_SETTINGS, type Settings, type SkillGroup } from "@/lib/engine/types";
+
+type Group = Settings["mastery"];
+
+/**
+ * One per-skill group (mastery, yield, crafts per hour, skill tier): the default for every skill,
+ * with each value the input gives as a finite number laid over it. Other keys and other kinds of
+ * value are dropped, so stored junk (a browser's own copy, an old row) never reaches the engine.
+ */
+function group(input: unknown, d: Group): Group {
+  const src = input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+  const out: Group = { ...d };
+  for (const key of Object.keys(d) as SkillGroup[]) {
+    const v = src[key];
+    if (typeof v === "number" && Number.isFinite(v)) out[key] = v;
+  }
+  return out;
+}
 
 /** Fills in defaults for settings saved by older versions (or partial input). */
 export function normalizeSettings(input: unknown): Settings {
   const parsed = (input && typeof input === "object" ? input : {}) as Partial<Settings>;
   const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
-  const group = (v: unknown, d: Settings["mastery"]) => ({ ...d, ...((v && typeof v === "object" ? v : {}) as Settings["mastery"]) });
   return {
     valuePack: typeof parsed.valuePack === "boolean" ? parsed.valuePack : DEFAULT_SETTINGS.valuePack,
     familyFame: num(parsed.familyFame, DEFAULT_SETTINGS.familyFame),

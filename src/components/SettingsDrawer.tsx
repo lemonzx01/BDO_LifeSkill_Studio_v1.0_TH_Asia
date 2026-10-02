@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useId, useRef } from "react";
+import { GUEST_STORAGE_NOTE } from "@/lib/guest/storage";
 import { SETTINGS_TITLE } from "@/lib/settings-labels";
 import { SettingsPanel } from "./SettingsPanel";
-import { useSettings } from "./UserDataProvider";
+import { useUserData } from "./UserDataProvider";
 import { btn } from "./ui/button";
 
 /**
@@ -16,7 +17,7 @@ import { btn } from "./ui/button";
  * to whatever had it before it opened, when that is still on the page.
  */
 export function SettingsDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [settings, setSettings] = useSettings();
+  const { settings, setSettings, guest } = useUserData();
   const ref = useRef<HTMLDialogElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const returnTo = useRef<HTMLElement | null>(null);
@@ -60,6 +61,7 @@ export function SettingsDrawer({ open, onClose }: { open: boolean; onClose: () =
                 {SETTINGS_TITLE}
               </h2>
               <p className="text-xs text-muted">เปลี่ยนแล้วบันทึกให้เอง ใช้กับทุกหน้า</p>
+              {guest && <p className="text-xs text-muted">{GUEST_STORAGE_NOTE}</p>}
             </div>
             <button
               ref={closeRef}

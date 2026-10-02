@@ -75,7 +75,7 @@ export function SkeletonCards({ n = 6, label = "กำลังโหลด…",
  */
 export function PageSkeleton({ width = "wide", rows = 8, label = "กำลังโหลดหน้า…" }: { width?: PageWidth; rows?: number; label?: string }) {
   return (
-    <Page user={null} width={width}>
+    <Page user={null} loading width={width}>
       <div aria-hidden className="animate-pulse">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
           <div className="space-y-2">

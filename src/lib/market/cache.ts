@@ -38,24 +38,43 @@ function isKnownItem(id: ItemId): boolean {
 let lastSource: "official" | "arsha" | "snapshot" | null = null;
 let inflight: Promise<void> | null = null;
 
-export async function getPrices(ids: ItemId[], { force = false } = {}): Promise<{
+export interface PriceOptions {
+  /** skip a snapshot (or this instance's own fetch) that is over a minute old */
+  force?: boolean;
+  /**
+   * false: answer from the database snapshot whatever its age, and go to the market APIs only while
+   * there is no snapshot at all. Used for visitors who are not signed in, so their page views never
+   * turn into dozens of upstream requests; the snapshot itself is kept fresh by autoRefreshMarket.
+   */
+  upstream?: boolean;
+}
+
+export async function getPrices(
+  ids: ItemId[],
+  { force = false, upstream = true }: PriceOptions = {},
+): Promise<{
   prices: Record<ItemId, MarketPrice>;
   fetchedAt: number | null;
   source: "official" | "arsha" | "snapshot" | null;
   missing: ItemId[];
+  /** when the database snapshot was taken (ms), null when there is none or it could not be read: not part of the API answer */
+  snapshotAt: number | null;
 }> {
-  // 1) database snapshot, if fresh enough (a forced request only skips it once it is a minute old)
-  const maxSnapshotAge = force ? FORCE_MIN_AGE_MS : SNAPSHOT_TTL_MS;
+  // 1) database snapshot, if fresh enough (a forced request only skips it once it is a minute old;
+  // without upstream any snapshot is fresh enough)
+  const maxSnapshotAge = !upstream ? Infinity : force ? FORCE_MIN_AGE_MS : SNAPSHOT_TTL_MS;
   /** ids the (possibly stale) snapshot has a price for: real market items */
   let inSnapshot: Record<ItemId, MarketPrice> = {};
+  let snapshotAt: number | null = null;
   try {
     const snap = await getSnapshotPrices(ids);
+    snapshotAt = snap.at ? snap.at.getTime() : null;
     if (snap.at && Date.now() - snap.at.getTime() < maxSnapshotAge) {
       const missing = ids.filter((id) => !snap.prices[id]);
       // items the market does not list at all come back as "unknown" (price 0)
       for (const id of missing) snap.prices[id] = { id, price: 0, stock: 0, totalTrades: 0, updatedAt: snap.at.getTime() };
       lastSource = "snapshot";
-      return { prices: snap.prices, fetchedAt: snap.at.getTime(), source: "snapshot", missing: [] };
+      return { prices: snap.prices, fetchedAt: snap.at.getTime(), source: "snapshot", missing: [], snapshotAt };
     }
     inSnapshot = snap.prices;
   } catch (e) {
@@ -109,5 +128,5 @@ export async function getPrices(ids: ItemId[], { force = false } = {}): Promise<
       fetchedAt = fetchedAt === null ? e.fetchedAt : Math.min(fetchedAt, e.fetchedAt);
     } else missing.push(id);
   }
-  return { prices, fetchedAt, source: lastSource, missing };
+  return { prices, fetchedAt, source: lastSource, missing, snapshotAt };
 }

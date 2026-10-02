@@ -15,6 +15,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { oneOf, usePersistentState } from "@/lib/use-persistent";
 import type { ItemId, MarketPrice } from "@/lib/engine/types";
 import { downloadCsv, parseCsv, toCsv } from "@/lib/csv";
+import { GUEST_STORAGE_NOTE } from "@/lib/guest/storage";
 import { describeError, fetchJson, isAbort, problemAction, type FetchProblem } from "@/lib/fetch-error";
 import { silver } from "@/lib/format";
 import { INVENTORY_SORT_LABEL, OWNED_COST, OWNED_COST_LABEL, SETTINGS_TITLE } from "@/lib/settings-labels";
@@ -33,6 +34,7 @@ import { Notice, type NoticeTone } from "./ui/Notice";
 import { Page, PageHeader } from "./ui/Page";
 import { SearchInput } from "./ui/SearchInput";
 import { Segmented } from "./ui/Segmented";
+import { SkeletonRows } from "./ui/Skeleton";
 import { Stat } from "./ui/Stat";
 import { toast } from "./ui/Toast";
 
@@ -45,6 +47,8 @@ const IMPORT_MODES: { value: ImportMode; hint: string }[] = [
 ];
 
 const UNDO = "เลิกทำ";
+/** how long new rows wait for more before their prices are asked for together */
+const PRICE_BATCH_MS = 400;
 
 /** One line of the import preview: "30 → 50", "ใหม่ → 5", "30 → เอาออก", "ต้นทุน 5,000 → 4,000". */
 function changeText(c: ImportChange): string {
@@ -70,13 +74,14 @@ interface OwnedRow {
 }
 
 /** "คลังของ": everything the member owns, with quantity, recorded cost and current market value. */
-export function InventoryManager({ items, user }: { items: ItemLite[]; user: SessionUser }) {
-  const { inventory, setOwned, clearInventory, settings, setSettings } = useUserData();
+export function InventoryManager({ items, user }: { items: ItemLite[]; user: SessionUser | null }) {
+  const { inventory, setOwned, clearInventory, settings, setSettings, guest, ready } = useUserData();
   const [confirm, confirmDialog] = useConfirm();
   const [query, setQuery] = useState("");
   const [prices, setPrices] = useState<Record<ItemId, MarketPrice>>({});
-  // which list of ids the prices were loaded for, and why the last load failed (cells then show "-")
-  const [pricesFor, setPricesFor] = useState<string | null>(null);
+  // ids whose price has been asked for and answered (a row added later asks for its own price only),
+  // and why the last load failed (cells then show "-")
+  const [pricedIds, setPricedIds] = useState<ReadonlySet<ItemId>>(() => new Set());
   const [priceProblem, setPriceProblem] = useState<FetchProblem | null>(null);
   const [priceAttempt, setPriceAttempt] = useState(0);
   const [sort, setSort] = usePersistentState<InventorySort>("inventory.sort", "name", oneOf(["name", "recent", "value"] as const));
@@ -109,7 +114,12 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
         .sort((a, b) => (byId.get(a.id)?.th ?? "").localeCompare(byId.get(b.id)?.th ?? "", "th")),
     [inventory, byId],
   );
-  const ownedKey = owned.map((o) => o.id).join(",");
+  /** owned ids with no price asked for yet */
+  const needKey = owned
+    .filter((o) => !pricedIds.has(o.id))
+    .map((o) => o.id)
+    .join(",");
+  const firstPriceLoad = pricedIds.size === 0;
 
   /** rows actually shown: filtered by the list search box and ordered by the chosen sort */
   const visible = useMemo(() => {
@@ -165,21 +175,35 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
     return () => clearTimeout(t);
   }, [highlight]);
 
+  // Prices for the rows that have none yet. After the first load it waits a moment, so rows added
+  // one after another (or a CSV import) are asked for together, not one request per row.
   useEffect(() => {
-    if (!ownedKey) return;
+    if (!needKey) return;
     const ctl = new AbortController();
-    fetchJson<{ prices: Record<ItemId, MarketPrice> }>(`/api/prices?ids=${ownedKey}`, { signal: ctl.signal })
-      .then((json) => {
-        setPrices(json.prices);
-        setPricesFor(ownedKey);
-        setPriceProblem(null);
-      })
-      .catch((e) => {
-        if (!isAbort(e)) setPriceProblem(describeError(e));
-      });
-    return () => ctl.abort();
-  }, [ownedKey, priceAttempt]);
-  const pricesLoading = !priceProblem && pricesFor !== ownedKey;
+    const timer = setTimeout(
+      () => {
+        fetchJson<{ prices: Record<ItemId, MarketPrice> }>(`/api/prices?ids=${needKey}`, { signal: ctl.signal })
+          .then((json) => {
+            setPrices((cur) => ({ ...cur, ...json.prices }));
+            setPricedIds((cur) => {
+              const next = new Set(cur);
+              for (const id of needKey.split(",")) next.add(Number(id));
+              return next;
+            });
+            setPriceProblem(null);
+          })
+          .catch((e) => {
+            if (!isAbort(e)) setPriceProblem(describeError(e));
+          });
+      },
+      firstPriceLoad ? 0 : PRICE_BATCH_MS,
+    );
+    return () => {
+      clearTimeout(timer);
+      ctl.abort();
+    };
+  }, [needKey, priceAttempt, firstPriceLoad]);
+  const pricesLoading = !priceProblem && needKey !== "";
 
   /** null until 2 characters are typed; `ownedHits` = names that match but are in the inventory already */
   const search = useMemo(() => {
@@ -364,7 +388,8 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
   return (
     <Page user={user} width="narrow">
       <PageHeader
-        title={`คลังของ (${owned.length})`}
+        // no count until a guest's rows have been read from this browser
+        title={ready ? `คลังของ (${owned.length})` : "คลังของ"}
         description="ของที่มีอยู่ ใช้หักออกจากวัตถุดิบที่ต้องซื้อในแผนผลิต และคิดต้นทุนตามที่ตั้งค่า"
         actions={
           <button type="button" aria-expanded={toolsOpen} aria-controls="inventory-tools" onClick={() => setToolsOpen((o) => !o)} className={`${btnShape()} ${toggleCls(toolsOpen)}`}>
@@ -376,6 +401,7 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
         }
       />
       {confirmDialog}
+      {guest && <p className="-mt-2 mb-3 text-xs text-muted">{GUEST_STORAGE_NOTE}</p>}
 
       {toolsOpen && (
         <div id="inventory-tools" className={`${cardCls()} mb-4 p-3`}>
@@ -526,7 +552,10 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
         </Notice>
       )}
 
-      {owned.length === 0 ? (
+      {!ready ? (
+        // a guest's rows are in this browser, read once the page is live: not "nothing here" before that
+        <SkeletonRows n={6} label="กำลังโหลดคลังของ…" />
+      ) : owned.length === 0 ? (
         <Card>
           <EmptyState title="ยังไม่มีของในคลัง" hint={<>พิมพ์ชื่อไอเท็มด้านบนเพื่อเพิ่ม หรือกรอกช่อง &ldquo;มีอยู่แล้ว&rdquo; ในแผนผลิต</>} />
         </Card>
