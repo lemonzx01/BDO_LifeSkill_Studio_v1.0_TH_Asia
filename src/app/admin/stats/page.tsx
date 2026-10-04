@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { UsageOverview } from "@/components/admin/UsageOverview";
 import { btn } from "@/components/ui/button";
+import { Icon } from "@/components/ui/Icon";
 import { Notice } from "@/components/ui/Notice";
 import { Page, PageHeader } from "@/components/ui/Page";
 import { requireAdmin } from "@/lib/auth/session";
@@ -23,12 +24,14 @@ export default async function UsageStatsPage() {
   return (
     <Page user={{ username: me.username, displayName: me.displayName, role: me.role }} width="narrow">
       <PageHeader
+        eyebrow="ผู้ดูแลระบบ"
         title="สถิติการใช้งาน"
         description="มีคนเข้ามาใช้เว็บนี้กี่คน นับทั้งสมาชิกและผู้เยี่ยมชม"
         meta={[`ข้อมูลถึง ${dayLabel(today, true)} (เวลาไทย)`, stats?.firstDay && `เริ่มนับ ${dayLabel(stats.firstDay, true)}`]}
         actions={
           <Link href="/admin" className={btn("secondary")}>
-            ← จัดการสมาชิก
+            <Icon name="arrow-left" className="h-4 w-4" />
+            จัดการสมาชิก
           </Link>
         }
       />

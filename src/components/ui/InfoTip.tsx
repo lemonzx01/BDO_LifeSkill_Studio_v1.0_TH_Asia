@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { Icon } from "./Icon";
 
 /** the popover's width (14rem); fixed so it can be placed before it renders */
 const WIDTH = 224;
@@ -15,7 +16,7 @@ const HOVER_GRACE = 150;
 type Pos = { left: number; top: number; bottom?: undefined } | { left: number; bottom: number; top?: undefined };
 
 /**
- * A small ⓘ after a label that explains it in one line (texts in lib/glossary).
+ * A small help-circle icon after a label that explains it in one line (texts in lib/glossary).
  *
  * - mouse: shows while the pointer is on it or on its text; a click keeps it open, a second
  *   click closes it
@@ -125,9 +126,11 @@ export function InfoTip({ label, children }: { label: string; children: ReactNod
         }}
         onPointerLeave={leaveSoon}
         // 24px to look at; on a touch screen the ::before widens what a finger can hit to 40px
-        className="relative -my-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-sm leading-none text-muted before:absolute before:inset-0 before:content-[''] hover:text-foreground pointer-coarse:before:-inset-2"
+        className={`relative -my-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors duration-150 before:absolute before:inset-0 before:content-[''] hover:text-foreground pointer-coarse:before:-inset-2 ${
+          open ? "text-accent" : "text-faint"
+        }`}
       >
-        <span aria-hidden>ⓘ</span>
+        <Icon name="help-circle" className="h-4 w-4" />
       </button>
       {open && (
         <span
@@ -140,7 +143,7 @@ export function InfoTip({ label, children }: { label: string; children: ReactNod
           }}
           onPointerLeave={leaveSoon}
           style={{ left: pos.left, top: pos.top, bottom: pos.bottom, width: WIDTH }}
-          className="fixed z-50 rounded border border-border bg-panel-2 px-2.5 py-1.5 text-left text-xs font-normal whitespace-normal text-foreground shadow-lg"
+          className="fixed z-50 animate-fade-in rounded-lg border border-border-strong bg-panel-3 px-3 py-2 text-left text-xs font-normal whitespace-normal text-foreground shadow-pop"
         >
           {children}
         </span>
@@ -149,7 +152,7 @@ export function InfoTip({ label, children }: { label: string; children: ReactNod
   );
 }
 
-/** A label with its ⓘ, for a table header or a <Stat> label: "กำไร/ชิ้น ⓘ". */
+/** A label with its help icon after it, for a table header or a <Stat> label: "กำไร/ชิ้น (?)". */
 export function WithTip({ label, tip }: { label: string; tip: ReactNode }) {
   return (
     <span className="inline-flex items-center gap-0.5">

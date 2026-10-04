@@ -40,7 +40,7 @@ export function GuestImportNotice() {
   return (
     <>
       {offer && (
-        <Notice tone="info" className="mb-3" action={{ label: "นำข้อมูลในเครื่องนี้เข้าบัญชี", onClick: () => void run(offer) }} onClose={data.dismissGuestImport}>
+        <Notice tone="info" className="mb-4" action={{ label: "นำข้อมูลในเครื่องนี้เข้าบัญชี", onClick: () => void run(offer) }} onClose={data.dismissGuestImport}>
           เครื่องนี้มีข้อมูลที่ใช้ตอนยังไม่ได้ล็อกอิน: {describe(offer)}
         </Notice>
       )}

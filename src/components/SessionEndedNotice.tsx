@@ -26,7 +26,7 @@ export function SessionEndedNotice() {
 
   if (ended === "unchecked") {
     return (
-      <Notice tone="warn" className="mb-3" action={{ label: "ลองใหม่", onClick: () => router.refresh() }} onClose={() => setHidden(true)}>
+      <Notice tone="warn" className="mb-4" action={{ label: "ลองใหม่", onClick: () => router.refresh() }} onClose={() => setHidden(true)}>
         ตรวจสอบการล็อกอินไม่สำเร็จ ตอนนี้ใช้แบบไม่ล็อกอินไปก่อน สิ่งที่แก้จะเก็บไว้ในเครื่องนี้
       </Notice>
     );
@@ -36,7 +36,7 @@ export function SessionEndedNotice() {
   return (
     <Notice
       tone="warn"
-      className="mb-3"
+      className="mb-4"
       action={{ label: "ล็อกอินอีกครั้ง", href: loginHref(query ? `${pathname}?${query}` : pathname), route: true }}
       onClose={() => {
         setHidden(true);

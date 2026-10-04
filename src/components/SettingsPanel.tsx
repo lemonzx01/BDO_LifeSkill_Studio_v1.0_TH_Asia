@@ -34,9 +34,9 @@ export function SettingsPanel({ settings, onChange }: { settings: Settings; onCh
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader as="h3" title="รายรับจากตลาด" />
+        <CardHeader as="h3" icon="coins" title="รายรับจากตลาด" />
         <div className="space-y-2 p-4 text-sm">
-          <label className="flex min-h-9 items-center justify-between gap-3">
+          <label className="flex min-h-10 cursor-pointer items-center justify-between gap-3">
             <span>{VALUE_PACK.checkbox}</span>
             <input type="checkbox" checked={settings.valuePack} onChange={(e) => set({ valuePack: e.target.checked })} className={checkboxCls} />
           </label>
@@ -50,21 +50,21 @@ export function SettingsPanel({ settings, onChange }: { settings: Settings; onCh
               ))}
             </select>
           </label>
-          <label className="flex min-h-9 items-center justify-between gap-3">
+          <label className="flex min-h-10 cursor-pointer items-center justify-between gap-3">
             <span>{MERCHANT_RING.checkbox}</span>
             <input type="checkbox" checked={settings.merchantRing} onChange={(e) => set({ merchantRing: e.target.checked })} className={checkboxCls} />
           </label>
-          <div className="flex items-center justify-between border-t border-border pt-2 text-muted">
+          <div className="flex items-center justify-between rounded-lg bg-panel-2/60 px-3 py-2 text-muted">
             <span>{NET_RATE_LABEL}</span>
-            <span className="num font-semibold text-foreground">{pct(rate, 2)}</span>
+            <span className="num text-base font-semibold text-foreground">{pct(rate, 2)}</span>
           </div>
         </div>
       </Card>
 
       <Card>
-        <CardHeader as="h3" title="ต้นทุนของในคลัง" />
+        <CardHeader as="h3" icon="package" title="ต้นทุนของในคลัง" />
         <div className="space-y-1.5 p-4 text-sm">
-          <label htmlFor={costId} className="block">
+          <label htmlFor={costId} className="block font-medium">
             {OWNED_COST}
           </label>
           <select
@@ -87,10 +87,10 @@ export function SettingsPanel({ settings, onChange }: { settings: Settings; onCh
       </Card>
 
       <Card>
-        <CardHeader as="h3" title="ทักษะและผลผลิต" />
+        <CardHeader as="h3" icon="sliders" title="ทักษะและผลผลิต" />
         <div className="space-y-3 p-4 text-sm sm:space-y-2">
           {/* sm and up: one header row for the table below (each field also has its own hidden label) */}
-          <div aria-hidden className="hidden grid-cols-[4.5rem_1fr_1fr_1fr] gap-2 text-xs text-muted sm:grid">
+          <div aria-hidden className="hidden grid-cols-[4.5rem_1fr_1fr_1fr] gap-2 border-b border-border pb-1.5 text-xs font-medium text-muted sm:grid">
             <span />
             <span>ระดับที่มี</span>
             <span>Mastery</span>
@@ -106,7 +106,7 @@ export function SettingsPanel({ settings, onChange }: { settings: Settings; onCh
               <section
                 key={key}
                 aria-label={label}
-                className="rounded-lg border border-border p-3 sm:grid sm:grid-cols-[4.5rem_1fr_1fr_1fr] sm:items-start sm:gap-2 sm:rounded-none sm:border-0 sm:p-0"
+                className="rounded-xl border border-border bg-panel-2/40 p-3 sm:grid sm:grid-cols-[4.5rem_1fr_1fr_1fr] sm:items-start sm:gap-2 sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0"
               >
                 <h4 className="mb-2 font-medium sm:mb-0 sm:pt-2">{label}</h4>
                 {/* phones: tier on its own line, then Mastery and รอบ/ชม. side by side; sm and up: three table cells */}
@@ -140,7 +140,7 @@ export function SettingsPanel({ settings, onChange }: { settings: Settings; onCh
                       onChange={(v) => set({ mastery: { ...settings.mastery, [key]: v } })}
                       className={`${fieldCls()} num`}
                     />
-                    <span className="mt-0.5 line-clamp-2 min-h-4 text-xs text-muted max-sm:hidden" title={hint}>
+                    <span className="num mt-0.5 line-clamp-2 min-h-4 text-xs text-muted max-sm:hidden" title={hint}>
                       {hint}
                     </span>
                   </label>
@@ -159,11 +159,11 @@ export function SettingsPanel({ settings, onChange }: { settings: Settings; onCh
                   </label>
                 </div>
                 {/* phones: the Mastery hint across the whole card */}
-                <p className="mt-2 text-xs text-muted sm:hidden">{hint}</p>
+                <p className="num mt-2 text-xs text-muted sm:hidden">{hint}</p>
               </section>
             );
           })}
-          <p className="text-xs text-muted">
+          <p className="border-t border-border pt-3 text-xs text-muted">
             Mastery คือค่าความชำนาญในเกม (ดูได้ในหน้าต่างทักษะ) · แปรธาตุ/ทำอาหาร: ยิ่งสูง ยิ่งมีโอกาสได้ผลผลิตจำนวนสูงสุดต่อรอบ (เช่น สูตร 1~4 ชิ้น ที่ Mastery 2000
             จะได้เฉลี่ย 3.25 ชิ้น) และได้เงินจากการส่งกล่องราชวังเพิ่ม · แปรรูป: ไม่เพิ่มผลผลิตต่อชุด แต่ทำได้หลายชุดต่อครั้ง ให้ปรับ &ldquo;รอบ/ชม.&rdquo; ตามความเร็วจริงของคุณ
           </p>

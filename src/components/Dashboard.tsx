@@ -15,13 +15,17 @@ import type { SessionUser } from "./auth/UserMenu";
 import { InventoryIdeas } from "./InventoryIdeas";
 import { ItemIcon } from "./ItemIcon";
 import { OnboardingCard } from "./OnboardingCard";
+import { recipeTypeIcon } from "./recipe-type-icon";
 import { FavoriteStar } from "./FavoriteStar";
 import { SettingsDrawer } from "./SettingsDrawer";
 import { TimeAgo } from "./TimeAgo";
 import { useInventory, useSettings, useUserData } from "./UserDataProvider";
+import { Badge } from "./ui/Badge";
 import { btn } from "./ui/button";
 import { Card, CardHeader } from "./ui/Card";
+import { Divider } from "./ui/Divider";
 import { EmptyState } from "./ui/EmptyState";
+import { Icon, type IconName } from "./ui/Icon";
 import { Money } from "./ui/Money";
 import { Notice } from "./ui/Notice";
 import { Page, PageHeader } from "./ui/Page";
@@ -46,6 +50,18 @@ const RANK_OPTIONS: readonly SegmentedOption<HomeRank>[] = [
   { value: "profitPerUnit", label: "กำไร/ชิ้น" },
   { value: "profitPerHour", label: "กำไร/ชม." },
 ];
+
+/** One "คุ้มสุดตอนนี้" card of a line, under the picks. */
+interface LineSection {
+  key: string;
+  icon: IconName;
+  title: string;
+  /** a short grey line under the title, for a title that would otherwise wrap mid-phrase */
+  hint?: string;
+  href: string;
+  rank: HomeRank;
+  rows: RecipeEvaluation[];
+}
 
 /** `user` null: a visitor who is not signed in (their settings, inventory and stars are in this browser). */
 export function Dashboard({ user }: { user: SessionUser | null }) {
@@ -129,18 +145,20 @@ export function Dashboard({ user }: { user: SessionUser | null }) {
   );
   const ownedCount = Object.values(inventory).filter((v) => v && v.qty > 0).length;
 
-  const sections = useMemo(() => {
+  const sections = useMemo((): LineSection[] => {
     if (!data) return [];
     const top = (pred: (ev: RecipeEvaluation) => boolean, by: HomeRank) => ({ rank: by, rows: topPicks(feasible.filter(pred), by, TOP) });
     return [
-      { key: "alchemy", title: "แปรธาตุที่คุ้มสุดตอนนี้", href: "/recipes?tab=alchemy", ...top((ev) => ev.recipe.type === "alchemy", rank) },
-      { key: "cooking", title: "ทำอาหารที่คุ้มสุดตอนนี้", href: "/recipes?tab=cooking", ...top((ev) => ev.recipe.type === "cooking", rank) },
-      { key: "processing", title: "แปรรูปที่คุ้มสุดตอนนี้", href: "/recipes?tab=processing", ...top((ev) => PROCESSING_TYPES.includes(ev.recipe.type), rank) },
+      { key: "alchemy", icon: "flask", title: "แปรธาตุที่คุ้มสุดตอนนี้", href: "/recipes?tab=alchemy", ...top((ev) => ev.recipe.type === "alchemy", rank) },
+      { key: "cooking", icon: "cooking-pot", title: "ทำอาหารที่คุ้มสุดตอนนี้", href: "/recipes?tab=cooking", ...top((ev) => ev.recipe.type === "cooking", rank) },
+      { key: "processing", icon: "hammer", title: "แปรรูปที่คุ้มสุดตอนนี้", href: "/recipes?tab=processing", ...top((ev) => PROCESSING_TYPES.includes(ev.recipe.type), rank) },
       // imperial boxes have no per-hour value: always by profit per unit
-      { key: "imperial", title: "กล่องราชวังที่คุ้มสุด", href: "/recipes?tab=imperial", ...top((ev) => IMPERIAL_TYPES.includes(ev.recipe.type), "profitPerUnit") },
+      { key: "imperial", icon: "crown", title: "กล่องราชวังที่คุ้มสุด", href: "/recipes?tab=imperial", ...top((ev) => IMPERIAL_TYPES.includes(ev.recipe.type), "profitPerUnit") },
       {
         key: "shortage",
-        title: "ของที่ตลาดขาดตอนนี้ (ทำแล้วขายได้ทันที)",
+        icon: "trending-up",
+        title: "ของที่ตลาดขาดตอนนี้",
+        hint: "ทำแล้วขายได้ทันที",
         href: "/recipes?market=soldout",
         ...top((ev) => ev.saleChannel === "market" && (prices[ev.productId]?.stock ?? 1) === 0, rank),
       },
@@ -159,7 +177,7 @@ export function Dashboard({ user }: { user: SessionUser | null }) {
   }, [evaluations]);
 
   const loaded = !!data && pricesLoaded;
-  const heroTone = showSetup ? "default" : "highlight";
+  const hasFavorites = favorites.length > 0;
 
   return (
     <Page user={user}>
@@ -174,183 +192,221 @@ export function Dashboard({ user }: { user: SessionUser | null }) {
         ]}
       />
 
-      {showSetup && (
-        <OnboardingCard
-          settings={settings}
-          // only the card's own fields, over the settings as they are now (the drawer may have changed others)
-          onSave={(patch) => {
-            setSettings({ ...settings, ...patch });
-            setShowSetup(false);
-          }}
-          onSkip={() => setShowSetup(false)}
-        />
-      )}
-
-      {problem && (
-        <Notice tone="bad" className="mb-3" action={problemAction(problem, retry)}>
-          โหลดข้อมูลไม่สำเร็จ: {problem.message}
-        </Notice>
-      )}
-
-      {/* the one gold card on the page: what to craft first (plain while the first-time setup card is
-          the one asking to act) */}
-      <Card tone={heroTone} className="mb-3">
-        <CardHeader
-          tone={heroTone}
-          title={HOME_PICKS_TITLE}
-          hint={`${HERO} อันดับแรกจากทุกสาย ไม่รวมกล่องราชวัง`}
-          // pressing the option already on must not overwrite a saved ROI/cost sort of the recipes page
-          action={
-            <Segmented
-              label="เรียงตาม"
-              size="sm"
-              options={RANK_OPTIONS}
-              value={rank}
-              onChange={(v) => {
-                if (v !== rank) setSortKey(v);
-              }}
-            />
-          }
-        />
-        {problem ? (
-          // the error notice above says what failed and offers the next step; not the settings' fault
-          <p className="px-4 py-6 text-center text-sm text-muted">ยังจัดอันดับไม่ได้ เพราะโหลดข้อมูลไม่ครบ (ดูข้อความด้านบน)</p>
-        ) : !loaded ? (
-          // grey outlines only: the cards below already tell screen readers what is loading
-          <div aria-hidden className="animate-pulse divide-y divide-border lg:grid lg:grid-cols-3 lg:divide-x lg:divide-y-0">
-            {Array.from({ length: HERO }, (_, i) => (
-              <div key={i} className="flex items-center gap-3 px-4 py-3">
-                <div className="h-10 w-10 shrink-0 rounded bg-panel-2" />
-                <div className="flex-1 space-y-1.5">
-                  <div className="h-3.5 w-3/4 rounded bg-panel-2" />
-                  <div className="h-2.5 w-1/2 rounded bg-panel-2/70" />
-                </div>
-                <div className="h-9 w-20 rounded bg-panel-2" />
-              </div>
-            ))}
-          </div>
-        ) : picks.length === 0 ? (
-          <EmptyState
-            title="ตอนนี้ยังไม่มีสูตรที่ทำแล้วได้กำไร"
-            hint="คิดจาก Mastery และระดับทักษะที่ตั้งไว้"
-            action={{ label: SETTINGS_TITLE, onClick: () => setSettingsOpen(true) }}
-          />
-        ) : (
-          <ul className="divide-y divide-border lg:grid lg:grid-cols-3 lg:divide-x lg:divide-y-0">
-            {picks.map((ev) => (
-              <PickRow key={ev.recipe.id} ev={ev} item={items[ev.productId]} rank={rank} />
-            ))}
-          </ul>
+      <div className="space-y-4 md:space-y-6">
+        {problem && (
+          <Notice tone="bad" action={problemAction(problem, retry)}>
+            โหลดข้อมูลไม่สำเร็จ: {problem.message}
+          </Notice>
         )}
-      </Card>
 
-      <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-muted">
-        <span>
-          คิดจาก Mastery ของคุณ: แปรธาตุ <b className="num text-foreground">{settings.mastery.alchemy ?? 0}</b> · ทำอาหาร{" "}
-          <b className="num text-foreground">{settings.mastery.cooking ?? 0}</b> · แปรรูป <b className="num text-foreground">{settings.mastery.processing ?? 0}</b> · {VALUE_PACK.name}{" "}
-          <b className="text-foreground">{settings.valuePack ? VALUE_PACK.on : VALUE_PACK.off}</b>
-        </span>
-        <button onClick={() => setSettingsOpen(true)} aria-haspopup="dialog" className={btn("secondary", "sm")}>
-          {SETTINGS_TITLE}
-        </button>
-      </div>
-      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-
-      {!loaded && problem ? null : !loaded ? (
-        <SkeletonCards n={6} label={!data ? "กำลังโหลดฐานสูตร…" : "กำลังโหลดราคาตลาด…"} className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" />
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Card>
-            <CardHeader
-              title="ทำอะไรได้จากของในคลัง"
-              hint="กำไรเทียบกับขายวัตถุดิบตรง ๆ"
-              action={
-                <Link href="/inventory" className={btn("ghost", "sm")}>
-                  คลังของ →
-                </Link>
-              }
-            />
-            {ownedCount === 0 ? (
-              <div className="px-4 py-6 text-center">
-                <Link href="/inventory" className={btn("primary", "sm")}>
-                  + เพิ่มของในคลัง
-                </Link>
-                <p className="mt-2 text-xs text-muted">ใส่ของที่มี แล้วจะบอกว่าเอาไปทำอะไรได้กำไรสุด</p>
-              </div>
-            ) : (
-              <InventoryIdeas ideas={ideas} items={items} limit={TOP} emptyText="ของที่มีตอนนี้ยังประกอบเป็นสูตรไหนไม่ครบ" />
-            )}
-          </Card>
-          {favorites.length > 0 && (
-            <Card>
-              <CardHeader title="ของที่ฉันเฝ้า" hint="กด ★ ในหน้าคำนวณสูตร / สแกนตลาด" />
-              <ul className="divide-y divide-border">
-                {favorites.map((id) => {
-                  const it = items[id];
-                  const fav = favoriteItems.find((f) => f.id === id);
-                  const name = it?.th ?? fav?.th ?? `#${id}`;
-                  const price = prices[id]?.price ?? favPrices[id]?.price ?? fav?.price ?? null;
-                  const stock = prices[id]?.stock ?? favPrices[id]?.stock ?? fav?.stock ?? null;
-                  const best = bestByProduct.get(id);
-                  return (
-                    // tighter on phones: two buttons and the 40px star leave the name enough room
-                    <li key={id} className="flex items-center gap-2 py-2 pl-3 pr-2 text-sm md:gap-3 md:px-4">
-                      <ItemIcon id={id} grade={it?.grade ?? fav?.grade ?? 0} size={28} />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate font-medium">{name}</div>
-                        <div className="line-clamp-2 text-xs text-muted">
-                          {price ? `ราคา ${silverShort(price)} · ค้างขาย ${silverShort(stock ?? 0)}` : "ไม่มีในตลาด"}
-                          {best ? ` · ทำเองกำไร ${signed(best.profitPerUnit, silverShort)}/ชิ้น` : ""}
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1">
-                        <Link href={`/market?q=${encodeURIComponent(name)}`} className={btn("secondary", "sm")}>
-                          ตลาด
-                        </Link>
-                        {/* only when a recipe makes it: otherwise the recipe search would come up empty */}
-                        {best && (
-                          <Link href={`/recipes?q=${encodeURIComponent(name)}`} className={btn("secondary", "sm")}>
-                            สูตร
-                          </Link>
-                        )}
-                        <FavoriteStar id={id} name={name} />
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </Card>
-          )}
-          {sections.map((s) => (
-            <Card key={s.key}>
-              <CardHeader
-                title={s.title}
-                action={
-                  <Link href={s.href} className={btn("ghost", "sm")}>
-                    ดูทั้งหมด →
-                  </Link>
-                }
+        {/* The answer first, and the one gold card on the page: what to craft now, the number it is
+            ranked by in large. Its foot says which settings the numbers come from. */}
+        <Card tone="highlight">
+          <CardHeader
+            tone="highlight"
+            icon="sparkles"
+            title={HOME_PICKS_TITLE}
+            hint={`${HERO} อันดับแรกจากทุกสาย ไม่รวมกล่องราชวัง`}
+            // pressing the option already on must not overwrite a saved ROI/cost sort of the recipes page
+            action={
+              <Segmented
+                label="เรียงตาม"
+                size="sm"
+                options={RANK_OPTIONS}
+                value={rank}
+                onChange={(v) => {
+                  if (v !== rank) setSortKey(v);
+                }}
               />
-              {s.rows.length === 0 ? (
-                <EmptyState title="ยังไม่มีสูตรที่กำไรเป็นบวกในหมวดนี้ตอนนี้" />
-              ) : (
-                <ul className="divide-y divide-border">
-                  {s.rows.map((ev, i) => (
-                    <HighlightRow key={ev.recipe.id} rank={i + 1} by={s.rank} ev={ev} item={items[ev.productId]} stock={prices[ev.productId]?.stock} />
-                  ))}
-                </ul>
-              )}
-            </Card>
-          ))}
-        </div>
-      )}
+            }
+          />
+          {problem ? (
+            // the error notice above says what failed and offers the next step; not the settings' fault
+            <p className="px-4 py-8 text-center text-sm text-muted">ยังจัดอันดับไม่ได้ เพราะโหลดข้อมูลไม่ครบ (ดูข้อความด้านบน)</p>
+          ) : !loaded ? (
+            // outlines only: the cards below already tell screen readers what is loading
+            <div aria-hidden className="grid grid-cols-1 gap-3 p-4 lg:grid-cols-3">
+              {Array.from({ length: HERO }, (_, i) => (
+                <div key={i} className="flex flex-col gap-3 rounded-xl border border-border p-3 sm:flex-row sm:items-center lg:flex-col lg:items-stretch">
+                  <div className="flex min-w-0 items-center gap-3 sm:flex-1 lg:flex-none">
+                    <div className="skeleton h-10 w-10 shrink-0 rounded-md" />
+                    <div className="flex-1 space-y-2">
+                      <div className="skeleton h-3.5 w-3/4 rounded-full" />
+                      <div className="skeleton h-4 w-16 rounded-full opacity-70" />
+                    </div>
+                  </div>
+                  <div className="flex items-end justify-between gap-3">
+                    <div className="space-y-2">
+                      <div className="skeleton h-3 w-12 rounded-full opacity-70" />
+                      <div className="skeleton h-7 w-28 rounded-lg" />
+                    </div>
+                    <div className="skeleton h-10 w-24 rounded-lg md:h-8" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : picks.length === 0 ? (
+            <EmptyState
+              icon="sliders"
+              title="ตอนนี้ยังไม่มีสูตรที่ทำแล้วได้กำไร"
+              hint="คิดจาก Mastery และระดับทักษะที่ตั้งไว้"
+              action={{ label: SETTINGS_TITLE, onClick: () => setSettingsOpen(true) }}
+            />
+          ) : (
+            <ol className="grid grid-cols-1 gap-3 p-4 lg:grid-cols-3">
+              {picks.map((ev) => (
+                <PickTile key={ev.recipe.id} ev={ev} item={items[ev.productId]} rank={rank} />
+              ))}
+            </ol>
+          )}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-3">
+            <p className="min-w-0 flex-1 basis-64 text-xs text-muted">
+              คิดจาก Mastery ของคุณ: แปรธาตุ <b className="num text-foreground">{settings.mastery.alchemy ?? 0}</b> · ทำอาหาร{" "}
+              <b className="num text-foreground">{settings.mastery.cooking ?? 0}</b> · แปรรูป <b className="num text-foreground">{settings.mastery.processing ?? 0}</b> · {VALUE_PACK.name}{" "}
+              <b className="text-foreground">{settings.valuePack ? VALUE_PACK.on : VALUE_PACK.off}</b>
+            </p>
+            <button type="button" onClick={() => setSettingsOpen(true)} aria-haspopup="dialog" className={btn("secondary", "sm")}>
+              <Icon name="settings" className="h-4 w-4" />
+              {SETTINGS_TITLE}
+            </button>
+          </div>
+        </Card>
 
-      <footer className="mt-6 text-xs text-muted">
-        แสดงเฉพาะสูตรที่ราคาครบ ขายได้ และไม่เกินระดับทักษะที่ตั้งไว้ · ตัวเลขเปลี่ยนตามราคาตลาดและ Mastery ของแต่ละคน · รายละเอียดและตัวกรองทั้งหมดอยู่ที่หน้า{" "}
-        <Link href="/recipes" className="underline">
-          คำนวณสูตร
-        </Link>
-      </footer>
+        {/* first visit: right under the answer, so the numbers above can be made the member's own */}
+        {showSetup && (
+          <OnboardingCard
+            settings={settings}
+            // only the card's own fields, over the settings as they are now (the drawer may have changed others)
+            onSave={(patch) => {
+              setSettings({ ...settings, ...patch });
+              setShowSetup(false);
+            }}
+            onSkip={() => setShowSetup(false)}
+          />
+        )}
+
+        {!loaded && problem ? null : !loaded ? (
+          <SkeletonCards n={6} label={!data ? "กำลังโหลดฐานสูตร…" : "กำลังโหลดราคาตลาด…"} className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" />
+        ) : (
+          <>
+            {/* the member's own things: what their inventory makes, and the items they starred */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Card className={hasFavorites ? "" : "md:col-span-2"}>
+                <CardHeader
+                  icon="package"
+                  title="ทำอะไรได้จากของในคลัง"
+                  hint="กำไรเทียบกับขายวัตถุดิบตรง ๆ"
+                  action={
+                    <Link href="/inventory" className={btn("ghost", "sm")}>
+                      คลังของ
+                      <Icon name="chevron-right" className="h-4 w-4" />
+                    </Link>
+                  }
+                />
+                {ownedCount === 0 ? (
+                  <EmptyState compact icon="package" title="ใส่ของที่มี แล้วจะบอกว่าเอาไปทำอะไรได้กำไรสุด" action={{ label: "เพิ่มของในคลัง", href: "/inventory" }} />
+                ) : (
+                  <InventoryIdeas ideas={ideas} items={items} limit={TOP} emptyText="ของที่มีตอนนี้ยังประกอบเป็นสูตรไหนไม่ครบ" />
+                )}
+              </Card>
+              {hasFavorites && (
+                <Card>
+                  <CardHeader icon="star" title="ของที่ฉันเฝ้า" hint="ปักดาวไว้จากหน้าคำนวณสูตรหรือสแกนตลาด" />
+                  <ul className="divide-y divide-border">
+                    {favorites.map((id) => {
+                      const it = items[id];
+                      const fav = favoriteItems.find((f) => f.id === id);
+                      const name = it?.th ?? fav?.th ?? `#${id}`;
+                      const price = prices[id]?.price ?? favPrices[id]?.price ?? fav?.price ?? null;
+                      const stock = prices[id]?.stock ?? favPrices[id]?.stock ?? fav?.stock ?? null;
+                      const best = bestByProduct.get(id);
+                      return (
+                        // tighter on phones: two buttons and the 40px star leave the name enough room
+                        <li key={id} className="flex items-center gap-2 py-3 pl-4 pr-2 md:gap-3 md:pr-4">
+                          <ItemIcon id={id} grade={it?.grade ?? fav?.grade ?? 0} size={32} />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-foreground">{name}</p>
+                            <p className="flex flex-wrap gap-x-2.5 text-xs text-muted">
+                              {price ? (
+                                <>
+                                  <span>
+                                    ราคา <span className="num">{silverShort(price)}</span>
+                                  </span>
+                                  <span>
+                                    ค้างขาย <span className="num">{silverShort(stock ?? 0)}</span>
+                                  </span>
+                                </>
+                              ) : (
+                                <span>ไม่มีในตลาด</span>
+                              )}
+                              {best && (
+                                <span>
+                                  ทำเองกำไร <Money value={best.profitPerUnit} tone="profit" compact suffix="/ชิ้น" />
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2 md:gap-1">
+                            <Link href={`/market?q=${encodeURIComponent(name)}`} className={btn("secondary", "sm")}>
+                              ตลาด
+                            </Link>
+                            {/* only when a recipe makes it: otherwise the recipe search would come up empty */}
+                            {best && (
+                              <Link href={`/recipes?q=${encodeURIComponent(name)}`} className={btn("secondary", "sm")}>
+                                สูตร
+                              </Link>
+                            )}
+                            <FavoriteStar id={id} name={name} />
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </Card>
+              )}
+            </div>
+
+            <Divider />
+
+            {/* the best few of each line, each card opening that line on the recipes page */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {sections.map((s) => (
+                <Card key={s.key}>
+                  <CardHeader
+                    icon={s.icon}
+                    title={s.title}
+                    hint={s.hint}
+                    action={
+                      <Link href={s.href} className={btn("ghost", "sm")}>
+                        ดูทั้งหมด
+                        <Icon name="chevron-right" className="h-4 w-4" />
+                      </Link>
+                    }
+                  />
+                  {s.rows.length === 0 ? (
+                    <EmptyState compact icon={s.icon} title="ยังไม่มีสูตรที่กำไรเป็นบวกในหมวดนี้ตอนนี้" />
+                  ) : (
+                    <ul className="divide-y divide-border">
+                      {s.rows.map((ev, i) => (
+                        <HighlightRow key={ev.recipe.id} rank={i + 1} by={s.rank} ev={ev} item={items[ev.productId]} stock={prices[ev.productId]?.stock} />
+                      ))}
+                    </ul>
+                  )}
+                </Card>
+              ))}
+            </div>
+          </>
+        )}
+
+        <footer className="text-xs text-muted">
+          แสดงเฉพาะสูตรที่ราคาครบ ขายได้ และไม่เกินระดับทักษะที่ตั้งไว้ · ตัวเลขเปลี่ยนตามราคาตลาดและ Mastery ของแต่ละคน · รายละเอียดและตัวกรองทั้งหมดอยู่ที่หน้า{" "}
+          <Link href="/recipes" className="text-accent underline underline-offset-2 hover:text-accent-hover">
+            คำนวณสูตร
+          </Link>
+        </footer>
+      </div>
+      {/* outside the spaced column: the closed dialog must not leave a gap */}
+      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </Page>
   );
 }
@@ -358,28 +414,36 @@ export function Dashboard({ user }: { user: SessionUser | null }) {
 /** Per hour only means something for a market recipe (an imperial box has no per-hour value). */
 const showsPerHour = (ev: RecipeEvaluation, by: HomeRank) => by === "profitPerHour" && ev.saleChannel === "market";
 
-/** One of the three "ทำอะไรดีตอนนี้" picks: the number it is ranked by in large, and a button to the recipe. */
-function PickRow({ ev, item, rank }: { ev: RecipeEvaluation; item: Item | undefined; rank: HomeRank }) {
+/**
+ * One of the three "ทำอะไรดีตอนนี้" picks: the item, its line, the number it is ranked by in large,
+ * and one button to the recipe. A column on phones and on lg (three across), a row in between.
+ */
+function PickTile({ ev, item, rank }: { ev: RecipeEvaluation; item: Item | undefined; rank: HomeRank }) {
   const name = item?.th ?? ev.recipe.name;
   const perHour = showsPerHour(ev, rank);
   return (
-    <li className="flex items-center gap-3 px-4 py-3">
-      <ItemIcon id={ev.productId} grade={item?.grade} size={40} />
-      <div className="min-w-0 flex-1">
-        <div className="truncate font-medium">{name}</div>
-        <div className="line-clamp-2 text-xs text-muted">
-          {RECIPE_TYPE_TH[ev.recipe.type]}
-          {perHour ? ` · ${signed(ev.profitPerUnit, silverShort)}/ชิ้น` : ""} · <span className="num">ROI {signedPct(ev.roi)}</span>
+    <li className="flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-panel-2/60 p-3 sm:flex-row sm:items-center sm:gap-4 lg:flex-col lg:items-stretch lg:gap-3">
+      <div className="flex min-w-0 items-center gap-3 sm:flex-1 lg:flex-none">
+        <ItemIcon id={ev.productId} grade={item?.grade} size={40} />
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 font-medium text-foreground">{name}</p>
+          {/* copper: a category, not a status */}
+          <Badge tone="copper" icon={recipeTypeIcon(ev.recipe.type)} className="mt-1">
+            {RECIPE_TYPE_TH[ev.recipe.type]}
+          </Badge>
         </div>
       </div>
-      <div className="flex shrink-0 flex-col items-end gap-1.5">
-        {perHour ? (
-          <Money value={ev.profitPerHour} tone="profit" compact suffix="/ชม." className="text-base font-semibold" />
-        ) : (
-          <Money value={ev.profitPerUnit} tone="profit" compact suffix="/ชิ้น" className="text-base font-semibold" />
-        )}
-        <Link href={`/recipes?open=${ev.recipe.id}`} aria-label={`ดูวิธีทำ ${name}`} className={btn("primary", "sm")}>
-          ดูวิธีทำ →
+      <div className="flex items-end justify-between gap-3 lg:mt-auto">
+        <div className="min-w-0 sm:text-right lg:text-left">
+          <p className="text-xs text-muted">{perHour ? "กำไร/ชม." : "กำไร/ชิ้น"}</p>
+          <Money value={perHour ? ev.profitPerHour : ev.profitPerUnit} tone="profit" compact className="block text-2xl font-semibold" />
+          <p className="num text-xs text-muted">
+            {perHour ? `${signed(ev.profitPerUnit, silverShort)}/ชิ้น · ` : ""}ROI {signedPct(ev.roi)}
+          </p>
+        </div>
+        <Link href={`/recipes?open=${ev.recipe.id}`} aria-label={`ดูวิธีทำ ${name}`} className={btn("secondary", "sm")}>
+          ดูวิธีทำ
+          <Icon name="chevron-right" className="h-4 w-4" />
         </Link>
       </div>
     </li>
@@ -389,20 +453,34 @@ function PickRow({ ev, item, rank }: { ev: RecipeEvaluation; item: Item | undefi
 function HighlightRow({ rank, by, ev, item, stock }: { rank: number; by: HomeRank; ev: RecipeEvaluation; item: Item | undefined; stock: number | undefined }) {
   const href = `/recipes?open=${ev.recipe.id}`;
   const perHour = showsPerHour(ev, by);
+  const soldOut = ev.saleChannel === "market" && stock === 0;
   return (
     <li>
-      <Link href={href} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-panel-2/60">
-        <span className="w-4 text-center text-xs text-muted">{rank}</span>
+      <Link href={href} className="flex min-h-12 items-center gap-3 px-4 py-3 text-sm transition-colors duration-150 hover:bg-panel-2">
+        <span className="num w-4 shrink-0 text-center text-xs text-faint">{rank}</span>
         <ItemIcon id={ev.productId} grade={item?.grade} size={32} />
         <div className="min-w-0 flex-1">
-          <div className="truncate font-medium">{item?.th ?? ev.recipe.name}</div>
-          <div className="line-clamp-2 text-xs text-muted">
-            {RECIPE_TYPE_TH[ev.recipe.type]} · ต้นทุน {silverShort(ev.unitCost)} → {ev.saleChannel === "imperial" ? "ส่งราชวัง" : "ขาย"} {silverShort(ev.sellPrice)}
-            {ev.flags.materialSoldOut ? " · วัตถุดิบบางตัวหมดตลาด" : ""}
-            {ev.saleChannel === "market" && stock === 0 ? " · ขาดตลาด" : ""}
-          </div>
+          <p className="truncate font-medium text-foreground">{item?.th ?? ev.recipe.name}</p>
+          <p className="text-xs text-muted">
+            {RECIPE_TYPE_TH[ev.recipe.type]} · ต้นทุน <span className="num">{silverShort(ev.unitCost)}</span> · {ev.saleChannel === "imperial" ? "ส่งราชวัง" : "ขาย"}{" "}
+            <span className="num">{silverShort(ev.sellPrice)}</span>
+          </p>
+          {(ev.flags.materialSoldOut || soldOut) && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {ev.flags.materialSoldOut && (
+                <Badge tone="warn" icon="alert-triangle">
+                  วัตถุดิบบางตัวหมดตลาด
+                </Badge>
+              )}
+              {soldOut && (
+                <Badge tone="good" icon="trending-up">
+                  ขาดตลาด
+                </Badge>
+              )}
+            </div>
+          )}
         </div>
-        <div className="text-right">
+        <div className="shrink-0 text-right">
           <div className="font-semibold">
             {perHour ? (
               <Money value={ev.profitPerHour} tone="profit" compact suffix="/ชม." />
@@ -412,6 +490,7 @@ function HighlightRow({ rank, by, ev, item, stock }: { rank: number; by: HomeRan
           </div>
           <div className="num text-xs text-muted">{perHour ? `${signed(ev.profitPerUnit, silverShort)}/ชิ้น` : `ROI ${signedPct(ev.roi)}`}</div>
         </div>
+        <Icon name="chevron-right" className="hidden h-4 w-4 text-faint sm:block" />
       </Link>
     </li>
   );

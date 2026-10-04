@@ -54,12 +54,11 @@ export function InventoryIdeasPanel() {
     setAttempt((a) => a + 1);
   };
 
+  // a side card on wide screens (InventoryManager places it), so the empty states are compact and
+  // the long explanation of "กำไร" sits under the list instead of in the title bar
   return (
-    <Card className="mt-6">
-      <CardHeader
-        title="ทำอะไรได้จากของในคลัง"
-        hint={<>สูตรที่ทำได้ทันทีด้วยของที่มี ไม่ต้องซื้อเพิ่ม (นับวัตถุดิบทดแทนให้) · &ldquo;กำไร&rdquo; = ขายผลผลิตหลังหักภาษี − มูลค่าวัตถุดิบที่ใช้ไปถ้าขายตรง ๆ แทน</>}
-      />
+    <Card as="aside" aria-labelledby="inventory-ideas-title">
+      <CardHeader id="inventory-ideas-title" icon="sparkles" title="ทำอะไรได้จากของในคลัง" hint="สูตรที่ทำได้ทันทีด้วยของที่มี ไม่ต้องซื้อเพิ่ม (นับวัตถุดิบทดแทนให้)" />
       {problem ? (
         <div className="p-4">
           <Notice tone="bad" action={problemAction(problem, retry)}>
@@ -67,11 +66,18 @@ export function InventoryIdeasPanel() {
           </Notice>
         </div>
       ) : ready && ownedCount === 0 ? (
-        <EmptyState title="เพิ่มของที่มีเข้าคลังก่อน แล้วระบบจะบอกว่าเอาไปทำอะไรได้กำไรสุด" />
+        <EmptyState compact icon="package" title="เพิ่มของที่มีเข้าคลังก่อน" hint="แล้วระบบจะบอกว่าเอาไปทำอะไรได้กำไรสุด" />
       ) : !ready || !data || !prices ? (
         <SkeletonList n={4} label="กำลังคำนวณจากของในคลัง…" />
+      ) : ideas.length === 0 ? (
+        <EmptyState compact icon="flask" title="ของที่มียังไม่ครบสูตรไหน" hint="ต้องมีวัตถุดิบครบทุกอย่างของสูตร เพิ่มของที่ขาดเข้าคลังแล้วสูตรจะขึ้นที่นี่" />
       ) : (
-        <InventoryIdeas ideas={ideas} items={data.items} emptyText="ของที่มีตอนนี้ยังประกอบเป็นสูตรไหนไม่ครบ (ต้องมีวัตถุดิบครบทุกอย่างของสูตร)" />
+        <>
+          <InventoryIdeas ideas={ideas} items={data.items} emptyText="ของที่มีตอนนี้ยังประกอบเป็นสูตรไหนไม่ครบ (ต้องมีวัตถุดิบครบทุกอย่างของสูตร)" />
+          <p className="border-t border-border px-4 py-3 text-xs text-muted">
+            &ldquo;กำไร&rdquo; = ขายผลผลิตหลังหักภาษี − มูลค่าวัตถุดิบที่ใช้ไปถ้าขายตรง ๆ แทน
+          </p>
+        </>
       )}
     </Card>
   );

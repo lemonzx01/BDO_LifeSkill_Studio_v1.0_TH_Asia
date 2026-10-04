@@ -7,14 +7,15 @@ import { silver, silverShort } from "@/lib/format";
 import { ItemIcon } from "./ItemIcon";
 import { Badge, badgeCls, type BadgeTone } from "./ui/Badge";
 import { btn } from "./ui/button";
+import { Icon, type IconName } from "./ui/Icon";
 
-const SOURCE_LABEL: Record<CostNode["source"], { text: string; tone: BadgeTone }> = {
+const SOURCE_LABEL: Record<CostNode["source"], { text: string; tone: BadgeTone; icon?: IconName }> = {
   market: { text: "ตลาด", tone: "info" },
   npc: { text: "NPC", tone: "neutral" },
   craft: { text: "ทำเอง", tone: "accent" },
   owned: { text: "ในคลัง", tone: "good" },
   override: { text: "กำหนดเอง", tone: "special" },
-  unknown: { text: "ไม่ทราบราคา", tone: "bad" },
+  unknown: { text: "ไม่ทราบราคา", tone: "bad", icon: "alert-circle" },
 };
 
 export interface TreeTools {
@@ -24,6 +25,11 @@ export interface TreeTools {
   onOverride: (id: ItemId, mode: "buy" | "craft" | null) => void;
 }
 
+/**
+ * The materials of a recipe, layer by layer. Each level below the first hangs off a thin guide line
+ * under its parent's chevron. The number columns follow the header in RecipeDetail and read its
+ * @container, so every level shows the same columns.
+ */
 export function CostTree({
   children,
   items,
@@ -36,7 +42,7 @@ export function CostTree({
   tools?: TreeTools;
 }) {
   return (
-    <ul className={depth === 0 ? "space-y-1" : "mt-1 space-y-1 border-l border-border pl-3"}>
+    <ul className={depth === 0 ? "space-y-0.5" : "ml-3 mt-0.5 space-y-0.5 border-l border-border pl-2"}>
       {children.map((c, i) => (
         <TreeRow key={`${c.slotId}-${c.node.id}-${i}`} child={c} items={items} depth={depth} tools={tools} />
       ))}
@@ -63,7 +69,9 @@ function TreeRow({ child, items, depth, tools }: { child: CostChild; items: Reco
   const name = (
     <>
       <ItemIcon id={node.id} grade={item?.grade} size={24} />
-      <span className="min-w-0 truncate">
+      {/* a narrow detail (a phone, the side pane on a small desktop) wraps the name to two lines:
+          one line left "สะเก็ดแห่งเ…", too little to tell which material it is */}
+      <span className="min-w-0 line-clamp-2 @2xl:line-clamp-none @2xl:truncate" title={item?.th}>
         {item?.th ?? `#${node.id}`}
         {node.substituteFor && slotItem && <span className="ml-1 text-xs text-muted">(แทน {slotItem.th})</span>}
       </span>
@@ -73,62 +81,63 @@ function TreeRow({ child, items, depth, tools }: { child: CostChild; items: Reco
   return (
     <li>
       {/* same columns as the header in RecipeDetail: the name cell takes the rest, the numbers keep
-          their widths at the right whatever pills a row has. On a phone the pills drop under the
-          name instead of squeezing it */}
-      <div className="flex items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-panel-2/60">
-        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 sm:flex-nowrap">
+          their widths at the right whatever pills a row has. In a narrow detail (a phone) the pills
+          drop under the name instead of squeezing it */}
+      <div className="flex items-center gap-2 rounded-lg px-1.5 text-sm transition-colors duration-150 hover:bg-panel-2/60">
+        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 @md:flex-nowrap">
           {canOpen ? (
             <button
               type="button"
               onClick={() => setOpen((o) => !o)}
               aria-expanded={open}
               title={isCraft ? "ดูวัตถุดิบ" : "ดูว่าทำเองต้องใช้อะไร"}
-              className="flex min-h-9 max-w-full min-w-0 items-center gap-1.5 rounded text-left"
+              className="flex min-h-10 max-w-full min-w-0 items-center gap-1.5 rounded-md text-left md:min-h-9"
             >
-              <span aria-hidden className="w-3 shrink-0 text-xs text-muted">
-                {open ? "▾" : "▸"}
-              </span>
+              <Icon name="chevron-right" className={`h-3.5 w-3.5 text-faint transition-transform duration-150 ${open ? "rotate-90" : ""}`} strokeWidth={2} />
               {name}
             </button>
           ) : (
-            <span className="flex min-h-9 max-w-full min-w-0 items-center gap-1.5">
-              <span aria-hidden className="w-3 shrink-0" />
+            <span className="flex min-h-10 max-w-full min-w-0 items-center gap-1.5 md:min-h-9">
+              <span aria-hidden className="w-3.5 shrink-0" />
               {name}
             </span>
           )}
-          <Badge tone={src.tone} className="shrink-0">
+          <Badge tone={src.tone} icon={src.icon} className="shrink-0">
             {src.text}
           </Badge>
           {override && (
             <button
               type="button"
               onClick={() => tools?.onOverride(node.id, null)}
-              className={`${badgeCls("special")} shrink-0 hover:bg-special/25`}
+              // a pill to look at; on a touch screen the ::before makes it a taller target
+              className={`${badgeCls("special")} relative shrink-0 transition-colors duration-150 before:absolute before:inset-0 hover:bg-special/25 pointer-coarse:before:-inset-y-2.5`}
               title="ยกเลิกการบังคับ"
             >
-              บังคับ{override.mode === "craft" ? "ทำเอง" : override.mode === "buy" ? "ซื้อ" : ""} ✕
+              บังคับ{override.mode === "craft" ? "ทำเอง" : override.mode === "buy" ? "ซื้อ" : ""}
+              <Icon name="x" className="h-3 w-3" strokeWidth={2} />
+              <span className="sr-only"> (กดเพื่อยกเลิก)</span>
             </button>
           )}
           {node.soldOut && (
-            <Badge tone="warn" className="shrink-0">
+            <Badge tone="warn" icon="alert-triangle" className="shrink-0">
               ของหมด
             </Badge>
           )}
         </span>
-        <span className="num w-14 shrink-0 text-right text-muted sm:w-16">× {formatUnits(child.units)}</span>
-        <span className="num hidden w-24 shrink-0 text-right text-muted sm:block">{node.unknown ? "-" : silver(node.unitCost)}</span>
-        <span className="num w-24 shrink-0 text-right font-medium sm:w-28">{silver(child.lineCost)}</span>
+        <span className="num w-14 shrink-0 text-right text-muted @md:w-16">× {formatUnits(child.units)}</span>
+        <span className="num hidden w-24 shrink-0 text-right text-muted @md:block">{node.unknown ? "-" : silver(node.unitCost)}</span>
+        <span className="num w-24 shrink-0 text-right font-medium text-foreground @md:w-28">{silver(child.lineCost)}</span>
       </div>
 
       {isCraft && open && node.children && (
         <>
           {tools && buyPrice !== null && (
-            <div className="ml-6 mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
-              <span>
+            <div className="ml-5 mt-0.5 mb-1 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted">
+              <span className="num">
                 ทำเอง {silverShort(node.unitCost)}/ชิ้น · ซื้อได้ {silverShort(buyPrice)}/ชิ้น
               </span>
               {override?.mode !== "buy" && (
-                <button onClick={() => tools.onOverride(node.id, "buy")} className={btn("secondary", "sm")}>
+                <button type="button" onClick={() => tools.onOverride(node.id, "buy")} className={btn("secondary", "sm")}>
                   ซื้อแทนทำเอง
                 </button>
               )}
@@ -140,17 +149,19 @@ function TreeRow({ child, items, depth, tools }: { child: CostChild; items: Reco
         </>
       )}
 
+      {/* a "what if I crafted it" look at a bought material: framed with a dashed line, as it is not
+          what the cost above counts (until ใช้ทำเองแทน… is pressed) */}
       {craftable && open && tools && (
-        <div className="ml-6 mt-1">
+        <div className="mb-1.5 ml-5 mt-0.5 rounded-lg border border-dashed border-border-strong bg-panel-2/40 px-1 py-1.5">
           {best ? (
             <>
-              <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-muted">
-                <span>
+              <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1.5 px-1.5 text-xs text-muted">
+                <span className="num">
                   ถ้าทำเอง {best.node.hasUnknown ? "ต้นทุนไม่ครบ" : `${silverShort(best.node.unitCost)}/ชิ้น`} (ตอนนี้{src.text} {node.unknown ? "-" : silverShort(node.unitCost)})
                   {craftOptions.length > 1 ? ` · มี ${craftOptions.length} สูตร แสดงสูตรที่ถูกสุด` : ""}
                 </span>
                 {override?.mode !== "craft" && !best.node.hasUnknown && (
-                  <button onClick={() => tools.onOverride(node.id, "craft")} className={btn("secondary", "sm")}>
+                  <button type="button" onClick={() => tools.onOverride(node.id, "craft")} className={btn("secondary", "sm")}>
                     ใช้ทำเองแทน{src.text}
                   </button>
                 )}
@@ -162,7 +173,7 @@ function TreeRow({ child, items, depth, tools }: { child: CostChild; items: Reco
               )}
             </>
           ) : (
-            <span className="text-xs text-muted">ไม่มีสูตรที่คำนวณได้</span>
+            <span className="px-1.5 text-xs text-muted">ไม่มีสูตรที่คำนวณได้</span>
           )}
         </div>
       )}

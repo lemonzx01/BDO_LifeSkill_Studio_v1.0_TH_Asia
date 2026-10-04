@@ -14,18 +14,21 @@ import {
 import { assignableRoles, canManage, parseRole, ROLE_TH } from "@/lib/auth/roles";
 import type { Role } from "@/lib/db/schema";
 import { generateTempPassword, tempLoginText } from "@/lib/temp-password";
+import { Avatar } from "../ui/Avatar";
 import { Badge, RoleBadge } from "../ui/Badge";
-import { btn } from "../ui/button";
-import { CardHeader, cardCls } from "../ui/Card";
+import { btn, btnShape, toggleCls } from "../ui/button";
+import { Card, CardHeader, cardCls } from "../ui/Card";
 import { useConfirm, type ConfirmOptions } from "../ui/ConfirmDialog";
-import { selectCls } from "../ui/field";
+import { fieldCls, labelCls, selectCls } from "../ui/field";
+import { Icon } from "../ui/Icon";
 import { Notice } from "../ui/Notice";
+import { headCls, headStickyCls, stackedListLgCls, tableCls, tdCls, tdEndCls, thCls, thEndCls } from "../ui/table";
 import { toast } from "../ui/Toast";
-import { secondaryBtn, inputCls, labelCls, primaryBtn } from "./ui";
 
-// row controls: one height, never wrapping, quieter than the page-level buttons
+// row controls: one height, never wrapping, quieter than the page-level buttons. Disable and
+// delete stay grey until hovered (the ConfirmDialog asks first), so a long list is not a wall of red
 const rowBtn = btn("secondary", "sm");
-const rowDanger = btn("danger", "sm");
+const rowDanger = btn("dangerGhost", "sm");
 const rowSelect = selectCls("sm");
 
 type Confirm = (opts: ConfirmOptions) => Promise<boolean>;
@@ -65,41 +68,75 @@ type ShareState = ActionState & { share?: TempLogin; role?: Role };
 
 let shareSeq = 0;
 
+/**
+ * The members page below its header: the create form (the page's one gold button), then every
+ * account in one card (a table from lg, stacked rows below it) with what each level may do.
+ */
 export function AdminUsers({ users, meId, meRole }: { users: AdminUserRow[]; meId: number; meRole: Role }) {
-  // one dialog for every row (rows render twice: table and cards)
+  // one dialog for every row (rows render twice: table and stacked rows)
   const [confirm, confirmDialog] = useConfirm();
+  const listTitleId = useId();
+  const inactive = users.filter((u) => !u.isActive).length;
+  const waiting = users.filter((u) => u.mustChangePassword).length;
+  const counts = [
+    `${users.length} บัญชี`,
+    `ใช้งานได้ ${users.length - inactive}`,
+    inactive > 0 && `ปิดใช้งาน ${inactive}`,
+    waiting > 0 && `รอตั้งรหัสใหม่ ${waiting}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {confirmDialog}
       <CreateUserForm meRole={meRole} />
-      {/* lg and up: a table. Not from md: this page is narrow (max-w-5xl), and between md and lg the
-          760px table would scroll sideways inside its box, taking ปิดใช้งาน / ลบ off screen */}
-      <div className="hidden overflow-x-auto rounded-lg border border-border lg:block">
-        <table className="w-full min-w-[760px] text-sm">
-          <thead className="bg-panel-2 text-xs text-muted">
+      <Card aria-labelledby={listTitleId}>
+        <CardHeader id={listTitleId} icon="users" title="สมาชิกทั้งหมด" hint={<span className="num">{counts}</span>} />
+        {/* lg and up: a table. Not from md: this page is narrow (max-w-5xl), and between md and lg the
+            row of buttons would not fit, taking ปิดใช้งาน / ลบ off screen. One <tbody> per member,
+            so a row's answer and its reset form stay grouped under it */}
+        <table className={`${tableCls} hidden lg:table`}>
+          <thead className={`${headCls} ${headStickyCls}`}>
             <tr>
-              <th className="px-3 py-2 text-left font-medium">ผู้ใช้</th>
-              <th className="w-px whitespace-nowrap px-3 py-2 text-left font-medium">ล็อกอินล่าสุด</th>
-              <th className="w-px whitespace-nowrap px-3 py-2 text-left font-medium">จัดการ</th>
+              <th className={thCls}>ผู้ใช้</th>
+              <th className={`${thCls} w-px`}>ล็อกอินล่าสุด</th>
+              <th className={`${thEndCls} w-px`}>จัดการ</th>
             </tr>
           </thead>
-          <tbody>
-            {users.map((u) => (
-              <UserRow key={u.id} u={u} isMe={u.id === meId} meRole={meRole} confirm={confirm} />
-            ))}
-          </tbody>
+          {users.map((u) => (
+            <UserRow key={u.id} u={u} isMe={u.id === meId} meRole={meRole} confirm={confirm} />
+          ))}
         </table>
-      </div>
-      {/* phones and tablets: one card per member, so every action is on screen without scrolling sideways */}
-      <ul className="space-y-3 lg:hidden">
-        {users.map((u) => (
-          <UserCard key={u.id} u={u} isMe={u.id === meId} meRole={meRole} confirm={confirm} />
-        ))}
-      </ul>
-      <p className="text-xs text-muted">
-        แอดมินใหญ่ จัดการได้ทุกบัญชี ตั้งระดับให้ใครก็ได้ และโอนตำแหน่งให้คนอื่นได้ · แอดมินเล็ก สร้าง/ปิด/ลบ/รีเซ็ตรหัสได้เฉพาะสมาชิก · ต้องมีแอดมินใหญ่ที่เปิดใช้งานอย่างน้อย 1 คนเสมอ
-      </p>
+        {/* phones and tablets: one stacked row per member, so every action is on screen without scrolling sideways */}
+        <ul className={stackedListLgCls}>
+          {users.map((u) => (
+            <UserCard key={u.id} u={u} isMe={u.id === meId} meRole={meRole} confirm={confirm} />
+          ))}
+        </ul>
+        <RoleKey />
+      </Card>
     </div>
+  );
+}
+
+/** Under the list: what each admin level may do, with the same pills as the rows. */
+function RoleKey() {
+  return (
+    <ul className="space-y-1.5 border-t border-border px-4 py-3 text-xs text-muted">
+      {/* inline, not flex: a long line wraps on under the pill instead of dropping below it whole */}
+      <li>
+        <RoleBadge role="owner" className="mr-2 align-middle" />
+        จัดการได้ทุกบัญชี ตั้งระดับให้ใครก็ได้ และโอนตำแหน่งให้คนอื่นได้
+      </li>
+      <li>
+        <RoleBadge role="admin" className="mr-2 align-middle" />
+        สร้าง/ปิด/ลบ/รีเซ็ตรหัสได้เฉพาะสมาชิก
+      </li>
+      <li className="flex items-start gap-2">
+        <Icon name="info" className="mt-px h-4 w-4 text-faint" />
+        ต้องมีแอดมินใหญ่ที่เปิดใช้งานอย่างน้อย 1 คนเสมอ
+      </li>
+    </ul>
   );
 }
 
@@ -118,7 +155,7 @@ function TempPasswordInput({ label, className = "" }: { label: string; className
   return (
     <div className={`${labelCls} ${className}`}>
       <label htmlFor={id}>{label}</label>
-      <div className="flex gap-1.5">
+      <div className="flex gap-2">
         <input
           ref={ref}
           id={id}
@@ -131,9 +168,10 @@ function TempPasswordInput({ label, className = "" }: { label: string; className
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
-          className={`${inputCls} min-w-0 flex-1`}
+          className={`${fieldCls()} min-w-0 flex-1`}
         />
         <button type="button" onClick={fill} className={`${btn("secondary")} shrink-0`} title="สุ่มรหัส 12 ตัว ไม่มีตัวที่หน้าตาคล้ายกัน">
+          <Icon name="refresh" className="h-4 w-4" />
           สุ่มรหัส
         </button>
       </div>
@@ -160,14 +198,27 @@ function TempLoginShare({ login }: { login: TempLogin }) {
     }
   };
   return (
-    <div className="rounded border border-border bg-background/40 p-3 text-sm">
-      <p className="select-all break-words">{tempLoginText(login.username, shown ? login.password : "••••", login.origin)}</p>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <button type="button" onClick={copy} className={btn("primary", "sm")}>
-          {copied ? "คัดลอกแล้ว ✓" : "คัดลอก"}
+    <div className="rounded-lg border border-border bg-panel-2/60 p-3 text-sm">
+      <p className="rounded-md bg-background/60 px-3 py-2 break-words text-foreground select-all">
+        {tempLoginText(login.username, shown ? login.password : "••••", login.origin)}
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button type="button" onClick={copy} className={btn("secondary", "sm")}>
+          {copied ? (
+            <>
+              <Icon name="check" className="h-4 w-4 text-good" />
+              คัดลอกแล้ว
+            </>
+          ) : (
+            <>
+              <Icon name="copy" className="h-4 w-4" />
+              คัดลอก
+            </>
+          )}
         </button>
         {/* the label says what pressing does, so no aria-pressed (that would read "ซ่อนรหัส, pressed") */}
-        <button type="button" onClick={() => setShown((s) => !s)} className={btn("secondary", "sm")}>
+        <button type="button" onClick={() => setShown((s) => !s)} className={btn("ghost", "sm")}>
+          <Icon name={shown ? "eye-off" : "eye"} className="h-4 w-4" />
           {shown ? "ซ่อนรหัส" : "แสดงรหัส"}
         </button>
         <span className="text-xs text-muted">แสดงครั้งเดียว ปิดแล้วดูอีกไม่ได้</span>
@@ -179,7 +230,7 @@ function TempLoginShare({ login }: { login: TempLogin }) {
   );
 }
 
-/** The answer of a create or reset form, with the hand-out box after a success and a × to close both. */
+/** The answer of a create or reset form, with the hand-out box after a success and an x to close both. */
 function ShareResult({ state, className = "" }: { state: ShareState; className?: string }) {
   const [closed, setClosed] = useState<ShareState | null>(null);
   if (state === closed || !(state.error || state.ok)) return null;
@@ -224,9 +275,9 @@ function CreateUserForm({ meRole }: { meRole: Role }) {
   const role = keep ? (state.role ?? "member") : "member";
   return (
     <form action={formAction} className={cardCls()}>
-      <CardHeader title="สร้างบัญชีให้สมาชิก" />
+      <CardHeader icon="user" title="สร้างบัญชีให้สมาชิก" hint="ส่งชื่อผู้ใช้กับรหัสชั่วคราวให้สมาชิก ล็อกอินครั้งแรกระบบจะให้ตั้งรหัสใหม่" />
       <div className="p-4">
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className={labelCls}>
             ชื่อผู้ใช้
             <input
@@ -236,13 +287,13 @@ function CreateUserForm({ meRole }: { meRole: Role }) {
               autoCorrect="off"
               spellCheck={false}
               defaultValue={keep ? (state.username ?? "") : ""}
-              className={inputCls}
+              className={fieldCls()}
               placeholder="เช่น somchai"
             />
           </label>
           <label className={labelCls}>
             ชื่อที่แสดง
-            <input name="displayName" maxLength={40} defaultValue={keep ? (state.displayName ?? "") : ""} className={inputCls} placeholder="ชื่อในเกม" />
+            <input name="displayName" maxLength={40} defaultValue={keep ? (state.displayName ?? "") : ""} className={fieldCls()} placeholder="ชื่อในเกม" />
           </label>
           <TempPasswordInput label="รหัสผ่านชั่วคราว (≥ 8 ตัว)" />
           <label className={labelCls}>
@@ -257,10 +308,12 @@ function CreateUserForm({ meRole }: { meRole: Role }) {
             </select>
           </label>
         </div>
-        <ShareResult state={state} className="mt-3" />
-        <button type="submit" disabled={pending} className={`${primaryBtn} mt-3`}>
+        <button type="submit" disabled={pending} className={`${btn("primary")} mt-4`}>
+          <Icon name={pending ? "loader" : "plus"} className={`h-4 w-4 ${pending ? "animate-spin" : ""}`} />
           {pending ? "กำลังสร้าง…" : "สร้างบัญชี"}
         </button>
+        {/* under the button that made it: the answer, and after a success what to send the member */}
+        <ShareResult state={state} className="mt-4" />
       </div>
     </form>
   );
@@ -270,21 +323,27 @@ function lastLogin(u: AdminUserRow): string {
   return u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" }) : "ยังไม่เคย";
 }
 
-/** Name, @username and the status pills: the same in the table and on a phone card. */
+/**
+ * The avatar disc, name, @username and the status pills: the same in the table and in a stacked
+ * row. A disabled account's disc is dimmed (its ปิดใช้งาน pill says so in words).
+ */
 function UserIdentity({ u, isMe }: { u: AdminUserRow; isMe: boolean }) {
   return (
-    <>
-      <div className="flex flex-wrap items-baseline gap-x-2">
-        <span className="font-medium">{u.displayName}</span>
-        <span className="text-xs text-muted">@{u.username}</span>
-        {isMe && <span className="text-xs text-muted">(คุณ)</span>}
+    <div className="flex min-w-0 items-center gap-3">
+      <Avatar name={u.displayName} dim={!u.isActive} />
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          <span className="font-medium break-words text-foreground">{u.displayName}</span>
+          <span className="text-xs break-words text-muted">@{u.username}</span>
+          {isMe && <span className="text-xs text-muted">(คุณ)</span>}
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-1">
+          <RoleBadge role={u.role} />
+          {u.isActive ? <Badge tone="good">ใช้งานได้</Badge> : <Badge tone="bad">ปิดใช้งาน</Badge>}
+          {u.mustChangePassword && <Badge tone="warn">รอตั้งรหัสใหม่</Badge>}
+        </div>
       </div>
-      <div className="mt-1 flex flex-wrap items-center gap-1">
-        <RoleBadge role={u.role} />
-        {u.isActive ? <Badge tone="good">ใช้งานได้</Badge> : <Badge tone="bad">ปิดใช้งาน</Badge>}
-        {u.mustChangePassword && <Badge tone="warn">รอตั้งรหัสใหม่</Badge>}
-      </div>
-    </>
+    </div>
   );
 }
 
@@ -293,12 +352,15 @@ function NotManageable({ isMe }: { isMe: boolean }) {
   return isMe ? (
     <span className="text-xs text-muted">
       แก้ไขตัวเองที่หน้า{" "}
-      <Link href="/account" className="underline hover:text-foreground">
+      <Link href="/account" className="underline underline-offset-2 hover:text-foreground">
         บัญชีของฉัน
       </Link>
     </span>
   ) : (
-    <span className="text-xs text-muted">แอดมินใหญ่เท่านั้นที่จัดการบัญชีนี้ได้</span>
+    <span className="inline-flex items-center gap-1.5 text-xs text-muted">
+      <Icon name="lock" className="h-4 w-4 text-faint" />
+      แอดมินใหญ่เท่านั้นที่จัดการบัญชีนี้ได้
+    </span>
   );
 }
 
@@ -346,7 +408,7 @@ interface RowAction {
 
 /**
  * One member's row actions and their latest answer, shown in that row ("ปิดใช้งาน @somchai แล้ว",
- * or the error), with a × to close it.
+ * or the error), with an x to close it.
  */
 function useRowAction(): [RowAction, ReactNode] {
   const [state, action, pending] = useActionState<ActionState, FormData>(runRowAction, {});
@@ -435,11 +497,14 @@ function MainActions({
             className={rowBtn}
             title="ยกตำแหน่งแอดมินใหญ่ให้บัญชีนี้ แล้วคุณเป็นแอดมินเล็ก"
           >
+            <Icon name="crown" className="h-4 w-4" />
             โอนสิทธิ์แอดมินใหญ่
           </button>
         </form>
       )}
-      <button type="button" onClick={onToggleReset} aria-expanded={resetOpen} className={rowBtn}>
+      {/* gold while its password form is open */}
+      <button type="button" onClick={onToggleReset} aria-expanded={resetOpen} className={`${btnShape("sm")} ${toggleCls(resetOpen)}`}>
+        <Icon name="key" className="h-4 w-4" />
         รีเซ็ตรหัส
       </button>
     </>
@@ -468,10 +533,12 @@ function DangerActions({ u, confirm, row }: { u: AdminUserRow; confirm: Confirm;
         <input type="hidden" name="active" value={u.isActive ? "0" : "1"} />
         {u.isActive ? (
           <button type="button" onClick={askDisable} disabled={row.pending} aria-haspopup="dialog" className={rowDanger}>
+            <Icon name="ban" className="h-4 w-4" />
             ปิดใช้งาน
           </button>
         ) : (
           <button type="submit" disabled={row.pending} className={rowBtn}>
+            <Icon name="check-circle" className="h-4 w-4" />
             เปิดใช้งาน
           </button>
         )}
@@ -480,6 +547,7 @@ function DangerActions({ u, confirm, row }: { u: AdminUserRow; confirm: Confirm;
         <input type="hidden" name="op" value="delete" />
         <input type="hidden" name="id" value={u.id} />
         <button type="button" onClick={askDelete} disabled={row.pending} aria-haspopup="dialog" className={rowDanger}>
+          <Icon name="trash" className="h-4 w-4" />
           ลบ
         </button>
       </form>
@@ -487,22 +555,23 @@ function DangerActions({ u, confirm, row }: { u: AdminUserRow; confirm: Confirm;
   );
 }
 
+/** The lg layout of one member: a <tbody> of its row, then its latest answer and its reset form. */
 function UserRow({ u, isMe, meRole, confirm }: { u: AdminUserRow; isMe: boolean; meRole: Role; confirm: Confirm }) {
   const [showReset, setShowReset] = useState(false);
   const [row, notice] = useRowAction();
   const manageable = !isMe && canManage(meRole, u.role);
   return (
-    <>
-      <tr className="border-t border-border">
-        <td className="px-3 py-2.5">
+    <tbody className="border-b border-border/70 last:border-b-0">
+      <tr className="transition-colors duration-150 hover:bg-panel-2/60">
+        <td className={tdCls}>
           <UserIdentity u={u} isMe={isMe} />
         </td>
-        <td className="whitespace-nowrap px-3 py-2 text-xs text-muted">{lastLogin(u)}</td>
-        <td className="whitespace-nowrap px-3 py-2">
+        <td className={`${tdCls} num text-xs whitespace-nowrap text-muted`}>{lastLogin(u)}</td>
+        <td className={`${tdEndCls} whitespace-nowrap`}>
           {!manageable ? (
             <NotManageable isMe={isMe} />
           ) : (
-            <div className="flex flex-nowrap items-center gap-1.5">
+            <div className="flex flex-nowrap items-center justify-end gap-1.5">
               <MainActions u={u} meRole={meRole} resetOpen={showReset} onToggleReset={() => setShowReset((s) => !s)} confirm={confirm} row={row} />
               <span className="mx-1 h-5 w-px bg-border" aria-hidden />
               <DangerActions u={u} confirm={confirm} row={row} />
@@ -514,34 +583,40 @@ function UserRow({ u, isMe, meRole, confirm }: { u: AdminUserRow; isMe: boolean;
           (e.g. right after handing over แอดมินใหญ่) */}
       {notice && (
         <tr>
-          <td colSpan={3} className="px-3 pb-2.5">
+          <td colSpan={3} className="px-4 pb-3">
             {notice}
           </td>
         </tr>
       )}
       {showReset && manageable && (
-        <tr className="border-t border-border/60 bg-background/40">
-          <td colSpan={3} className="px-3 py-2">
-            <ResetPasswordForm id={u.id} username={u.username} onDone={() => setShowReset(false)} />
+        <tr>
+          <td colSpan={3} className="px-4 pb-3">
+            <div className="rounded-lg border border-border bg-panel-2/60 p-3">
+              <ResetPasswordForm id={u.id} username={u.username} onDone={() => setShowReset(false)} />
+            </div>
           </td>
         </tr>
       )}
-    </>
+    </tbody>
   );
 }
 
-/** The phone and tablet layout of one member: who, last login, everyday actions, then disable and delete below a line. */
+/**
+ * The phone and tablet layout of one member: who and last login, everyday actions, then disable
+ * and delete below a hairline.
+ */
 function UserCard({ u, isMe, meRole, confirm }: { u: AdminUserRow; isMe: boolean; meRole: Role; confirm: Confirm }) {
   const [showReset, setShowReset] = useState(false);
   const [row, notice] = useRowAction();
   const manageable = !isMe && canManage(meRole, u.role);
   return (
-    <li className={`${cardCls()} p-3 text-sm`}>
+    <li className="px-4 py-3 text-sm">
       <UserIdentity u={u} isMe={isMe} />
-      <p className="mt-2 text-xs text-muted">ล็อกอินล่าสุด {lastLogin(u)}</p>
+      {/* pl-12 lines the grey line up with the name after the 36px disc */}
+      <p className="num mt-1.5 pl-12 text-xs text-muted">ล็อกอินล่าสุด {lastLogin(u)}</p>
       {notice && <div className="mt-3">{notice}</div>}
       {!manageable ? (
-        <p className="mt-2">
+        <p className="mt-2 pl-12">
           <NotManageable isMe={isMe} />
         </p>
       ) : (
@@ -550,11 +625,11 @@ function UserCard({ u, isMe, meRole, confirm }: { u: AdminUserRow; isMe: boolean
             <MainActions u={u} meRole={meRole} resetOpen={showReset} onToggleReset={() => setShowReset((s) => !s)} confirm={confirm} row={row} />
           </div>
           {showReset && (
-            <div className="mt-3 rounded border border-border/60 bg-background/40 p-2">
+            <div className="mt-3 rounded-lg border border-border bg-panel-2/60 p-3">
               <ResetPasswordForm id={u.id} username={u.username} onDone={() => setShowReset(false)} />
             </div>
           )}
-          <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
+          <div className="mt-3 flex flex-wrap gap-2 border-t border-border/70 pt-3">
             <DangerActions u={u} confirm={confirm} row={row} />
           </div>
         </>
@@ -566,14 +641,16 @@ function UserCard({ u, isMe, meRole, confirm }: { u: AdminUserRow; isMe: boolean
 function ResetPasswordForm({ id, username, onDone }: { id: number; username: string; onDone: () => void }) {
   const [state, formAction, pending] = useActionState<ShareState, FormData>(resetAndShare, {});
   return (
-    <form action={formAction} className="space-y-2">
+    <form action={formAction} className="space-y-3">
       <input type="hidden" name="id" value={id} />
       <div className="flex flex-wrap items-end gap-2">
-        <TempPasswordInput label={`รหัสผ่านชั่วคราวใหม่ของ @${username}`} className="min-w-[16rem] flex-1 sm:flex-none" />
-        <button type="submit" disabled={pending} className={primaryBtn}>
+        <TempPasswordInput label={`รหัสผ่านชั่วคราวใหม่ของ @${username}`} className="w-full sm:w-96" />
+        {/* secondary, not gold: สร้างบัญชี above stays the page's one gold button */}
+        <button type="submit" disabled={pending} className={btn("secondary")}>
+          {pending && <Icon name="loader" className="h-4 w-4 animate-spin" />}
           {pending ? "กำลังบันทึก…" : "บันทึก"}
         </button>
-        <button type="button" onClick={onDone} className={secondaryBtn}>
+        <button type="button" onClick={onDone} className={btn("ghost")}>
           ปิด
         </button>
       </div>

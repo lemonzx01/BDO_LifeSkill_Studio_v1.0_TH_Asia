@@ -8,6 +8,7 @@ import { ItemIcon } from "./ItemIcon";
 import { Badge } from "./ui/Badge";
 import { btn } from "./ui/button";
 import { fieldCls } from "./ui/field";
+import { Icon, type IconName } from "./ui/Icon";
 
 interface Hit {
   id: number;
@@ -20,14 +21,17 @@ interface Hit {
   hasRecipe: boolean;
 }
 
-const PAGES = [
-  { href: "/", label: "หน้าแรก" },
-  { href: "/recipes", label: "คำนวณสูตร" },
-  { href: "/market", label: "สแกนตลาด" },
-  { href: "/inventory", label: "คลังของ" },
-  { href: "/calc", label: "คิดภาษี" },
-  { href: "/help", label: "วิธีใช้" },
+const PAGES: { href: string; label: string; icon: IconName }[] = [
+  { href: "/", label: "หน้าแรก", icon: "home" },
+  { href: "/recipes", label: "คำนวณสูตร", icon: "book" },
+  { href: "/market", label: "สแกนตลาด", icon: "chart" },
+  { href: "/inventory", label: "คลังของ", icon: "package" },
+  { href: "/calc", label: "คิดภาษี", icon: "calculator" },
+  { href: "/help", label: "วิธีใช้", icon: "help-circle" },
 ];
+
+/** a key cap in the hint line */
+const KBD = "rounded border border-border-strong bg-panel px-1 font-sans text-xs leading-4 text-muted";
 
 // one quick search per page (see below), so fixed ids are unique
 const LIST_ID = "qs-list";
@@ -46,9 +50,9 @@ const optId = (i: number) => `qs-opt-${i}`;
  * never sit inside a listbox option. Enter opens the item's recipes (or the market when no recipe
  * makes it), Shift+Enter its market row.
  *
- * `compact`: the header version. Below md it is a 40x40 ⌕ button next to the avatar; from md up
- * the "ค้นหา" label (lg) and the Ctrl K hint (xl) come back as room allows. Render one per page:
- * each instance listens for Ctrl+K.
+ * `compact`: the top bar version. Below md it is a 40x40 search-icon button next to the avatar;
+ * from md up it looks like a field, and the "ค้นหา…" label (lg) and the Ctrl K hint (xl) come back
+ * as room allows. Render one per page: each instance listens for Ctrl+K.
  */
 export function QuickSearch({ compact = false }: { compact?: boolean }) {
   const router = useRouter();
@@ -203,16 +207,20 @@ export function QuickSearch({ compact = false }: { compact?: boolean }) {
         onClick={() => setOpen(true)}
         className={
           compact
-            ? "flex h-10 w-10 items-center justify-center gap-1.5 rounded-full border border-border bg-panel text-lg text-muted hover:text-foreground md:h-8 md:w-auto md:rounded md:px-2.5 md:text-sm"
-            : "flex items-center gap-1.5 rounded border border-border bg-panel px-2.5 py-1.5 text-sm text-muted hover:text-foreground"
+            ? "flex h-10 w-10 shrink-0 items-center justify-center gap-2 rounded-lg text-muted transition-colors duration-150 hover:bg-panel-2 hover:text-foreground md:h-9 md:w-auto md:border md:border-border-strong md:bg-panel-2 md:px-2.5 md:hover:border-border-field lg:min-w-40 lg:justify-start"
+            : "flex min-h-10 items-center gap-2 rounded-lg border border-border-strong bg-panel-2 px-3 text-sm text-muted transition-colors duration-150 hover:border-border-field hover:text-foreground md:min-h-9"
         }
         title="ค้นหาไอเทมจากทุกหน้า (Ctrl+K)"
         aria-label="ค้นหาด่วน"
         aria-haspopup="dialog"
       >
-        <span aria-hidden>⌕</span>
-        <span className={compact ? "hidden lg:inline" : "hidden sm:inline"}>ค้นหา</span>
-        <kbd className={`hidden rounded border border-border bg-panel-2 px-1 text-[10px] text-muted ${compact ? "xl:inline" : "md:inline"}`}>Ctrl K</kbd>
+        <Icon name="search" className="h-[18px] w-[18px]" />
+        <span className={`text-sm ${compact ? "hidden lg:inline" : "hidden sm:inline"}`}>ค้นหา…</span>
+        <kbd
+          className={`ml-auto hidden rounded border border-border-strong bg-panel px-1.5 font-sans text-xs leading-4 text-faint ${compact ? "xl:inline" : "md:inline"}`}
+        >
+          Ctrl K
+        </kbd>
       </button>
 
       <dialog
@@ -223,35 +231,35 @@ export function QuickSearch({ compact = false }: { compact?: boolean }) {
         onClick={(e) => {
           if (e.target === e.currentTarget) e.currentTarget.close();
         }}
-        className="m-0 h-[100dvh] max-h-none w-full max-w-none overflow-hidden rounded-none border-0 bg-panel p-0 text-foreground backdrop:bg-black/60 md:mx-auto md:mb-auto md:mt-[12vh] md:h-fit md:max-h-[80vh] md:max-w-lg md:rounded-lg md:border md:border-border md:shadow-2xl"
+        // full screen on phones (fades in), a card that rises in from md up
+        className="m-0 h-[100dvh] max-h-none w-full max-w-none animate-fade-in overflow-hidden rounded-none border-0 bg-panel p-0 text-foreground backdrop:bg-black/60 backdrop:backdrop-blur-[2px] md:mx-auto md:mb-auto md:mt-[12vh] md:h-fit md:max-h-[80vh] md:max-w-xl md:animate-rise-in md:rounded-xl md:border md:border-border-strong md:shadow-pop"
       >
         <div className="flex h-full flex-col">
-          <div className="flex items-center gap-2 border-b border-border p-2 pt-[calc(0.5rem+env(safe-area-inset-top))] md:pt-2">
-            <input
-              ref={inputRef}
-              type="text"
-              role="combobox"
-              aria-haspopup="grid"
-              aria-expanded={count > 0}
-              aria-controls={LIST_ID}
-              aria-activedescendant={sel >= 0 ? optId(sel) : undefined}
-              aria-autocomplete="list"
-              aria-label="ค้นหาไอเท็ม"
-              placeholder="พิมพ์ชื่อไอเท็ม…"
-              enterKeyHint="search"
-              autoComplete="off"
-              autoCorrect="off"
-              spellCheck={false}
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onKeyDown={onKeyDown}
-              className={`${fieldCls()} min-w-0 flex-1`}
-            />
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="inline-flex h-11 min-w-11 shrink-0 items-center justify-center rounded px-3 text-sm text-muted hover:bg-panel-2 hover:text-foreground md:h-9 md:min-w-9"
-            >
+          <div className="flex items-center gap-2 border-b border-border p-3 pt-[calc(0.75rem+env(safe-area-inset-top))] md:pt-3">
+            <div className="relative min-w-0 flex-1">
+              <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
+              <input
+                ref={inputRef}
+                type="text"
+                role="combobox"
+                aria-haspopup="grid"
+                aria-expanded={count > 0}
+                aria-controls={LIST_ID}
+                aria-activedescendant={sel >= 0 ? optId(sel) : undefined}
+                aria-autocomplete="list"
+                aria-label="ค้นหาไอเท็ม"
+                placeholder="พิมพ์ชื่อไอเท็ม…"
+                enterKeyHint="search"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onKeyDown={onKeyDown}
+                className={`${fieldCls()} pl-9`}
+              />
+            </div>
+            <button type="button" onClick={() => setOpen(false)} className={`${btn("ghost")} min-h-11 shrink-0 md:min-h-9`}>
               ปิด
             </button>
           </div>
@@ -259,18 +267,32 @@ export function QuickSearch({ compact = false }: { compact?: boolean }) {
             {live}
           </p>
           {!showPages && hits.length === 0 && (
-            <div className="px-4 py-6 text-center text-sm text-muted">
+            <div className="flex flex-col items-center gap-2 px-4 py-8 text-center text-sm text-muted">
               {!settled ? (
-                "กำลังค้นหา…"
+                <>
+                  <Icon name="loader" className="h-5 w-5 animate-spin text-faint" />
+                  กำลังค้นหา…
+                </>
               ) : failed ? (
-                <span className="text-bad">
-                  ค้นหาไม่สำเร็จ ·{" "}
-                  <button type="button" onClick={retrySearch} className="underline hover:text-foreground">
-                    ลองใหม่
-                  </button>
-                </span>
+                <>
+                  <Icon name="alert-circle" className="h-5 w-5 text-bad" />
+                  <span className="text-bad">
+                    ค้นหาไม่สำเร็จ ·{" "}
+                    {/* min-h-10: a 40px target on a phone, where this dialog fills the screen */}
+                    <button
+                      type="button"
+                      onClick={retrySearch}
+                      className="-mx-1.5 inline-flex min-h-10 items-center rounded-md px-1.5 underline underline-offset-2 hover:text-foreground md:min-h-7"
+                    >
+                      ลองใหม่
+                    </button>
+                  </span>
+                </>
               ) : (
-                "ไม่พบไอเทมในตลาดที่ชื่อตรงกับคำนี้"
+                <>
+                  <Icon name="search" className="h-5 w-5 text-faint" />
+                  ไม่พบไอเทมในตลาดที่ชื่อตรงกับคำนี้
+                </>
               )}
             </div>
           )}
@@ -280,7 +302,7 @@ export function QuickSearch({ compact = false }: { compact?: boolean }) {
             id={LIST_ID}
             role="grid"
             aria-label="ผลการค้นหา"
-            className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)] md:max-h-[60vh] md:flex-none md:pb-0"
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))] md:max-h-[60vh] md:flex-none md:pb-1.5"
           >
             {showPages &&
               pageHits.map((p, i) => (
@@ -290,9 +312,14 @@ export function QuickSearch({ compact = false }: { compact?: boolean }) {
                       type="button"
                       tabIndex={-1}
                       onClick={() => go(p.href)}
-                      className={`flex min-h-11 w-full items-center gap-2 px-4 py-2 text-left text-sm md:min-h-0 ${i === sel ? "bg-panel-2" : "hover:bg-panel-2/60"}`}
+                      className={`flex min-h-11 w-full items-center gap-3 px-4 py-2 text-left text-sm transition-colors duration-150 md:min-h-10 ${
+                        i === sel ? "bg-panel-2 text-foreground" : "hover:bg-panel-2/60"
+                      }`}
                     >
-                      <span className="text-muted">ไปหน้า</span> {p.label}
+                      <Icon name={p.icon} className={`h-[18px] w-[18px] ${i === sel ? "text-accent" : "text-muted"}`} />
+                      <span>
+                        <span className="text-muted">ไปหน้า</span> {p.label}
+                      </span>
                     </button>
                   </div>
                 </div>
@@ -302,15 +329,15 @@ export function QuickSearch({ compact = false }: { compact?: boolean }) {
                 <div
                   key={h.id}
                   role="row"
-                  className={`flex items-center gap-2 px-4 py-2 text-sm ${i === sel ? "bg-panel-2" : ""}`}
+                  className={`flex items-center gap-2 px-4 py-2 text-sm transition-colors duration-150 ${i === sel ? "bg-panel-2" : "hover:bg-panel-2/60"}`}
                   onMouseEnter={() => setActive(i)}
                 >
-                  <div id={optId(i)} role="gridcell" aria-selected={i === sel} className="flex min-w-0 flex-1 items-center gap-2">
+                  <div id={optId(i)} role="gridcell" aria-selected={i === sel} className="flex min-w-0 flex-1 items-center gap-2.5">
                     <ItemIcon id={h.id} grade={h.grade} size={28} />
                     <button type="button" tabIndex={-1} onClick={() => openHit(h)} className="min-w-0 flex-1 text-left">
                       <span className="block truncate font-medium">{h.th}</span>
                       {/* มีสูตร sits on this line, so the name keeps the whole width on a phone */}
-                      <span className="line-clamp-2 text-xs text-muted">
+                      <span className="num line-clamp-2 text-xs text-muted">
                         {h.hasRecipe && (
                           <Badge tone="accent" className="mr-1">
                             มีสูตร
@@ -321,7 +348,7 @@ export function QuickSearch({ compact = false }: { compact?: boolean }) {
                       </span>
                     </button>
                   </div>
-                  <div role="gridcell" className="flex shrink-0 gap-1">
+                  <div role="gridcell" className="flex shrink-0 gap-2 md:gap-1">
                     {h.hasRecipe && (
                       <button type="button" onClick={() => toRecipes(h)} aria-label={`สูตร ${h.th}`} className={btn("secondary", "sm")}>
                         สูตร
@@ -337,8 +364,20 @@ export function QuickSearch({ compact = false }: { compact?: boolean }) {
                 </div>
               ))}
           </div>
-          <div className="hidden border-t border-border px-4 py-1.5 text-xs text-muted md:block">
-            ↑↓ เลือก · Enter เปิดสูตร (ไม่มีสูตร = ตลาด) · Shift+Enter ดูในตลาด · Esc ปิด
+          {/* the keys, as key caps; the arrows here are the names of keys, not icons */}
+          <div className="hidden flex-wrap items-center gap-x-3 gap-y-1 border-t border-border bg-panel-2/40 px-4 py-2 text-xs text-faint md:flex">
+            <span>
+              <kbd className={KBD}>↑</kbd> <kbd className={KBD}>↓</kbd> เลือก
+            </span>
+            <span>
+              <kbd className={KBD}>Enter</kbd> เปิดสูตร (ไม่มีสูตร = ตลาด)
+            </span>
+            <span>
+              <kbd className={KBD}>Shift+Enter</kbd> ดูในตลาด
+            </span>
+            <span>
+              <kbd className={KBD}>Esc</kbd> ปิด
+            </span>
           </div>
         </div>
       </dialog>

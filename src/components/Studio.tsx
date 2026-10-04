@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { isBoolean, usePersistentState } from "@/lib/use-persistent";
 import { CostEngine, mainProduct } from "@/lib/engine/cost";
 import { IMPERIAL_TYPES, PROCESSING_TYPES, RECIPE_TYPE_TH } from "@/lib/engine/mastery";
@@ -23,18 +23,19 @@ import { TimeAgo } from "./TimeAgo";
 import type { SessionUser } from "./auth/UserMenu";
 import { useInventory, useSettings } from "./UserDataProvider";
 import { Badge, type BadgeTone } from "./ui/Badge";
-import { btn } from "./ui/button";
-import { cardCls } from "./ui/Card";
+import { btn, iconBtn } from "./ui/button";
+import { Card, cardCls } from "./ui/Card";
 import { EmptyState, type EmptyAction } from "./ui/EmptyState";
 import { checkboxCls, selectCls } from "./ui/field";
 import { filterPanelCls, FilterToggle, FocusChip } from "./ui/FilterControls";
-import { WithTip } from "./ui/InfoTip";
+import { Icon, type IconName } from "./ui/Icon";
+import { InfoTip } from "./ui/InfoTip";
 import { Money, pctCls } from "./ui/Money";
 import { Notice } from "./ui/Notice";
 import { Page, PageHeader } from "./ui/Page";
 import { SearchInput } from "./ui/SearchInput";
 import { Segmented } from "./ui/Segmented";
-import { SkeletonRows } from "./ui/Skeleton";
+import { SkeletonListPane } from "./ui/Skeleton";
 
 type Tab = "all" | "alchemy" | "cooking" | "processing" | "imperial";
 // the saved sort is shared with the home page (lib/home-picks), so its names live there
@@ -55,12 +56,39 @@ const SORTS: { key: SortKey; label: string }[] = [
   { key: "profitPerHour", label: "กำไร/ชม." },
   { key: "unitCost", label: "ต้นทุนต่ำสุด" },
 ];
+/** The number each row leads with is the one the list is sorted by, so the order explains itself. */
+const MAIN_LABEL: Record<SortKey, string> = {
+  profitPerUnit: "กำไร/ชิ้น",
+  roi: "ROI",
+  profitPerCraft: "กำไร/รอบ",
+  profitPerHour: "กำไร/ชม.",
+  unitCost: "ต้นทุน/ชิ้น",
+};
 const MARKET_FILTERS: { key: MarketFilter; label: string }[] = [
   { key: "all", label: "ทุกสภาพตลาด" },
   { key: "soldout", label: "ขาดตลาด" },
   { key: "instock", label: "มีของค้างขาย" },
 ];
 const PAGE = 100;
+
+/** the side pane that shows the open recipe on wide screens, and its title (focus lands there from the keyboard) */
+const PANE_ID = "recipe-pane";
+const PANE_TITLE_ID = "recipe-pane-title";
+const rowDomId = (recipeId: number) => `recipe-row-${recipeId}`;
+
+/**
+ * lg and up (Tailwind's lg, 64rem): the open recipe shows in the side pane instead of under its row.
+ * Read from the screen, not CSS alone, so the detail (and its market request) exists once. The
+ * server and hydration render the narrow layout; nothing can be open before the recipe data loads.
+ */
+const WIDE = "(min-width: 64rem)";
+function subscribeWide(onChange: () => void) {
+  const mq = window.matchMedia(WIDE);
+  mq.addEventListener("change", onChange);
+  return () => mq.removeEventListener("change", onChange);
+}
+const isWide = () => window.matchMedia(WIDE).matches;
+const notWide = () => false;
 
 interface PricesResponse {
   prices: Record<ItemId, MarketPrice>;
@@ -135,6 +163,7 @@ export function Studio({ user }: { user: SessionUser | null }) {
   const params = useSearchParams();
   const [settings] = useSettings();
   const inventory = useInventory();
+  const wide = useSyncExternalStore(subscribeWide, isWide, notWide);
   const [data, setData] = useState<DataResponse | null>(null);
   const [dataProblem, setDataProblem] = useState<FetchProblem | null>(null);
   const [dataAttempt, setDataAttempt] = useState(0);
@@ -160,10 +189,10 @@ export function Studio({ user }: { user: SessionUser | null }) {
   const limit = limitState.key === filterKey ? limitState.limit : PAGE;
   const showMore = () => setLimitState({ key: filterKey, limit: limit + PAGE });
   const [expanded, setExpanded] = useState<number | null>(null);
-  // which recipe's detail is shown inside the expanded row (a row can switch to one of its alternatives)
+  // which recipe's detail is shown for the open row (a row can switch to one of its alternatives)
   const [detailId, setDetailId] = useState<number | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // phones: the second toolbar row (method, sort, market, the two hide boxes) folds away
+  // phones: the second toolbar row (method, market, the two hide boxes) folds away
   const [filtersOpen, setFiltersOpen] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
   const filtersRef = useRef<HTMLDivElement>(null);
@@ -215,7 +244,7 @@ export function Studio({ user }: { user: SessionUser | null }) {
     // the native history call syncs with useSearchParams without a server round trip
     window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
   };
-  /** The chip's ✕: a ?q= view also clears the search it typed in. */
+  /** The chip's x: a ?q= view also clears the search it typed in. */
   const closeFocus = () => {
     if (focus?.productId === null) setQuery("");
     endFocus();
@@ -356,17 +385,19 @@ export function Studio({ user }: { user: SessionUser | null }) {
       ? `ซ่อนอยู่ ${silver(hiddenIncomplete)} สูตรเพราะข้อมูลไม่ครบ`
       : undefined;
 
-  /** What a row or card needs; a row is open when it or one of its other recipes was opened (a link can open either). */
+  /** A row is open when it or one of its other recipes was opened (a link can open either). */
+  const isOpen = (ev: RecipeEvaluation) =>
+    expanded !== null && (expanded === ev.recipe.id || (alts.get(ev.recipe.id) ?? []).some((a) => a.recipe.id === expanded));
+  /** What a row (and, on wide screens, the side pane) needs. */
   const rowProps = (ev: RecipeEvaluation): RowProps => {
-    const rowAlts = alts.get(ev.recipe.id) ?? [];
-    const open = expanded !== null && (expanded === ev.recipe.id || rowAlts.some((a) => a.recipe.id === expanded));
+    const open = isOpen(ev);
     return {
       ev,
       items,
       prices,
       inventory,
       tools,
-      alts: rowAlts,
+      alts: alts.get(ev.recipe.id) ?? [],
       detail: (open && detailId !== null ? evById.get(detailId) : undefined) ?? ev,
       onPickDetail: setDetailId,
       open,
@@ -374,12 +405,17 @@ export function Studio({ user }: { user: SessionUser | null }) {
         setDetailId(null);
         setExpanded(open ? null : ev.recipe.id);
       },
+      sortKey,
+      wide,
     };
   };
 
   const busy = loading || !data;
   const group: SkillGroup | undefined = !focus && (tab === "alchemy" || tab === "cooking" || tab === "processing") ? tab : undefined;
   const perHourText = !focus && tab === "imperial" ? GLOSSARY.imperialPerHour : perHourTip(settings.craftsPerHour, group);
+  // what the number each row leads with means (ต้นทุน needs no explaining)
+  const sortTip: string | undefined =
+    sortKey === "profitPerHour" ? perHourText : sortKey === "unitCost" ? undefined : GLOSSARY[sortKey];
 
   const exportCsv = () => {
     const header = ["สูตร", "ประเภท", "ระดับทักษะ", "ผลผลิต/รอบ", "ต้นทุน/ชิ้น", "ราคาขาย", `${NET}/ชิ้น`, "กำไร/ชิ้น", "ROI %", "กำไร/รอบ", "กำไร/ชม.", "สถานะ"];
@@ -408,6 +444,12 @@ export function Studio({ user }: { user: SessionUser | null }) {
   };
   const csvDisabled = busy || rows.length === 0;
 
+  const shown = rows.slice(0, limit);
+  // the pane shows the open row only while that row is in the list
+  const openRow = shown.find(isOpen);
+  // the side pane exists only on wide screens, so the open detail is never drawn twice
+  const twoPane = wide && rows.length > 0;
+
   return (
     <Page user={user}>
       <PageHeader
@@ -421,13 +463,11 @@ export function Studio({ user }: { user: SessionUser | null }) {
         actions={
           <>
             <button type="button" onClick={() => load(true)} disabled={loading} className={btn("secondary")}>
+              <Icon name={loading ? "loader" : "refresh"} className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
               {loading ? "กำลังโหลด…" : "รีเฟรชราคา"}
             </button>
-            {/* phones: in the filter panel instead */}
-            <button type="button" onClick={exportCsv} disabled={csvDisabled} className={`${btn("secondary")} max-md:hidden`}>
-              ส่งออก CSV
-            </button>
             <button type="button" onClick={() => setSettingsOpen(true)} aria-haspopup="dialog" title={SETTINGS_TITLE} className={btn("secondary")}>
+              <Icon name="settings" className="h-4 w-4" />
               ตั้งค่า
             </button>
           </>
@@ -436,14 +476,14 @@ export function Studio({ user }: { user: SessionUser | null }) {
       <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
       {problem && (
-        <Notice tone="bad" className="mb-3" action={problemAction(problem, () => load(true), loading)}>
+        <Notice tone="bad" className="mb-4" action={problemAction(problem, () => load(true), loading)}>
           โหลดราคาไม่สำเร็จ: {problem.message} · ตัวเลขที่เห็นอาจไม่ครบ
         </Notice>
       )}
       {dataProblem && (
         <Notice
           tone="bad"
-          className="mb-3"
+          className="mb-4"
           action={problemAction(dataProblem, () => {
             setDataProblem(null);
             setDataAttempt((a) => a + 1);
@@ -453,128 +493,141 @@ export function Studio({ user }: { user: SessionUser | null }) {
         </Notice>
       )}
 
-      {/* Row 1 (tabs, search) stays at the top of a phone screen while the list scrolls; row 2 folds
-          away behind ตัวกรอง on phones and is always shown from md up. Row 2 is outside the sticky
-          bar so an open panel scrolls away with the list instead of covering it. */}
-      <div
-        ref={barRef}
-        className={`sticky top-0 z-30 -mx-3 bg-background/95 px-3 py-2 backdrop-blur md:static md:mx-0 md:mb-0 md:bg-transparent md:p-0 md:backdrop-blur-none ${filtersOpen ? "" : "mb-3"}`}
-      >
-        <div className="flex flex-wrap items-center gap-2">
-          <Segmented label="สายอาชีพ" options={TABS} value={tab} onChange={changeTab} />
-          <div className="flex w-full min-w-0 items-center gap-2 md:w-auto md:min-w-[200px] md:flex-1">
-            <SearchInput label="ค้นหาชื่อไอเท็ม" value={query} onChange={changeQuery} placeholder="ค้นหาชื่อไอเท็ม…" className="min-w-0 flex-1" />
-            <FilterToggle open={filtersOpen} count={panelChanged} controls="recipe-filters" onClick={toggleFilters} />
+      {/* The filters, one toolbar card from md up. On phones the card's own box is dropped
+          (display: contents), because a sticky element only sticks inside its parent: row 1 (tabs,
+          search) stays at the top of the screen while the list scrolls, and row 2 folds away behind
+          ตัวกรอง. Row 2 is outside the sticky bar so an open panel scrolls away with the list
+          instead of covering it. */}
+      <div className="max-md:contents md:mb-4 md:rounded-xl md:border md:border-border md:bg-panel md:p-3 md:shadow-card">
+        <div
+          ref={barRef}
+          className={`sticky top-(--header-h) z-30 -mx-4 bg-background/95 px-4 py-2 backdrop-blur md:static md:mx-0 md:bg-transparent md:p-0 md:backdrop-blur-none ${filtersOpen ? "" : "mb-3 md:mb-0"}`}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <Segmented label="สายอาชีพ" options={TABS} value={tab} onChange={changeTab} />
+            <div className="flex w-full min-w-0 items-center gap-2 md:w-auto md:min-w-[200px] md:flex-1">
+              <SearchInput label="ค้นหาชื่อไอเท็ม" value={query} onChange={changeQuery} placeholder="ค้นหาชื่อไอเท็ม…" className="min-w-0 flex-1" />
+              <FilterToggle open={filtersOpen} count={panelChanged} controls="recipe-filters" onClick={toggleFilters} />
+            </div>
           </div>
         </div>
-      </div>
-      <div ref={filtersRef} id="recipe-filters" className={`mb-3 ${filterPanelCls(filtersOpen)}`}>
-        {tab === "processing" && (
-          <select aria-label="วิธีแปรรูป" value={method} onChange={(e) => changeMethod(e.target.value as RecipeType | "all")} className={selectCls("md", method !== "all")}>
-            <option value="all">วิธีแปรรูป: ทั้งหมด</option>
-            {PROCESSING_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {RECIPE_TYPE_TH[t]}
+        <div ref={filtersRef} id="recipe-filters" className={`mb-3 md:mb-0 ${filterPanelCls(filtersOpen)}`}>
+          {tab === "processing" && (
+            <select aria-label="วิธีแปรรูป" value={method} onChange={(e) => changeMethod(e.target.value as RecipeType | "all")} className={selectCls("md", method !== "all")}>
+              <option value="all">วิธีแปรรูป: ทั้งหมด</option>
+              {PROCESSING_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {RECIPE_TYPE_TH[t]}
+                </option>
+              ))}
+            </select>
+          )}
+          <select aria-label="สภาพตลาด" value={marketFilter} onChange={(e) => changeMarket(e.target.value as MarketFilter)} className={selectCls("md", marketFilter !== "all")}>
+            {MARKET_FILTERS.map((f) => (
+              <option key={f.key} value={f.key}>
+                {f.label}
               </option>
             ))}
           </select>
-        )}
-        <select aria-label="เรียงตาม" value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)} className={selectCls()}>
-          {SORTS.map((s) => (
-            <option key={s.key} value={s.key}>
-              เรียง: {s.label}
-            </option>
-          ))}
-        </select>
-        <select aria-label="สภาพตลาด" value={marketFilter} onChange={(e) => changeMarket(e.target.value as MarketFilter)} className={selectCls("md", marketFilter !== "all")}>
-          {MARKET_FILTERS.map((f) => (
-            <option key={f.key} value={f.key}>
-              {f.label}
-            </option>
-          ))}
-        </select>
-        <label className="flex min-h-10 items-center gap-1.5 text-sm text-muted md:min-h-0">
-          <input type="checkbox" checked={hideIncomplete} onChange={(e) => changeHideIncomplete(e.target.checked)} className={checkboxCls} />
-          ซ่อนที่ข้อมูลไม่ครบ
-        </label>
-        <label className="flex min-h-10 items-center gap-1.5 text-sm text-muted md:min-h-0">
-          <input type="checkbox" checked={hideSoldOut} onChange={(e) => changeHideSoldOut(e.target.checked)} className={checkboxCls} />
-          ซ่อนที่วัตถุดิบหมดตลาด
-        </label>
-        {anyChanged && (
-          <button type="button" onClick={resetFilters} className={btn("ghost", "sm")}>
-            ล้างตัวกรอง
-          </button>
-        )}
-        <button type="button" onClick={exportCsv} disabled={csvDisabled} className={`${btn("secondary", "sm")} md:hidden`}>
-          ส่งออก CSV
-        </button>
+          <label className="flex min-h-10 items-center gap-2 text-sm text-muted md:min-h-0">
+            <input type="checkbox" checked={hideIncomplete} onChange={(e) => changeHideIncomplete(e.target.checked)} className={checkboxCls} />
+            ซ่อนที่ข้อมูลไม่ครบ
+          </label>
+          <label className="flex min-h-10 items-center gap-2 text-sm text-muted md:min-h-0">
+            <input type="checkbox" checked={hideSoldOut} onChange={(e) => changeHideSoldOut(e.target.checked)} className={checkboxCls} />
+            ซ่อนที่วัตถุดิบหมดตลาด
+          </label>
+          {anyChanged && (
+            <button type="button" onClick={resetFilters} className={btn("ghost", "sm")}>
+              <Icon name="x" className="h-4 w-4" />
+              ล้างตัวกรอง
+            </button>
+          )}
+        </div>
       </div>
 
-      {focus && <FocusChip name={focus.name} onClose={closeFocus} className="mb-3" />}
+      {focus && <FocusChip name={focus.name} onClose={closeFocus} className="mb-4" />}
 
-      {busy && rows.length === 0 && <SkeletonRows n={8} label={!data ? "กำลังโหลดฐานสูตร…" : "กำลังโหลดราคาตลาด…"} className="mb-3" />}
+      {busy && rows.length === 0 ? (
+        <SkeletonListPane n={8} label={!data ? "กำลังโหลดฐานสูตร…" : "กำลังโหลดราคาตลาด…"} />
+      ) : (
+        // lg and up: the ranking on the left, the open recipe in a pane on the right that stays in
+        // view while the list scrolls. Narrower: one column, the detail opens under its row.
+        <div
+          className={
+            twoPane
+              ? "lg:grid lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] lg:items-start lg:gap-6 xl:grid-cols-[minmax(0,30rem)_minmax(0,1fr)]"
+              : undefined
+          }
+        >
+          {/* @container: a row shows more of its numbers the wider the list is (see Facts), most of
+              them in a tablet's one-column list */}
+          <Card className="@container overflow-clip" aria-labelledby="recipe-list-title">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border px-4 py-3">
+              <div className="min-w-0">
+                <h2 id="recipe-list-title" className="font-display text-title font-semibold text-balance text-foreground">
+                  อันดับสูตร
+                </h2>
+                <p className="text-xs text-muted">
+                  {silver(rows.length)} สูตร
+                  {rows.length > limit ? ` · แสดง ${silver(limit)} อันดับแรก` : ""}
+                </p>
+              </div>
+              {/* gap-2: on a touch screen the InfoTip's hit area reaches 8px past its icon */}
+              <div className="flex items-center gap-2">
+                <select aria-label="เรียงตาม" value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)} className={selectCls()}>
+                  {SORTS.map((s) => (
+                    <option key={s.key} value={s.key}>
+                      เรียง: {s.label}
+                    </option>
+                  ))}
+                </select>
+                {sortTip && <InfoTip label={MAIN_LABEL[sortKey]}>{sortTip}</InfoTip>}
+                <button type="button" onClick={exportCsv} disabled={csvDisabled} title="ส่งออก CSV" className={btn("ghost")}>
+                  <Icon name="download" className="h-4 w-4" />
+                  <span className="sr-only">ส่งออก </span>CSV
+                </button>
+              </div>
+            </div>
 
-      {/* phones: one card per recipe */}
-      <div className={`space-y-2 md:hidden ${busy && rows.length === 0 ? "hidden" : ""}`}>
-        {rows.slice(0, limit).map((ev) => (
-          <RecipeCard key={ev.recipe.id} {...rowProps(ev)} />
-        ))}
-        {/* while loading this list is hidden and the skeleton above shows instead */}
-        {rows.length === 0 && <EmptyState title="ไม่พบสูตรที่ตรงเงื่อนไข" hint={emptyHint} action={emptyAction} className={cardCls()} />}
-      </div>
-
-      <div className={`overflow-x-auto rounded-lg border border-border bg-panel lg:overflow-visible ${busy && rows.length === 0 ? "hidden" : "hidden md:block"}`}>
-        <table className="w-full min-w-[760px] text-sm">
-          <thead className="bg-panel-2 text-xs text-muted lg:sticky lg:top-0 lg:z-10">
-            <tr>
-              <th className="px-3 py-2 text-left font-medium">สูตร</th>
-              <th className="px-2 py-2 text-right font-medium">ต้นทุน/ชิ้น</th>
-              <th className="px-2 py-2 text-right font-medium">{!focus && tab === "imperial" ? <WithTip label="ราคาขาย" tip={GLOSSARY.imperial} /> : "ราคาขาย"}</th>
-              <th className="px-2 py-2 text-right font-medium">
-                <WithTip label="กำไร/ชิ้น" tip={GLOSSARY.profitPerUnit} />
-              </th>
-              <th className="px-2 py-2 text-right font-medium">
-                <WithTip label="ROI" tip={GLOSSARY.roi} />
-              </th>
-              <th className="px-2 py-2 text-right font-medium">
-                <WithTip label="กำไร/รอบ" tip={GLOSSARY.profitPerCraft} />
-              </th>
-              <th className="px-2 py-2 text-right font-medium">
-                <WithTip label="กำไร/ชม." tip={perHourText} />
-              </th>
-              <th className="px-2 py-2 text-left font-medium">สถานะ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.slice(0, limit).map((ev) => (
-              <Row key={ev.recipe.id} {...rowProps(ev)} />
-            ))}
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={8}>
-                  <EmptyState title="ไม่พบสูตรที่ตรงเงื่อนไข" hint={emptyHint} action={emptyAction} />
-                </td>
-              </tr>
+            {rows.length === 0 ? (
+              <EmptyState icon="search" title="ไม่พบสูตรที่ตรงเงื่อนไข" hint={emptyHint} action={emptyAction} />
+            ) : (
+              <ul className="divide-y divide-border">
+                {shown.map((ev) => (
+                  <RecipeRow key={ev.recipe.id} {...rowProps(ev)} />
+                ))}
+              </ul>
             )}
-          </tbody>
-        </table>
-      </div>
-      {rows.length > limit && (
-        <div className="mt-3 text-center">
-          <button type="button" onClick={showMore} className={btn("secondary")}>
-            แสดงเพิ่ม ({rows.length - limit} รายการ)
-          </button>
+            {rows.length > limit && (
+              <div className="border-t border-border p-3 text-center">
+                <button type="button" onClick={showMore} className={btn("secondary")}>
+                  แสดงเพิ่ม ({rows.length - limit} รายการ)
+                </button>
+              </div>
+            )}
+          </Card>
+
+          {twoPane && (
+            <aside id={PANE_ID} aria-label="รายละเอียดสูตร" className="hidden lg:sticky lg:top-[calc(var(--header-h)_+_1rem)] lg:block">
+              {/* keyed by the open row, so a newly opened recipe starts at the top of the pane */}
+              <RecipePane key={openRow?.recipe.id ?? 0} row={openRow ? rowProps(openRow) : null} />
+            </aside>
+          )}
         </div>
       )}
+
       {!focus && tab === "imperial" && (
-        <p className="mt-3 text-xs text-muted">
-          กล่องราชวังขายให้ NPC ส่งของราชวังเท่านั้น: &ldquo;ราคาขาย&rdquo; คือเงินที่ได้ต่อกล่อง รวมโบนัส Mastery แปรธาตุ/ทำอาหารแล้ว ไม่หักภาษีตลาด
-          · แต่ละกล่องมีโควตารับซื้อจำกัดต่อรอบ และส่งได้จำกัดต่อวันต่อครอบครัว จึงไม่แสดงกำไร/ชม.
+        <p className="mt-4 flex gap-2 text-xs text-muted">
+          <Icon name="info" className="mt-px h-4 w-4 text-info" />
+          <span>
+            กล่องราชวังขายให้ NPC ส่งของราชวังเท่านั้น: &ldquo;ราคาขาย&rdquo; คือเงินที่ได้ต่อกล่อง รวมโบนัส Mastery แปรธาตุ/ทำอาหารแล้ว ไม่หักภาษีตลาด
+            · แต่ละกล่องมีโควตารับซื้อจำกัดต่อรอบ และส่งได้จำกัดต่อวันต่อครอบครัว จึงไม่แสดงกำไร/ชม.
+          </span>
         </p>
       )}
 
-      <footer className="mt-6 text-xs text-muted">
+      <footer className="mt-6 text-xs text-faint">
         สูตร {silver(recipes.length)} รายการ
         {data ? ` (นำเข้าเมื่อ ${new Date(data.meta.importedAt).toLocaleDateString("th-TH")})` : ""} · ราคาจาก Pearl Abyss / arsha.io / bdolytics · ข้อมูลสูตร bdocodex
       </footer>
@@ -593,154 +646,206 @@ interface RowProps {
   onPickDetail: (id: number) => void;
   open: boolean;
   onToggle: () => void;
+  /** the list's order: the row leads with that number */
+  sortKey: SortKey;
+  /** lg and up: the detail shows in the side pane, not under the row */
+  wide: boolean;
 }
 
-/** ▸ before a row's name; turns to point down while the row is open. */
-function Chevron({ open }: { open: boolean }) {
+/** "type · skill · yield" under a recipe's name. */
+function recipeMeta(ev: RecipeEvaluation): string {
+  return `${RECIPE_TYPE_TH[ev.recipe.type]}${ev.recipe.skill.sort > 0 ? ` · ${ev.recipe.skill.display}` : ""} · ผลผลิต ${ev.expectedYield.toFixed(1)}/รอบ`;
+}
+
+/**
+ * One recipe in the ranking: the name and the number it is ranked by on the first line, then its
+ * type, its other numbers and its status pills. Pressing it opens the detail: under the row on
+ * narrow screens, in the side pane from lg up.
+ */
+function RecipeRow({ ev, items, prices, inventory, tools, alts, detail, onPickDetail, open, onToggle, sortKey, wide }: RowProps) {
+  const item = items[ev.productId];
+  const name = item?.th ?? ev.recipe.name;
+  const alt = alts.length;
+  const detailDomId = `detail-${ev.recipe.id}`;
   return (
-    <span aria-hidden className={`w-3 shrink-0 text-center text-xs text-muted transition-transform ${open ? "rotate-90" : ""}`}>
-      ▸
+    // the open row carries a gold bar down its left edge, past the detail under it as well, so the
+    // pair reads as one block
+    <li className={open ? "relative before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-accent" : undefined}>
+      {/* the star sits beside the toggle, not inside it: a button inside a button is not allowed */}
+      <div className={`flex items-start transition-colors duration-150 ${open ? "bg-accent/6" : "hover:bg-panel-2/60"}`}>
+        <button
+          id={rowDomId(ev.recipe.id)}
+          type="button"
+          onClick={(e) => {
+            onToggle();
+            // opened from the keyboard on a wide screen: the pane comes after the whole list in the
+            // reading order, so take focus there (a mouse click leaves focus where it is)
+            if (wide && !open && e.detail === 0) requestAnimationFrame(() => document.getElementById(PANE_TITLE_ID)?.focus({ preventScroll: true }));
+          }}
+          aria-expanded={open}
+          aria-controls={wide ? PANE_ID : detailDomId}
+          className="flex min-w-0 flex-1 items-start gap-3 py-3 pl-4 pr-1 text-left text-sm focus-visible:-outline-offset-2"
+        >
+          <ItemIcon id={ev.productId} grade={item?.grade} size={36} />
+          <span className="block min-w-0 flex-1">
+            <span className="flex min-w-0 items-baseline gap-3">
+              <span className="min-w-0 flex-1 truncate font-medium text-foreground">{name}</span>
+              <span className="shrink-0 text-base font-semibold text-foreground">
+                <MainNumber ev={ev} sortKey={sortKey} />
+              </span>
+            </span>
+            <span className="mt-0.5 flex min-w-0 items-start gap-3 text-xs">
+              <span className="line-clamp-2 min-w-0 flex-1 text-muted">
+                {recipeMeta(ev)}
+                {alt > 0 ? ` · +${alt} สูตรอื่น` : ""}
+              </span>
+              <span className="shrink-0 text-muted">{MAIN_LABEL[sortKey]}</span>
+            </span>
+            <span className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted">
+              <Facts ev={ev} sortKey={sortKey} />
+              <Flags ev={ev} stock={prices[ev.productId]?.stock} />
+            </span>
+          </span>
+          <Icon
+            name={wide ? "chevron-right" : "chevron-down"}
+            className={`mt-2.5 h-4 w-4 text-faint transition-transform duration-150 ${open && !wide ? "rotate-180" : ""}`}
+          />
+        </button>
+        <div className="shrink-0 py-1.5 pr-1.5">
+          <FavoriteStar id={ev.productId} name={name} />
+        </div>
+      </div>
+      {open && !wide && (
+        <div id={detailDomId} className="border-t border-border bg-background/40 px-4 py-4">
+          <RecipeDetail key={detail.recipe.id} ev={detail} items={items} prices={prices} inventory={inventory} alternatives={[ev, ...alts]} onPick={onPickDetail} tools={tools} />
+        </div>
+      )}
+    </li>
+  );
+}
+
+/** The number a row leads with: the one the list is sorted by (short silver, as on a card). */
+function MainNumber({ ev, sortKey }: { ev: RecipeEvaluation; sortKey: SortKey }) {
+  const unk = ev.flags.unknownCost;
+  if (sortKey === "roi") return <span className={`num whitespace-nowrap ${pctCls(ev.roi, 0, unk)}`}>{unk ? "?" : signedPct(ev.roi)}</span>;
+  if (sortKey === "unitCost") {
+    return unk ? <span className="num whitespace-nowrap text-muted">? ({silverShort(ev.unitCost)}+)</span> : <Money value={ev.unitCost} compact />;
+  }
+  // imperial boxes have a daily quota, so they have no per-hour figure
+  if (sortKey === "profitPerHour" && ev.saleChannel === "imperial" && !unk) return <span className="text-muted">-</span>;
+  return <Money value={ev[sortKey]} tone="profit" compact unknown={unk} />;
+}
+
+/** One small "label number" pair on a row's second line. */
+function Fact({ label, className = "inline-flex", children }: { label: string; className?: string; children: ReactNode }) {
+  return (
+    <span className={`items-baseline gap-1 whitespace-nowrap ${className}`}>
+      {label}
+      <span className="num font-medium text-foreground">{children}</span>
     </span>
   );
 }
 
-function Row({ ev, items, prices, inventory, tools, alts, detail, onPickDetail, open, onToggle }: RowProps) {
-  const item = items[ev.productId];
-  const name = item?.th ?? ev.recipe.name;
+/** A row's other numbers: what it costs, what it sells for, then the profit figures it does not lead with. */
+function Facts({ ev, sortKey }: { ev: RecipeEvaluation; sortKey: SortKey }) {
   const unk = ev.flags.unknownCost;
-  const alt = alts.length;
-  const detailDomId = `detail-${ev.recipe.id}`;
-  // the open row and its detail share a gold bar on the left, so the pair reads as one block (on the
-  // cells: a box-shadow on a <tr> itself is not drawn by every browser)
-  const bar = open ? "shadow-[inset_3px_0_0_var(--accent)]" : "";
+  const imperial = ev.saleChannel === "imperial";
   return (
     <>
-      {/* the whole row opens on a click; the name button is the same control for the keyboard */}
-      <tr onClick={onToggle} className={`cursor-pointer border-t border-border hover:bg-panel-2/60 ${open ? "bg-panel-2/40" : ""}`}>
-        <td className={`px-3 py-1.5 ${bar}`}>
-          <div className="flex items-center gap-1">
-            <FavoriteStar id={ev.productId} name={name} />
-            <button
-              type="button"
-              aria-expanded={open}
-              aria-controls={detailDomId}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggle();
-              }}
-              className="flex min-w-0 flex-1 items-center gap-2 rounded text-left"
-            >
-              <Chevron open={open} />
-              <ItemIcon id={ev.productId} grade={item?.grade} size={30} />
-              <span className="block min-w-0">
-                <span className="block truncate font-medium">{name}</span>
-                <span className="block truncate text-xs text-muted">
-                  {RECIPE_TYPE_TH[ev.recipe.type]}
-                  {ev.recipe.skill.sort > 0 ? ` · ${ev.recipe.skill.display}` : ""} · ผลผลิต {ev.expectedYield.toFixed(1)}/รอบ
-                  {alt > 0 ? ` · มีสูตรอื่นอีก ${alt} แบบ (ดูในรายละเอียด)` : ""}
-                </span>
-              </span>
-            </button>
-          </div>
-        </td>
-        <td className="num px-2 py-1.5 text-right">{unk ? <span className="text-muted">? ({silverShort(ev.unitCost)}+)</span> : silver(ev.unitCost)}</td>
-        <td className="num px-2 py-1.5 text-right">{ev.sellPrice ? silver(ev.sellPrice) : "-"}</td>
-        {/* desktop table: full silver in every money column */}
-        <td className="px-2 py-1.5 text-right font-semibold">
-          <Money value={ev.profitPerUnit} tone="profit" unknown={unk} />
-        </td>
-        <td className={`num px-2 py-1.5 text-right ${pctCls(ev.roi, 0, unk)}`}>{unk ? "?" : signedPct(ev.roi)}</td>
-        <td className="px-2 py-1.5 text-right">
-          <Money value={ev.profitPerCraft} tone="profit" unknown={unk} />
-        </td>
-        <td className="px-2 py-1.5 text-right font-semibold">
-          {ev.saleChannel === "imperial" && !unk ? <span className="text-muted">-</span> : <Money value={ev.profitPerHour} tone="profit" unknown={unk} />}
-        </td>
-        <td className="px-2 py-1.5">
-          <Flags ev={ev} stock={prices[ev.productId]?.stock} />
-        </td>
-      </tr>
-      {open && (
-        <tr id={detailDomId} className="border-t border-border bg-background/40">
-          <td colSpan={8} className={`px-3 py-3 ${bar}`}>
-            <RecipeDetail key={detail.recipe.id} ev={detail} items={items} prices={prices} inventory={inventory} alternatives={[ev, ...alts]} onPick={onPickDetail} tools={tools} />
-          </td>
-        </tr>
+      {sortKey !== "unitCost" && <Fact label="ต้นทุน">{unk ? `? (${silverShort(ev.unitCost)}+)` : silverShort(ev.unitCost)}</Fact>}
+      <Fact label={imperial ? "ส่ง" : "ขาย"}>{ev.sellPrice ? silverShort(ev.sellPrice) : "-"}</Fact>
+      {sortKey !== "profitPerUnit" && (
+        <Fact label="กำไร/ชิ้น">
+          <Money value={ev.profitPerUnit} tone="profit" compact unknown={unk} />
+        </Fact>
+      )}
+      {sortKey !== "roi" && (
+        <Fact label="ROI">
+          <span className={pctCls(ev.roi, 0, unk)}>{unk ? "?" : signedPct(ev.roi)}</span>
+        </Fact>
+      )}
+      {/* only where the list is wide enough: on a phone each one would add a line to every row.
+          กำไร/ชม. from a 24rem list (the lg side column and wider); กำไร/รอบ only in a 42rem list
+          (the one-column list of a tablet), never beside the pane, which shows it in its detail */}
+      {sortKey !== "profitPerHour" && !imperial && (
+        <Fact label="กำไร/ชม." className="hidden @sm:inline-flex">
+          <Money value={ev.profitPerHour} tone="profit" compact unknown={unk} />
+        </Fact>
+      )}
+      {sortKey !== "profitPerCraft" && (
+        <Fact label="กำไร/รอบ" className="hidden @2xl:inline-flex">
+          <Money value={ev.profitPerCraft} tone="profit" compact unknown={unk} />
+        </Fact>
       )}
     </>
   );
 }
 
-function RecipeCard({ ev, items, prices, inventory, tools, alts, detail, onPickDetail, open, onToggle }: RowProps) {
+/**
+ * The side pane (lg and up): the open recipe's name, its star and a close button over its detail.
+ * It scrolls by itself, so the list beside it keeps its place. With nothing open it invites a pick.
+ */
+function RecipePane({ row }: { row: RowProps | null }) {
+  if (!row) {
+    return (
+      <EmptyState
+        icon="book"
+        title="เลือกสูตรเพื่อดูว่าคุ้มไหม"
+        hint="กดสูตรในรายการ จะเห็นกำไร ต้นทุน วัตถุดิบทุกชั้น แผนผลิต และราคาตลาดตรงนี้"
+        className={cardCls()}
+      />
+    );
+  }
+  const { ev, items, prices, inventory, tools, alts, detail, onPickDetail, onToggle } = row;
   const item = items[ev.productId];
   const name = item?.th ?? ev.recipe.name;
-  const unk = ev.flags.unknownCost;
-  const alt = alts.length;
-  const detailDomId = `detail-card-${ev.recipe.id}`;
+  const close = () => {
+    onToggle();
+    // back to the row it came from, so the keyboard does not start over at the top of the page
+    document.getElementById(rowDomId(ev.recipe.id))?.focus({ preventScroll: true });
+  };
   return (
-    <div className={`rounded-lg border bg-panel ${open ? "border-accent/60" : "border-border"}`}>
-      {/* the star sits beside the toggle, not inside it: a button inside a button is not allowed */}
-      <div className="flex items-start">
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={open}
-          aria-controls={detailDomId}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg py-3 pl-2 pr-1 text-left"
-        >
-          <Chevron open={open} />
-          <ItemIcon id={ev.productId} grade={item?.grade} size={40} />
-          <span className="block min-w-0 flex-1">
-            <span className="block truncate font-medium">{name}</span>
-            <span className="line-clamp-2 text-xs text-muted">
-              {RECIPE_TYPE_TH[ev.recipe.type]}
-              {ev.recipe.skill.sort > 0 ? ` · ${ev.recipe.skill.display}` : ""} · ต้นทุน {unk ? "?" : silverShort(ev.unitCost)} → {ev.saleChannel === "imperial" ? "ส่ง" : "ขาย"}{" "}
-              {ev.sellPrice ? silverShort(ev.sellPrice) : "-"}
-              {alt > 0 ? ` · +${alt} สูตรอื่น` : ""}
-            </span>
-            <span className="mt-1 block">
-              <Flags ev={ev} stock={prices[ev.productId]?.stock} />
-            </span>
-          </span>
-          <span className="block shrink-0 text-right">
-            <span className="block text-base font-semibold">
-              <Money value={ev.profitPerUnit} tone="profit" compact unknown={unk} suffix="/ชิ้น" />
-            </span>
-            <span className={`num block text-xs ${pctCls(ev.roi, 0, unk)}`}>{unk ? "ต้นทุนไม่ครบ" : `ROI ${signedPct(ev.roi)}`}</span>
-          </span>
+    <div className={`${cardCls()} max-h-[calc(100dvh_-_var(--header-h)_-_2rem)] overflow-y-auto overscroll-contain`}>
+      <header className="sticky top-0 z-10 flex items-start gap-3 border-b border-border bg-panel px-4 py-3">
+        <ItemIcon id={ev.productId} grade={item?.grade} size={40} />
+        <div className="min-w-0 flex-1">
+          <h2 id={PANE_TITLE_ID} tabIndex={-1} className="font-display text-title font-semibold text-balance text-foreground">
+            {name}
+          </h2>
+          <p className="mt-0.5 text-xs text-muted">{recipeMeta(detail)}</p>
+        </div>
+        <FavoriteStar id={ev.productId} name={name} />
+        <button type="button" onClick={close} aria-label="ปิดรายละเอียด" title="ปิด" className={iconBtn("ghost", "sm")}>
+          <Icon name="x" className="h-4 w-4" />
         </button>
-        <div className="shrink-0 pr-1 pt-1">
-          <FavoriteStar id={ev.productId} name={name} />
-        </div>
+      </header>
+      <div className="p-4">
+        <RecipeDetail key={detail.recipe.id} ev={detail} items={items} prices={prices} inventory={inventory} alternatives={[ev, ...alts]} onPick={onPickDetail} tools={tools} />
       </div>
-      {open && (
-        <div id={detailDomId} className="border-t border-border px-3 py-3">
-          <RecipeDetail key={detail.recipe.id} ev={detail} items={items} prices={prices} inventory={inventory} alternatives={[ev, ...alts]} onPick={onPickDetail} tools={tools} />
-        </div>
-      )}
     </div>
   );
 }
 
 function Flags({ ev, stock }: { ev: RecipeEvaluation; stock?: number }) {
   const f = ev.flags;
-  const chips: { text: string; tone: BadgeTone }[] = [];
-  if (ev.saleChannel === "imperial") chips.push({ text: "ส่งราชวัง ไม่หักภาษี", tone: "accent" });
+  // the word carries the meaning; the icon only helps the eye find the ones that need a look
+  const chips: { text: string; tone: BadgeTone; icon?: IconName }[] = [];
+  if (ev.saleChannel === "imperial") chips.push({ text: "ส่งราชวัง ไม่หักภาษี", tone: "accent", icon: "crown" });
   else if (f.productNotMarketable) chips.push({ text: "ขายตลาดไม่ได้", tone: "neutral" });
   else if (f.productNoPrice) chips.push({ text: "ไม่มีราคาขาย", tone: "neutral" });
-  if (f.unknownCost) chips.push({ text: "ต้นทุนไม่ครบ", tone: "bad" });
-  if (f.materialSoldOut) chips.push({ text: "วัตถุดิบหมด", tone: "warn" });
-  if (f.aboveSkill) chips.push({ text: "เกินระดับ", tone: "warn" });
+  if (f.unknownCost) chips.push({ text: "ต้นทุนไม่ครบ", tone: "bad", icon: "alert-circle" });
+  if (f.materialSoldOut) chips.push({ text: "วัตถุดิบหมด", tone: "warn", icon: "alert-triangle" });
+  if (f.aboveSkill) chips.push({ text: "เกินระดับ", tone: "warn", icon: "lock" });
   if (ev.saleChannel === "market" && !f.productNotMarketable && !f.productNoPrice && stock !== undefined) {
     if (stock > 0) chips.push({ text: `ค้างขาย ${silverShort(stock)}`, tone: "neutral" });
-    else chips.push({ text: "ขาดตลาด", tone: "good" });
+    else chips.push({ text: "ขาดตลาด", tone: "good", icon: "trending-up" });
   }
-  if (chips.length === 0) chips.push({ text: "พร้อม", tone: "good" });
-  // a <span>: on phones the chips sit inside the card's toggle button, which only takes inline content
+  if (chips.length === 0) chips.push({ text: "พร้อม", tone: "good", icon: "check" });
+  // a <span>: the chips sit inside the row's toggle button, which only takes inline content
   return (
     <span className="flex flex-wrap gap-1">
       {chips.map((c) => (
-        <Badge key={c.text} tone={c.tone}>
+        <Badge key={c.text} tone={c.tone} icon={c.icon}>
           {c.text}
         </Badge>
       ))}

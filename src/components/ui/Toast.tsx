@@ -1,7 +1,8 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { btnShape } from "./button";
+import { btnShape, iconBtn } from "./button";
+import { Icon, type IconName } from "./Icon";
 
 /**
  * Short "done" messages that go away by themselves, with an optional เลิกทำ (undo). Call toast()
@@ -104,20 +105,24 @@ function close(id: number) {
   pause(false);
 }
 
-const GLYPH: Record<ToastTone, { mark: string; cls: string }> = {
-  good: { mark: "✓", cls: "text-good" },
-  info: { mark: "ℹ︎", cls: "text-info" },
-  bad: { mark: "⊘", cls: "text-bad" },
+// an icon as well as the colour, so the tone never rests on colour alone
+const MARK: Record<ToastTone, { icon: IconName; cls: string }> = {
+  good: { icon: "check-circle", cls: "text-good" },
+  info: { icon: "info", cls: "text-info" },
+  bad: { icon: "alert-circle", cls: "text-bad" },
 };
 
-/** Fixed above the phone tab bar (bottom right of the page from md up). Rendered once, by Page. */
+/**
+ * Fixed above the phone tab bar (bottom right of the page from md up). Rendered once, by Page.
+ * Each message rises in (200ms); it leaves at once, without an exit animation.
+ */
 export function ToastHost() {
   const list = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   return (
     <div
       role="status"
       aria-live="polite"
-      className="pointer-events-none fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-50 flex flex-col items-center gap-2 px-3 md:bottom-4 md:items-end md:px-6"
+      className="pointer-events-none fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-50 flex flex-col items-center gap-2 px-4 md:bottom-6 md:items-end md:px-6"
       onPointerEnter={() => pause(true)}
       onPointerLeave={() => pause(false)}
       onFocus={() => pause(true)}
@@ -126,16 +131,14 @@ export function ToastHost() {
       }}
     >
       {list.map((t) => {
-        const g = GLYPH[t.tone ?? "good"];
+        const m = MARK[t.tone ?? "good"];
         return (
           <div
             key={t.id}
-            className="pointer-events-auto flex w-full max-w-sm items-center gap-2 rounded-lg border border-border bg-panel-2 py-1.5 pl-3 pr-1.5 text-sm text-foreground shadow-lg"
+            className="pointer-events-auto flex w-full max-w-sm animate-rise-in items-center gap-2.5 rounded-xl border border-border-strong bg-panel py-1.5 pl-3.5 pr-1.5 text-sm text-foreground shadow-pop"
           >
-            <span aria-hidden className={`w-4 shrink-0 text-center ${g.cls}`}>
-              {g.mark}
-            </span>
-            <span className="min-w-0 flex-1 py-1">{t.text}</span>
+            <Icon name={m.icon} className={`h-5 w-5 ${m.cls}`} />
+            <span className="min-w-0 flex-1 py-1.5">{t.text}</span>
             {t.action && (
               <button
                 type="button"
@@ -143,19 +146,13 @@ export function ToastHost() {
                   t.action?.onClick();
                   close(t.id);
                 }}
-                className={`${btnShape("sm")} text-accent hover:bg-panel`}
+                className={`${btnShape("sm")} text-accent hover:bg-panel-2`}
               >
                 {t.action.label}
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => close(t.id)}
-              aria-label="ปิด"
-              title="ปิด"
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded text-lg leading-none text-muted hover:bg-panel hover:text-foreground md:h-8 md:w-8"
-            >
-              ×
+            <button type="button" onClick={() => close(t.id)} aria-label="ปิด" title="ปิด" className={iconBtn("ghost", "sm")}>
+              <Icon name="x" className="h-4 w-4" />
             </button>
           </div>
         );

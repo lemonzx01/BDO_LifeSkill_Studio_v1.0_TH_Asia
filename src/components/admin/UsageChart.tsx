@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { btn } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/Card";
+import { Icon } from "@/components/ui/Icon";
 import { Segmented } from "@/components/ui/Segmented";
 import { downloadCsv } from "@/lib/csv";
 import { columnPath, labelStep, yTicks } from "@/lib/usage/chart";
@@ -18,14 +19,16 @@ const RANGES = [
 const H = 200;
 const TOP = 12;
 const BOTTOM = 24;
-const LEFT = 36;
+/** room for a 12px count such as "1,000" left of the plot */
+const LEFT = 40;
 const RIGHT = 4;
-/** about half the width of a date such as "30 พ.ย." under the axis */
-const EDGE_LABEL_PX = 20;
+/** about half the width of a 12px date such as "30 พ.ย." under the axis */
+const EDGE_LABEL_PX = 22;
 
 /**
- * Unique visitors per day as columns, for the last 30 or 90 days, with a tooltip per day on
- * hover, tap or arrow keys, a table for screen readers and a CSV of the days shown.
+ * Unique visitors per day as gold columns, for the last 30 or 90 days, with a tooltip per day on
+ * hover, tap or arrow keys, the peak and the average written over the chart (also its caption), a
+ * table for screen readers and a CSV of the days shown.
  */
 export function UsageChart({ daily, today }: { daily: DailyUsage[]; today: string }) {
   const [range, setRange] = useState<Range>("30");
@@ -59,9 +62,9 @@ export function UsageChart({ daily, today }: { daily: DailyUsage[]; today: strin
 
   const total = rows.reduce((s, r) => s + r.visitors, 0);
   const peak = rows.reduce<DailyUsage | null>((best, r) => (r.visitors > 0 && (!best || r.visitors > best.visitors) ? r : best), null);
+  const average = (total / rows.length).toFixed(1);
   const summary =
-    `ผู้ใช้ต่อวัน ${range} วันล่าสุด ` +
-    (peak ? `สูงสุด ${count(peak.visitors)} คน (${dayLabel(peak.day)}) เฉลี่ย ${(total / rows.length).toFixed(1)} คนต่อวัน` : "ยังไม่มีผู้ใช้");
+    `ผู้ใช้ต่อวัน ${range} วันล่าสุด ` + (peak ? `สูงสุด ${count(peak.visitors)} คน (${dayLabel(peak.day)}) เฉลี่ย ${average} คนต่อวัน` : "ยังไม่มีผู้ใช้");
 
   const shown = active !== null && active < rows.length ? active : null;
   const tip = shown !== null ? rows[shown] : null;
@@ -80,9 +83,9 @@ export function UsageChart({ daily, today }: { daily: DailyUsage[]; today: strin
   };
 
   return (
-    <Card className="mt-4">
-      <CardHeader title="ผู้ใช้ต่อวัน" hint="นับคนไม่ซ้ำในแต่ละวัน ตามเวลาไทย" />
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3">
+    <Card>
+      <CardHeader icon="chart-bar" title="ผู้ใช้ต่อวัน" hint="นับคนไม่ซ้ำในแต่ละวัน ตามเวลาไทย" />
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
         <Segmented
           label="ช่วงเวลา"
           options={RANGES}
@@ -93,11 +96,28 @@ export function UsageChart({ daily, today }: { daily: DailyUsage[]; today: strin
             setActive(null);
           }}
         />
-        <button type="button" className={btn("secondary", "sm")} onClick={() => downloadCsv(`usage-${range}d-${today}.csv`, dailyCsv(rows))}>
+        <button type="button" className={btn("ghost", "sm")} onClick={() => downloadCsv(`usage-${range}d-${today}.csv`, dailyCsv(rows))}>
+          <Icon name="download" className="h-4 w-4" />
           ดาวน์โหลด CSV
         </button>
       </div>
-      <figure className="m-0 px-4 pb-4 pt-2">
+      <figure className="m-0 px-4 pb-4 pt-3">
+        {/* the chart's headline numbers, in words (the first part only for screen readers: the card title says it) */}
+        <figcaption className="mb-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs text-muted">
+          <span className="sr-only">ผู้ใช้ต่อวัน {range} วันล่าสุด</span>
+          {peak ? (
+            <>
+              <span>
+                สูงสุด <span className="num text-sm font-semibold text-foreground">{count(peak.visitors)}</span> คน ({dayLabel(peak.day)})
+              </span>
+              <span>
+                เฉลี่ย <span className="num text-sm font-semibold text-foreground">{average}</span> คนต่อวัน
+              </span>
+            </>
+          ) : (
+            <span>ยังไม่มีผู้ใช้</span>
+          )}
+        </figcaption>
         <div
           ref={boxRef}
           tabIndex={0}
@@ -109,13 +129,22 @@ export function UsageChart({ daily, today }: { daily: DailyUsage[]; today: strin
           onPointerLeave={(e) => {
             if (e.pointerType === "mouse") setActive(null);
           }}
-          className="relative rounded focus-visible:outline-offset-4"
+          className="relative rounded-lg focus-visible:outline-offset-4"
         >
           <svg width={width} height={H} viewBox={`0 0 ${width} ${H}`} className="block max-w-full" aria-hidden>
             {ticks.map((t) => (
               <g key={t}>
-                <line x1={LEFT} x2={width - RIGHT} y1={y(t)} y2={y(t)} className="stroke-border" strokeWidth={1} shapeRendering="crispEdges" />
-                <text x={LEFT - 6} y={y(t)} dy="0.32em" textAnchor="end" className="fill-muted text-[11px] tabular-nums">
+                {/* quiet grid lines; the baseline a step stronger */}
+                <line
+                  x1={LEFT}
+                  x2={width - RIGHT}
+                  y1={y(t)}
+                  y2={y(t)}
+                  className={t === 0 ? "stroke-border-strong" : "stroke-border"}
+                  strokeWidth={1}
+                  shapeRendering="crispEdges"
+                />
+                <text x={LEFT - 6} y={y(t)} dy="0.32em" textAnchor="end" className="fill-muted text-xs tabular-nums">
                   {count(t)}
                 </text>
               </g>
@@ -130,10 +159,13 @@ export function UsageChart({ daily, today }: { daily: DailyUsage[]; today: strin
               return (
                 <g key={r.day}>
                   {r.visitors > 0 && (
-                    <path d={columnPath(x(i), y(r.visitors), colW, h)} className={shown === i ? "fill-accent-hover" : shown === null ? "fill-accent" : "fill-accent/60"} />
+                    <path
+                      d={columnPath(x(i), y(r.visitors), colW, h)}
+                      className={shown === i ? "fill-accent-hover" : shown === null ? "fill-accent" : "fill-accent/50"}
+                    />
                   )}
                   {labelled && (
-                    <text x={labelX} y={H - 6} textAnchor={anchor} className="fill-muted text-[11px]">
+                    <text x={labelX} y={H - 6} textAnchor={anchor} className="fill-muted text-xs">
                       {dayLabel(r.day)}
                     </text>
                   )}
@@ -153,11 +185,11 @@ export function UsageChart({ daily, today }: { daily: DailyUsage[]; today: strin
           </svg>
           {tip && (
             <div
-              className="pointer-events-none absolute top-0 whitespace-nowrap rounded border border-border bg-panel-2 px-2 py-1 text-xs shadow-lg"
+              className="pointer-events-none absolute top-0 rounded-lg border border-border-strong bg-panel-3 px-2.5 py-1.5 text-xs whitespace-nowrap shadow-pop"
               style={tipStyle}
             >
               <div className="text-muted">{dayLabel(tip.day, true)}</div>
-              <div className="font-semibold text-foreground">
+              <div className="num font-semibold text-foreground">
                 {count(tip.visitors)} คน · เปิด {count(tip.views)} หน้า
               </div>
             </div>
@@ -166,7 +198,6 @@ export function UsageChart({ daily, today }: { daily: DailyUsage[]; today: strin
             {tip ? `${dayLabel(tip.day, true)} ผู้ใช้ ${count(tip.visitors)} คน เปิด ${count(tip.views)} หน้า` : ""}
           </p>
         </div>
-        <figcaption className="sr-only">{summary}</figcaption>
         <table className="sr-only">
           <caption>ผู้ใช้ต่อวัน {range} วันล่าสุด</caption>
           <thead>

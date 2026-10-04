@@ -12,12 +12,13 @@ import { NumberInput } from "./NumberInput";
 import { useSettings, useUserData } from "./UserDataProvider";
 import { Badge } from "./ui/Badge";
 import { btn } from "./ui/button";
-import { Card, SectionLabel } from "./ui/Card";
 import { useConfirm } from "./ui/ConfirmDialog";
 import { checkboxCls, fieldCls } from "./ui/field";
+import { Icon } from "./ui/Icon";
 import { Money } from "./ui/Money";
 import { Notice } from "./ui/Notice";
 import { Stat } from "./ui/Stat";
+import { fillCellCls, headCls, itemCellCls, itemNameCls, rowCls, tableCls, tdCls, tdNumCls, thCls, thNumCls } from "./ui/table";
 
 /**
  * The profit at the recipe's own cost (qty × กำไร/ชิ้น), named after how that cost counts the
@@ -33,6 +34,10 @@ const FULL_PROFIT_LABEL: Record<OwnedCostMode, string> = {
 /**
  * "I want N of this" -> crafts needed, every raw material across all recipe
  * layers, what you already own, what is left to buy and what it costs.
+ *
+ * Read top to bottom: how many (the question), what it comes to (the tiles), the material list
+ * (a table where RecipeDetail's @container is wide enough, stacked rows where it is not), then
+ * the one button that records the crafts in the inventory.
  */
 export function ProductionPlan({
   ev,
@@ -84,8 +89,11 @@ export function ProductionPlan({
       details: changes.map((c) => (
         <span key={c.id} className="flex justify-between gap-3">
           <span className="truncate">{items[c.id]?.th ?? `#${c.id}`}</span>
-          <span className="num shrink-0 text-foreground">
-            {silver(c.before)} → {silver(c.after)}
+          <span className="num inline-flex shrink-0 items-center gap-1.5 text-foreground">
+            {silver(c.before)}
+            <Icon name="arrow-right" className="h-3.5 w-3.5 text-muted" />
+            <span className="sr-only">เป็น</span>
+            {silver(c.after)}
           </span>
         </span>
       )),
@@ -107,165 +115,176 @@ export function ProductionPlan({
   const fullProfit = qty * ev.profitPerUnit;
 
   return (
-    <Card className="mt-4 p-3">
+    <div>
       {confirmDialog}
-      <div className="mb-2 flex flex-wrap items-center gap-3">
-        <SectionLabel as="h4">แผนผลิต</SectionLabel>
-        <label className="flex items-center gap-2 text-sm">
-          อยากได้
-          <NumberInput min={0} step={10} value={qty} onChange={(v) => setQty(Math.floor(v))} className={`${fieldCls("sm")} w-24`} />
-          ชิ้น
-        </label>
-        <span className="text-sm text-muted">
-          = <b className="num text-foreground">{silver(rounds)}</b> รอบ (ผลผลิต {ev.expectedYield.toFixed(2)}/รอบ)
-        </span>
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+        <h3 className="font-display text-title font-semibold text-balance text-foreground">แผนผลิต</h3>
+        <p className="text-xs text-muted">วัตถุดิบทุกชั้น ของที่มีแล้ว และที่ต้องซื้อเพิ่ม</p>
       </div>
 
-      {/* phones: one block per material instead of the wide table */}
-      <ul className="divide-y divide-border/60 border-y border-border/60 text-sm md:hidden">
-        {rows.map((r) => {
-          const th = r.item?.th ?? `#${r.id}`;
-          return (
-            <li key={r.id} className="py-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <ItemIcon id={r.id} grade={r.item?.grade} size={22} />
-                <span className="min-w-0 truncate">{th}</span>
-                {r.soldOut && (
-                  <Badge tone="warn" className="shrink-0">
-                    ของหมด
-                  </Badge>
-                )}
-                {!r.item?.market && !r.item?.npcBuy && (
-                  <Badge tone="warn" className="shrink-0">
-                    ต้องหาเอง
-                  </Badge>
-                )}
-              </div>
-              <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
-                <span>
-                  ต้องใช้ <b className="num font-medium text-foreground">{silver(r.need)}</b>
-                </span>
-                <span aria-hidden>·</span>
-                <span className="flex items-center gap-1">
-                  มี
-                  <NumberInput
-                    min={0}
-                    value={r.owned}
-                    blankZero
-                    placeholder="0"
-                    onChange={(v) => setOwned(r.id, Math.floor(v))}
-                    aria-label={`มีอยู่แล้ว ${th}`}
-                    className={`${fieldCls("sm")} w-20`}
-                  />
-                </span>
-                <span aria-hidden>·</span>
-                <span>
-                  ซื้อ <b className={`num font-medium ${r.toBuy > 0 ? "text-foreground" : ""}`}>{silver(r.toBuy)}</b>
-                </span>
-                <span className="ml-auto" title={r.price ? `ราคา/ชิ้น ${silver(r.price)}` : undefined}>
-                  จ่าย <b className="num font-medium text-foreground">{silver(r.cost)}</b>
-                </span>
-              </div>
-            </li>
-          );
-        })}
-        <li className="flex justify-between gap-3 py-2 font-semibold">
-          <span>รวมต้องซื้อเพิ่ม</span>
-          <span className="num">{silver(buyCost)}</span>
-        </li>
-      </ul>
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-border bg-panel-2/40 px-3 py-2.5 text-sm">
+          <label className="flex items-center gap-2">
+            อยากได้
+            <NumberInput min={0} step={10} value={qty} onChange={(v) => setQty(Math.floor(v))} className={`${fieldCls("sm")} w-24`} />
+            ชิ้น
+          </label>
+          <span className="text-muted">
+            = <b className="num font-semibold text-foreground">{silver(rounds)}</b> รอบ (ผลผลิต {ev.expectedYield.toFixed(2)}/รอบ)
+          </span>
+        </div>
 
-      <div className="hidden overflow-x-auto md:block">
-        <table className="w-full min-w-[640px] text-sm">
-          <thead className="text-xs text-muted">
-            <tr>
-              <th className="py-1 text-left font-medium">วัตถุดิบ (ทุกชั้น)</th>
-              <th className="py-1 text-right font-medium">ต้องใช้</th>
-              <th className="py-1 text-right font-medium">มีอยู่แล้ว</th>
-              <th className="py-1 text-right font-medium">ต้องซื้อเพิ่ม</th>
-              <th className="py-1 text-right font-medium">ราคา/ชิ้น</th>
-              <th className="py-1 text-right font-medium">ต้องจ่าย</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className="border-t border-border/60">
-                <td className="py-1">
-                  <div className="flex items-center gap-2">
-                    <ItemIcon id={r.id} grade={r.item?.grade} size={22} />
-                    <span className="truncate">{r.item?.th ?? `#${r.id}`}</span>
-                    {r.soldOut && <Badge tone="warn">ของหมด</Badge>}
-                    {!r.item?.market && !r.item?.npcBuy && <Badge tone="warn">ต้องหาเอง</Badge>}
-                  </div>
-                </td>
-                <td className="num py-1 text-right">{silver(r.need)}</td>
-                <td className="py-1 text-right">
-                  <NumberInput
-                    min={0}
-                    value={r.owned}
-                    blankZero
-                    placeholder="0"
-                    onChange={(v) => setOwned(r.id, Math.floor(v))}
-                    aria-label={`มีอยู่แล้ว ${r.item?.th ?? `#${r.id}`}`}
-                    className={`${fieldCls("sm")} w-24`}
-                  />
-                </td>
-                <td className={`num py-1 text-right ${r.toBuy > 0 ? "" : "text-muted"}`}>{silver(r.toBuy)}</td>
-                <td className="num py-1 text-right text-muted">{r.price ? silver(r.price) : "-"}</td>
-                <td className="num py-1 text-right font-medium">{silver(r.cost)}</td>
+        <div className="grid grid-cols-2 gap-2 @3xl:grid-cols-4">
+          <Stat label={`${NET} (${silver(qty)} ชิ้น)`} value={silver(revenue)} />
+          <Stat label="เงินสดที่ต้องใช้ซื้อเพิ่ม" value={silver(buyCost)} />
+          <Stat label="กำไรเงินสด (ของในคลังคิดฟรี)" value={<Money value={cashProfit} tone="profit" />} emphasis />
+          <Stat label={FULL_PROFIT_LABEL[settings.ownedCostMode]} value={<Money value={fullProfit} tone="profit" />} />
+        </div>
+
+        {/* a narrow detail (a phone, the side pane on a small desktop): one block per material */}
+        <ul className="divide-y divide-border overflow-clip rounded-xl border border-border text-sm @2xl:hidden">
+          {rows.map((r) => {
+            const th = r.item?.th ?? `#${r.id}`;
+            return (
+              <li key={r.id} className="flex flex-col gap-1.5 px-3 py-2.5">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <ItemIcon id={r.id} grade={r.item?.grade} size={28} />
+                  <span className="min-w-0 flex-1 truncate font-medium text-foreground">{th}</span>
+                  <span className="shrink-0 text-xs text-muted" title={r.price ? `ราคา/ชิ้น ${silver(r.price)}` : undefined}>
+                    จ่าย <b className="num text-sm font-semibold text-foreground">{silver(r.cost)}</b>
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pl-9.5 text-xs text-muted">
+                  <span>
+                    ต้องใช้ <b className="num font-medium text-foreground">{silver(r.need)}</b>
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    มี
+                    <NumberInput
+                      min={0}
+                      value={r.owned}
+                      blankZero
+                      placeholder="0"
+                      onChange={(v) => setOwned(r.id, Math.floor(v))}
+                      aria-label={`มีอยู่แล้ว ${th}`}
+                      className={`${fieldCls("sm")} w-20`}
+                    />
+                  </span>
+                  <span>
+                    ซื้อ <b className={`num font-medium ${r.toBuy > 0 ? "text-foreground" : ""}`}>{silver(r.toBuy)}</b>
+                  </span>
+                  {r.soldOut && (
+                    <Badge tone="warn" icon="alert-triangle">
+                      ของหมด
+                    </Badge>
+                  )}
+                  {!r.item?.market && !r.item?.npcBuy && <Badge tone="warn">ต้องหาเอง</Badge>}
+                </div>
+              </li>
+            );
+          })}
+          <li className="flex justify-between gap-3 bg-panel-2/60 px-3 py-2.5 font-semibold">
+            <span>รวมต้องซื้อเพิ่ม</span>
+            <span className="num">{silver(buyCost)}</span>
+          </li>
+        </ul>
+
+        {/* a wide detail: the table (the name column takes what is left and truncates) */}
+        <div className="hidden overflow-clip rounded-xl border border-border @2xl:block">
+          <table className={tableCls}>
+            <thead className={headCls}>
+              <tr>
+                <th className={thCls}>วัตถุดิบ (ทุกชั้น)</th>
+                <th className={thNumCls}>ต้องใช้</th>
+                <th className={thNumCls}>มีอยู่แล้ว</th>
+                <th className={thNumCls}>ต้องซื้อเพิ่ม</th>
+                <th className={thNumCls}>ราคา/ชิ้น</th>
+                <th className={thNumCls}>ต้องจ่าย</th>
               </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className="border-t border-border font-semibold">
-              <td className="py-1.5" colSpan={5}>
-                รวมต้องซื้อเพิ่ม
-              </td>
-              <td className="num py-1.5 text-right">{silver(buyCost)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className={rowCls}>
+                  <td className={`${tdCls} ${fillCellCls}`}>
+                    <span className={itemCellCls}>
+                      <ItemIcon id={r.id} grade={r.item?.grade} size={24} />
+                      <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className={itemNameCls}>{r.item?.th ?? `#${r.id}`}</span>
+                        {r.soldOut && (
+                          <Badge tone="warn" icon="alert-triangle">
+                            ของหมด
+                          </Badge>
+                        )}
+                        {!r.item?.market && !r.item?.npcBuy && <Badge tone="warn">ต้องหาเอง</Badge>}
+                      </span>
+                    </span>
+                  </td>
+                  <td className={tdNumCls}>{silver(r.need)}</td>
+                  <td className={tdNumCls}>
+                    <NumberInput
+                      min={0}
+                      value={r.owned}
+                      blankZero
+                      placeholder="0"
+                      onChange={(v) => setOwned(r.id, Math.floor(v))}
+                      aria-label={`มีอยู่แล้ว ${r.item?.th ?? `#${r.id}`}`}
+                      className={`${fieldCls("sm")} w-24`}
+                    />
+                  </td>
+                  <td className={`${tdNumCls} ${r.toBuy > 0 ? "" : "text-muted"}`}>{silver(r.toBuy)}</td>
+                  <td className={`${tdNumCls} text-muted`}>{r.price ? silver(r.price) : "-"}</td>
+                  <td className={`${tdNumCls} font-medium`}>{silver(r.cost)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t border-border bg-panel-2/60 font-semibold">
+                <td className={tdCls} colSpan={5}>
+                  รวมต้องซื้อเพิ่ม
+                </td>
+                <td className={tdNumCls}>{silver(buyCost)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-3 rounded border border-border bg-panel-2/60 px-2 py-1.5 text-sm">
-        <button
-          onClick={produce}
-          disabled={rounds <= 0 || (ownedRows.length === 0 && !addProduct)}
-          className={btn("primary")}
-          title="หักวัตถุดิบที่มีอยู่แล้วออกจากคลังตามจำนวนที่ใช้ และเพิ่มผลผลิตเข้าคลัง"
-        >
-          ผลิตแล้ว {silver(rounds)} รอบ → ปรับคลัง
-        </button>
-        <label className="flex items-center gap-1.5 text-muted">
-          <input type="checkbox" checked={addProduct} onChange={(e) => setAddProduct(e.target.checked)} className={checkboxCls} />
-          เพิ่ม {items[ev.productId]?.th ?? "ผลผลิต"} ×{silver(productUnits)} เข้าคลังด้วย
-        </label>
-        {ownedRows.length > 0 ? (
-          <span className="text-muted">จะหัก {ownedRows.length} รายการที่มีอยู่แล้ว</span>
-        ) : (
-          <span className="text-muted">ยังไม่มีวัตถุดิบในคลังให้หัก</span>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-border bg-panel-2/40 px-3 py-3 text-sm">
+          <button
+            type="button"
+            onClick={produce}
+            disabled={rounds <= 0 || (ownedRows.length === 0 && !addProduct)}
+            className={btn("primary")}
+            title="หักวัตถุดิบที่มีอยู่แล้วออกจากคลังตามจำนวนที่ใช้ และเพิ่มผลผลิตเข้าคลัง"
+          >
+            ผลิตแล้ว {silver(rounds)} รอบ
+            <Icon name="arrow-right" className="h-4 w-4" />
+            ปรับคลัง
+          </button>
+          <label className="flex min-h-10 items-center gap-2 text-muted md:min-h-0">
+            <input type="checkbox" checked={addProduct} onChange={(e) => setAddProduct(e.target.checked)} className={checkboxCls} />
+            เพิ่ม {items[ev.productId]?.th ?? "ผลผลิต"} ×{silver(productUnits)} เข้าคลังด้วย
+          </label>
+          {ownedRows.length > 0 ? (
+            <span className="text-xs text-muted">จะหัก {ownedRows.length} รายการที่มีอยู่แล้ว</span>
+          ) : (
+            <span className="text-xs text-muted">ยังไม่มีวัตถุดิบในคลังให้หัก</span>
+          )}
+        </div>
+        {done && (
+          <Notice tone="good" action={{ label: "เลิกทำ", onClick: undo }}>
+            ปรับคลังแล้ว {done.changes.length} รายการ
+          </Notice>
         )}
-      </div>
-      {done && (
-        <Notice tone="good" className="mt-2" action={{ label: "เลิกทำ", onClick: undo }}>
-          ปรับคลังแล้ว {done.changes.length} รายการ
-        </Notice>
-      )}
 
-      <div className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-        <Stat label={`${NET} (${silver(qty)} ชิ้น)`} value={silver(revenue)} />
-        <Stat label="เงินสดที่ต้องใช้ซื้อเพิ่ม" value={silver(buyCost)} />
-        <Stat label="กำไรเงินสด (ของในคลังคิดฟรี)" value={<Money value={cashProfit} tone="profit" />} emphasis />
-        <Stat label={FULL_PROFIT_LABEL[settings.ownedCostMode]} value={<Money value={fullProfit} tone="profit" />} />
+        <p className="text-xs text-muted">
+          {guest ? (
+            <>ช่อง &ldquo;มีอยู่แล้ว&rdquo; {GUEST_STORAGE_NOTE} ใช้ร่วมกันทุกสูตร</>
+          ) : (
+            <>ช่อง &ldquo;มีอยู่แล้ว&rdquo; บันทึกไว้กับบัญชีของคุณ ใช้ร่วมกันทุกสูตรและทุกเครื่อง</>
+          )}{" "}
+          (ดู/แก้รวมได้ที่หน้า &ldquo;คลังของ&rdquo;) · &ldquo;{OWNED_COST}&rdquo; ตั้งได้ใน{SETTINGS_TITLE}
+        </p>
       </div>
-      <p className="mt-2 text-xs text-muted">
-        {guest ? (
-          <>ช่อง &ldquo;มีอยู่แล้ว&rdquo; {GUEST_STORAGE_NOTE} ใช้ร่วมกันทุกสูตร</>
-        ) : (
-          <>ช่อง &ldquo;มีอยู่แล้ว&rdquo; บันทึกไว้กับบัญชีของคุณ ใช้ร่วมกันทุกสูตรและทุกเครื่อง</>
-        )}{" "}
-        (ดู/แก้รวมได้ที่หน้า &ldquo;คลังของ&rdquo;) · &ldquo;{OWNED_COST}&rdquo; ตั้งได้ใน{SETTINGS_TITLE}
-      </p>
-    </Card>
+    </div>
   );
 }

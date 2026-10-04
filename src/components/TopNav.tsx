@@ -1,100 +1,58 @@
 "use client";
 
-import { APP_NAME } from "@/lib/brand";
+import { APP_NAME, APP_SHORT } from "@/lib/brand";
 import { loginHref } from "@/lib/fetch-error";
 import { SETTINGS_TITLE } from "@/lib/settings-labels";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { UserMenu, type SessionUser } from "./auth/UserMenu";
 import { QuickSearch } from "./QuickSearch";
 import { SaveStatus } from "./SaveStatus";
 import { SettingsDrawer } from "./SettingsDrawer";
 import { useOptionalUserData } from "./UserDataProvider";
-import { btn } from "./ui/button";
+import { btn, iconBtn } from "./ui/button";
+import { BRAND_LINE, Emblem } from "./ui/Emblem";
+import { Icon, type IconName } from "./ui/Icon";
 
 /**
  * Desktop links, in order. วิธีใช้ is also in the user menu, which is where phones reach it (a
- * visitor who is not signed in gets a ? button for it instead).
+ * visitor who is not signed in gets a help button for it instead).
  */
-const LINKS = [
-  { href: "/", label: "หน้าแรก" },
-  { href: "/recipes", label: "คำนวณสูตร" },
-  { href: "/market", label: "สแกนตลาด" },
-  { href: "/inventory", label: "คลังของ" },
-  { href: "/calc", label: "คิดภาษี" },
-  { href: "/help", label: "วิธีใช้" },
+const LINKS: { href: string; label: string; icon: IconName }[] = [
+  { href: "/", label: "หน้าแรก", icon: "home" },
+  { href: "/recipes", label: "คำนวณสูตร", icon: "book" },
+  { href: "/market", label: "สแกนตลาด", icon: "chart" },
+  { href: "/inventory", label: "คลังของ", icon: "package" },
+  { href: "/calc", label: "คิดภาษี", icon: "calculator" },
+  { href: "/help", label: "วิธีใช้", icon: "help-circle" },
 ];
 
 /** The phone tab bar: five pages, short labels. */
-const TABS: { href: string; label: string; icon: ReactNode }[] = [
-  {
-    href: "/",
-    label: "หน้าแรก",
-    icon: (
-      <>
-        <path d="M3 10.5 12 3l9 7.5" />
-        <path d="M5.5 9v11.5h4.5v-6h4v6h4.5V9" />
-      </>
-    ),
-  },
-  {
-    href: "/recipes",
-    label: "สูตร",
-    icon: (
-      <>
-        <path d="M9 3h6" />
-        <path d="M10 3v6.5l-5.6 9.7A1.2 1.2 0 0 0 5.4 21h13.2a1.2 1.2 0 0 0 1-1.8L14 9.5V3" />
-        <path d="M7.2 15h9.6" />
-      </>
-    ),
-  },
-  {
-    href: "/market",
-    label: "ตลาด",
-    icon: (
-      <>
-        <path d="M3.5 3.5v17h17" />
-        <path d="m7.5 15 4-4 3 3 5.5-5.5" />
-        <path d="M15.5 8.5H20V13" />
-      </>
-    ),
-  },
-  {
-    href: "/inventory",
-    label: "คลัง",
-    icon: (
-      <>
-        <path d="M3.5 7.5 12 3.5l8.5 4v9L12 20.5l-8.5-4z" />
-        <path d="M3.5 7.5 12 11.5l8.5-4" />
-        <path d="M12 11.5v9" />
-      </>
-    ),
-  },
-  {
-    href: "/calc",
-    label: "ภาษี",
-    icon: (
-      <>
-        <rect x="5" y="3" width="14" height="18" rx="2" />
-        <path d="M8.5 7h7" />
-        <path d="M8.5 11.5h1M11.5 11.5h1M14.5 11.5h1M8.5 15h1M11.5 15h1M14.5 15h1M8.5 18h1M11.5 18h1M14.5 18h1" />
-      </>
-    ),
-  },
+const TABS: { href: string; label: string; icon: IconName }[] = [
+  { href: "/", label: "หน้าแรก", icon: "home" },
+  { href: "/recipes", label: "สูตร", icon: "book" },
+  { href: "/market", label: "ตลาด", icon: "chart" },
+  { href: "/inventory", label: "คลัง", icon: "package" },
+  { href: "/calc", label: "ภาษี", icon: "calculator" },
 ];
 
 /**
- * The header of every app page (rendered by <Page>): a skip link, the brand (a link home), the page
- * links on md and up, then search and the user menu. Below md the page links move to a tab bar
- * fixed at the bottom of the screen.
+ * The top bar of every app page (rendered by <Page>): sticky, full width, with the content in the
+ * same max-w-7xl column on every page. A skip link, the brand (emblem and wordmark, a link home),
+ * the page links on md and up, then search and the user menu. Below md the page links move to a
+ * tab bar fixed at the bottom of the screen.
+ *
+ * Room is tight between md and xl, so things come back as the screen widens: md shows the emblem
+ * and the link labels; lg adds the wordmark and the search label; xl adds the link icons and the
+ * Ctrl K hint. On phones a visitor's bar holds three buttons, so their wordmark hides below sm.
  *
  * SaveStatus sits left of search; it shows on every member page (the save queue outlives a page) and
  * grows to the left, so search and the user menu never move. A visitor who is not signed in
  * (`user` null) gets a เข้าสู่ระบบ button that comes back to this page, a ตั้งค่าตัวละคร button on
  * pages with a UserDataProvider (members have it in the user menu), and no SaveStatus (their data
  * never goes to the server). In the loading skeleton (`loading`) the menu shows as a grey
- * placeholder exactly as wide as the real button, so nothing jumps when the page arrives.
+ * placeholder exactly as big as the real button, so nothing jumps when the page arrives.
  */
 export function TopNav({ user, loading = false }: { user: SessionUser | null; loading?: boolean }) {
   const pathname = usePathname();
@@ -112,81 +70,82 @@ export function TopNav({ user, loading = false }: { user: SessionUser | null; lo
   const signInHref = loginHref(query ? `${pathname}?${query}` : pathname);
   return (
     <>
-      <header className="flex h-14 items-center gap-3 lg:gap-6">
-        <a
-          href="#main"
-          // the padding is a focus: variant too: focus:not-sr-only sets padding 0 at the same weight as focus:px-3
-          className="sr-only rounded bg-accent text-black focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:px-3 focus:py-2"
-        >
-          ข้ามไปเนื้อหา
-        </a>
-        <Link href="/" className="flex min-w-0 shrink items-center gap-2 rounded">
-          {/* eslint-disable-next-line @next/next/no-img-element -- a 28px app icon: next/image adds nothing here */}
-          <img src="/icons/app-192.png" alt="" width={28} height={28} className="h-7 w-7 shrink-0 rounded" />
-          {/* icon only between md and lg, where the six links need the room */}
-          <span className="truncate text-base font-bold text-accent md:max-lg:sr-only">{APP_NAME}</span>
-        </Link>
+      {/* -mt / pt: the bar reaches up over the body's status-bar padding (globals.css), so once the
+          page scrolls it still covers the status bar of the installed app */}
+      <header className="sticky top-0 z-40 -mt-[env(safe-area-inset-top)] border-b border-border bg-background/85 pt-[env(safe-area-inset-top)] backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-7xl items-center gap-3 px-4 md:gap-4 md:px-6 xl:gap-6">
+          <a
+            href="#main"
+            // the padding is a focus: variant too: focus:not-sr-only sets padding 0 at the same weight as focus:px-3
+            className="sr-only rounded-lg bg-accent font-medium text-on-accent focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:px-3 focus:py-2"
+          >
+            ข้ามไปเนื้อหา
+          </a>
+          {/* min-h-10: the emblem and one line of wordmark are only 28px, too small a target on a phone */}
+          <Link href="/" aria-label={APP_NAME} className="flex min-h-10 min-w-0 shrink items-center gap-2.5 rounded-lg">
+            <Emblem size={28} />
+            <span className={`min-w-0 flex-col md:max-lg:sr-only ${guest ? "hidden sm:flex" : "flex"}`}>
+              <span className="truncate font-display text-lg font-semibold text-foreground">{APP_SHORT}</span>
+              <span className="-mt-1 hidden truncate text-xs text-muted lg:block">{BRAND_LINE}</span>
+            </span>
+          </Link>
 
-        <nav aria-label="เมนูหลัก" className="hidden md:block">
-          <ul className="flex items-center">
-            {LINKS.map((l) => {
-              const active = pathname === l.href;
-              return (
-                <li key={l.href}>
-                  <Link
-                    href={l.href}
-                    aria-current={active ? "page" : undefined}
-                    className={`relative block whitespace-nowrap rounded px-2 py-1.5 text-sm after:absolute after:inset-x-2 after:-bottom-1 after:h-0.5 ${
-                      active ? "text-foreground after:bg-accent" : "text-muted hover:text-foreground"
-                    }`}
+          <nav aria-label="เมนูหลัก" className="hidden self-stretch md:block">
+            <ul className="flex h-full items-stretch">
+              {LINKS.map((l) => {
+                const active = pathname === l.href;
+                return (
+                  <li key={l.href}>
+                    <Link
+                      href={l.href}
+                      aria-current={active ? "page" : undefined}
+                      // the gold bar sits on the bar's bottom border; colour only, so nothing shifts
+                      className={`relative flex h-full items-center gap-2 whitespace-nowrap px-2.5 text-sm transition-colors duration-150 after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full focus-visible:-outline-offset-2 ${
+                        active ? "text-foreground after:bg-accent" : "text-muted hover:text-foreground"
+                      }`}
+                    >
+                      <Icon name={l.icon} className={`hidden h-[18px] w-[18px] xl:block ${active ? "text-accent" : ""}`} />
+                      {l.label}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            {!guest && <SaveStatus />}
+            <QuickSearch compact />
+            {user ? (
+              <UserMenu user={user} />
+            ) : guest ? (
+              <>
+                {data && (
+                  <button
+                    type="button"
+                    onClick={() => setSettingsOpen(true)}
+                    aria-haspopup="dialog"
+                    aria-label={SETTINGS_TITLE}
+                    title={SETTINGS_TITLE}
+                    className={iconBtn("ghost")}
                   >
-                    {l.label}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
-
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-          {!guest && <SaveStatus />}
-          <QuickSearch compact />
-          {user ? (
-            <UserMenu user={user} />
-          ) : guest ? (
-            <>
-              {data && (
-                <button
-                  type="button"
-                  onClick={() => setSettingsOpen(true)}
-                  aria-haspopup="dialog"
-                  aria-label={SETTINGS_TITLE}
-                  title={SETTINGS_TITLE}
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-panel text-muted hover:text-foreground md:h-8 md:w-8"
-                >
-                  <svg aria-hidden viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="3" />
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                  </svg>
-                </button>
-              )}
-              <Link
-                href="/help"
-                aria-label="วิธีใช้"
-                title="วิธีใช้"
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-panel text-lg text-muted hover:text-foreground md:hidden"
-              >
-                <span aria-hidden>?</span>
-              </Link>
-              <Link href={signInHref} className={btn("secondary", "md")}>
-                เข้าสู่ระบบ
-              </Link>
-              {data && <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />}
-            </>
-          ) : (
-            // the same size as UserMenu's button (md:w-28, lg:w-40)
-            <span aria-hidden className="block h-10 w-10 animate-pulse rounded-full bg-panel-2 md:h-8 md:w-28 md:rounded lg:w-40" />
-          )}
+                    <Icon name="settings" />
+                  </button>
+                )}
+                <Link href="/help" aria-label="วิธีใช้" title="วิธีใช้" className={`${iconBtn("ghost")} md:hidden`}>
+                  <Icon name="help-circle" />
+                </Link>
+                <Link href={signInHref} className={btn("secondary", "md")}>
+                  <Icon name="log-in" className="hidden h-4 w-4 sm:block" />
+                  เข้าสู่ระบบ
+                </Link>
+                {data && <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />}
+              </>
+            ) : (
+              // the same size as UserMenu's button (a disc, a pill with the name from lg)
+              <span aria-hidden className="skeleton block h-10 w-10 rounded-full md:h-9 md:w-9 lg:w-40" />
+            )}
+          </div>
         </div>
       </header>
 
@@ -201,21 +160,13 @@ export function TopNav({ user, loading = false }: { user: SessionUser | null; lo
               key={t.href}
               href={t.href}
               aria-current={active ? "page" : undefined}
-              className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-xs ${active ? "text-accent" : "text-muted hover:text-foreground"}`}
+              className={`relative flex min-h-14 flex-col items-center justify-center gap-1 pt-1 text-xs transition-colors duration-150 focus-visible:-outline-offset-2 ${
+                active ? "font-medium text-accent" : "text-muted hover:text-foreground"
+              }`}
             >
-              <svg
-                aria-hidden
-                viewBox="0 0 24 24"
-                width={20}
-                height={20}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={1.75}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                {t.icon}
-              </svg>
+              {/* a short gold bar along the top edge marks the page you are on */}
+              {active && <span aria-hidden className="absolute top-0 h-0.5 w-8 rounded-full bg-accent" />}
+              <Icon name={t.icon} className="h-[22px] w-[22px]" />
               {t.label}
             </Link>
           );

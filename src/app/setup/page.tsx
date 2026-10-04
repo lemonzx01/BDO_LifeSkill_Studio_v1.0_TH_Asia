@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function SetupPage() {
   if ((await countUsers()) > 0) redirect("/login");
   return (
-    <AuthCard title="ตั้งค่าครั้งแรก: สร้างบัญชีแอดมิน" subtitle="บัญชีนี้จะใช้สร้างและจัดการบัญชีของสมาชิกในกิล">
+    <AuthCard eyebrow="ตั้งค่าครั้งแรก" title="สร้างบัญชีแอดมิน" subtitle="บัญชีนี้จะใช้สร้างและจัดการบัญชีของสมาชิกในกิล">
       <SetupForm />
     </AuthCard>
   );

@@ -8,8 +8,10 @@ import type { Role } from "@/lib/db/schema";
 import { SETTINGS_TITLE } from "@/lib/settings-labels";
 import { SettingsDrawer } from "../SettingsDrawer";
 import { useOptionalUserData } from "../UserDataProvider";
+import { Avatar } from "../ui/Avatar";
 import { RoleBadge } from "../ui/Badge";
 import { btn } from "../ui/button";
+import { Icon, type IconName } from "../ui/Icon";
 import { useSignOutSubmit } from "./use-sign-out";
 
 export interface SessionUser {
@@ -18,17 +20,22 @@ export interface SessionUser {
   role: Role;
 }
 
-const ITEM = `${btn("ghost", "md", "start")} w-full`;
+// 40px rows at every width, with room for an icon before the label
+const ITEM = `${btn("ghost", "md", "start")} w-full gap-2.5 px-3 md:min-h-10`;
 
-/** The avatar letter: skip a leading Thai vowel (เ แ โ ใ ไ), so "เจ้าพ่อ" shows จ, not เ. */
-function initial(name: string): string {
-  const chars = Array.from(name.trim().replace(/^[เ-ไ]+/, ""));
-  return (chars[0] ?? Array.from(name.trim())[0] ?? "?").toUpperCase();
+/** a menu row's label with its icon in front (decorative: the words name the item) */
+function ItemLabel({ icon, children }: { icon: IconName; children: string }) {
+  return (
+    <>
+      <Icon name={icon} className="h-[18px] w-[18px]" />
+      {children}
+    </>
+  );
 }
 
 /**
- * The account menu, the same on every screen size: the avatar letter on phones and the display
- * name on md and up open one small menu. It follows the menu-button pattern: arrow keys, Home and
+ * The account menu, the same on every screen size: an avatar disc with the first letter (a gold
+ * ring for admins), plus the display name from lg up, opens one small menu. It follows the menu-button pattern: arrow keys, Home and
  * End move between items, Escape closes it and puts focus back on the button, and Tab, any pointer
  * press outside it or focus moving anywhere else (e.g. Ctrl+K opening search) closes it.
  *
@@ -121,6 +128,7 @@ export function UserMenu({ user }: { user: SessionUser }) {
   };
 
   const shown = open || leaving;
+  const admin = isAdmin(user.role);
 
   return (
     <div ref={rootRef} className="relative">
@@ -133,31 +141,32 @@ export function UserMenu({ user }: { user: SessionUser }) {
         aria-expanded={shown}
         aria-controls={shown ? menuId : undefined}
         aria-label={`เมนูของ ${user.displayName}`}
-        // a fixed width from md up (the loading skeleton's placeholder in TopNav matches it), so the
-        // header does not shift when the page arrives; a long name is cut with …. Narrower below lg,
-        // where the six links leave little room for SaveStatus.
-        className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-panel text-sm font-semibold hover:bg-panel-2 md:h-8 md:w-28 md:justify-between md:gap-1.5 md:rounded md:px-2.5 md:font-medium lg:w-40"
+        // a fixed size at every width (the loading skeleton's placeholder in TopNav matches it), so
+        // the bar does not shift when the page arrives: a disc, and from lg a pill with the name
+        // (a long name is cut with …)
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors duration-150 md:h-9 md:w-9 lg:w-40 lg:justify-start lg:gap-2 lg:border lg:border-border-strong lg:bg-panel-2 lg:pl-0.5 lg:pr-2.5 lg:hover:bg-panel-3 ${
+          shown ? "lg:border-accent/60" : ""
+        }`}
       >
-        <span aria-hidden className="md:hidden">
-          {initial(user.displayName)}
-        </span>
-        <span aria-hidden className="hidden truncate md:inline">
+        <Avatar name={user.displayName} admin={admin} className="md:h-8 md:w-8" />
+        <span aria-hidden className="hidden min-w-0 flex-1 truncate text-left text-sm font-medium lg:block">
           {user.displayName}
         </span>
-        <svg aria-hidden viewBox="0 0 16 16" width={12} height={12} fill="none" stroke="currentColor" strokeWidth={1.75} className="hidden shrink-0 text-muted md:block">
-          <path d="m4 6 4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        <Icon name="chevron-down" className={`hidden h-4 w-4 text-muted transition-transform duration-150 lg:block ${shown ? "rotate-180" : ""}`} />
       </button>
 
       {shown && (
         // z-40, below the search dialog (z-50): the menu never paints over it
-        <div className="absolute right-0 z-40 mt-1 w-56 rounded-lg border border-border bg-panel p-1.5 shadow-lg">
+        <div className="absolute right-0 z-40 mt-2 w-60 animate-rise-in rounded-xl border border-border-strong bg-panel p-1.5 shadow-pop">
           {/* not focusable, and a press on it keeps focus in the menu (so Escape still works) */}
-          <div className="px-3 pb-2 pt-1" onMouseDown={(e) => e.preventDefault()}>
-            <div className="truncate text-sm font-medium text-foreground">{user.displayName}</div>
-            <div className="flex items-center gap-1.5 text-xs text-muted">
-              <span className="truncate">@{user.username}</span>
-              {isAdmin(user.role) && <RoleBadge role={user.role} />}
+          <div className="flex items-center gap-2.5 px-2.5 pb-2.5 pt-1.5" onMouseDown={(e) => e.preventDefault()}>
+            <Avatar name={user.displayName} admin={admin} />
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium text-foreground">{user.displayName}</div>
+              <div className="flex items-center gap-1.5 text-xs text-muted">
+                <span className="truncate">@{user.username}</span>
+                {admin && <RoleBadge role={user.role} />}
+              </div>
             </div>
           </div>
           <div
@@ -180,29 +189,29 @@ export function UserMenu({ user }: { user: SessionUser }) {
                 }}
                 className={ITEM}
               >
-                {SETTINGS_TITLE}
+                <ItemLabel icon="settings">{SETTINGS_TITLE}</ItemLabel>
               </button>
             )}
             <Link href="/account" role="menuitem" tabIndex={-1} onClick={() => setOpen(false)} className={ITEM}>
-              บัญชีของฉัน
+              <ItemLabel icon="user">บัญชีของฉัน</ItemLabel>
             </Link>
-            {isAdmin(user.role) && (
+            {admin && (
               <>
                 <Link href="/admin" role="menuitem" tabIndex={-1} onClick={() => setOpen(false)} className={ITEM}>
-                  สมาชิก
+                  <ItemLabel icon="shield">สมาชิก</ItemLabel>
                 </Link>
                 <Link href="/admin/stats" role="menuitem" tabIndex={-1} onClick={() => setOpen(false)} className={ITEM}>
-                  สถิติการใช้งาน
+                  <ItemLabel icon="chart-bar">สถิติการใช้งาน</ItemLabel>
                 </Link>
               </>
             )}
             <Link href="/help" role="menuitem" tabIndex={-1} onClick={() => setOpen(false)} className={ITEM}>
-              วิธีใช้
+              <ItemLabel icon="help-circle">วิธีใช้</ItemLabel>
             </Link>
-            <div role="separator" className="my-0.5 h-px bg-border" />
+            <div role="separator" className="my-1 h-px bg-border" />
             <form action={logoutAction} onSubmit={onSignOut} role="none" className="w-full">
               <button type="submit" role="menuitem" tabIndex={-1} disabled={leaving} className={ITEM}>
-                {leaving ? "กำลังบันทึก…" : "ออกจากระบบ"}
+                <ItemLabel icon="log-out">{leaving ? "กำลังบันทึก…" : "ออกจากระบบ"}</ItemLabel>
               </button>
             </form>
           </div>

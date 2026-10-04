@@ -1,45 +1,117 @@
 @import "tailwindcss";
 
+/*
+ * "Adventurer's Ledger": antique gold on warm near-black brown (design-system/bdo-lifeskill-studio/
+ * MASTER.md §2). Dark only. Components use these through the Tailwind names below (bg-panel,
+ * text-muted, border-border-field, text-on-accent …), never as raw hex.
+ */
 :root {
   color-scheme: dark;
-  --background: #0f1115;
-  --panel: #171a21;
-  --panel-2: #1e222b;
-  --border: #2a3040;
-  --foreground: #e8eaf0;
-  --muted: #9aa3b2;
-  --accent: #e9bd23;
-  --accent-hover: #f3cd48;
-  /* --accent at 7%, for the page glow behind the header (body, below) */
-  --accent-glow: rgb(233 189 35 / 0.07);
-  --good: #4ade80;
-  --bad: #f87171;
-  --warn: #fbbf24;
-  --info: #7dd3fc;
-  --special: #c4b5fd;
+  /* surfaces, darkest to lightest */
+  --background: #12100d;
+  --panel: #1c1813;
+  --panel-2: #262019;
+  --panel-3: #30281f;
+  /* lines: hairlines, emphasized dividers / hovered cards, the resting border of a field (3.6:1) */
+  --border: #3a3024;
+  --border-strong: #57493a;
+  --border-field: #806e55;
+  /* text: body, secondary, metadata only */
+  --foreground: #efe7d8;
+  --muted: #b3a791;
+  --faint: #9a8e78;
+  /* gold means "act here" or "you are here"; on-accent is the text on a gold fill */
+  --accent: #d9a845;
+  --accent-hover: #e6bc62;
+  --on-accent: #1e1608;
+  /* --accent at 8%, for the page glow behind the header (body, below) */
+  --accent-glow: rgb(217 168 69 / 0.08);
+  /* a second warm accent: categories, the second series of a chart */
+  --copper: #d08250;
+  /* meanings; always paired with a sign, a word or an icon */
+  --good: #9ccb8f;
+  --bad: #e58a78;
+  --warn: #eda25b;
+  --info: #8fb8d8;
+  --special: #c4a6e0;
+
+  /* the sticky top bar (TopNav: h-14 plus the status-bar inset). Anything else that sticks to the
+     top of the page sits below it: `sticky top-(--header-h)` */
+  --header-h: calc(3.5rem + env(safe-area-inset-top));
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-panel: var(--panel);
   --color-panel-2: var(--panel-2);
+  --color-panel-3: var(--panel-3);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-border-field: var(--border-field);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
+  --color-faint: var(--faint);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
+  --color-on-accent: var(--on-accent);
+  --color-copper: var(--copper);
   --color-good: var(--good);
   --color-bad: var(--bad);
   --color-warn: var(--warn);
   --color-info: var(--info);
   --color-special: var(--special);
-  --font-sans: var(--font-thai), system-ui, sans-serif;
+  /* --font-body / --font-display come from next/font (layout.tsx). Tailwind also writes this
+     --font-display into :root inside @layer theme, which looks circular, but next/font's class on
+     <html> sets the real value outside any layer, so it always wins and the loop is never used. */
+  --font-sans: var(--font-body), system-ui, sans-serif;
+  --font-display: var(--font-display), var(--font-body), serif;
 }
 
-/* taller lines for the small sizes, so stacked Thai vowels and tone marks are not clipped */
 @theme {
+  /* taller lines for the small sizes, so stacked Thai vowels and tone marks are not clipped */
   --text-xs--line-height: 1.125rem;
   --text-sm--line-height: 1.375rem;
+  /* Taviraj titles (font-display): card / section titles, and the page h1 (26px, 30px from md) */
+  --text-title: 1.0625rem;
+  --text-title--line-height: 1.4;
+  --text-display: 1.625rem;
+  --text-display--line-height: 1.35;
+  --text-display-lg: 1.875rem;
+  --text-display-lg--line-height: 1.35;
+
+  /* cards: a faint top highlight and a soft drop; pop: menus, dialogs, toasts */
+  --shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.035), 0 1px 2px rgb(0 0 0 / 0.35), 0 10px 24px -14px rgb(0 0 0 / 0.6);
+  --shadow-pop: 0 16px 40px -12px rgb(0 0 0 / 0.7), 0 2px 6px rgb(0 0 0 / 0.4);
+
+  /* overlays only (dialog, menu, toast, drawer): opacity plus a few px of travel, ~200ms */
+  --animate-fade-in: fade-in 180ms ease-out;
+  --animate-rise-in: rise-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-sheet-in: sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-drawer-in: drawer-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+  @keyframes sheet-in {
+    from {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+  }
+  @keyframes drawer-in {
+    from {
+      opacity: 0;
+      transform: translateX(24px);
+    }
+  }
 }
 
 @layer base {
@@ -50,10 +122,10 @@
   }
 }
 
-/* native <select> arrows differ per browser: draw one chevron, used by selectCls() */
+/* native <select> arrows differ per browser: draw one chevron (--muted), used by selectCls() */
 @utility select-chevron {
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%239aa3b2' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23b3a791' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
   background-position: right 0.5rem center;
   background-repeat: no-repeat;
   background-size: 1rem 1rem;
@@ -65,26 +137,70 @@
   background-size: 0.875rem 0.875rem;
 }
 
+/*
+ * A loading placeholder block (ui/Skeleton.tsx): panel-2 with a soft light that sweeps across
+ * slowly. Still under reduced motion; it rests with the light off to the left, out of sight.
+ */
+@utility skeleton {
+  background-color: var(--panel-2);
+  background-image: linear-gradient(90deg, transparent 35%, rgb(255 255 255 / 0.045) 50%, transparent 65%);
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  background-position: 150% 0;
+  animation: skeleton-shimmer 1.8s ease-in-out infinite;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -50% 0;
+  }
+}
+
 /* keep room for the scrollbar on short pages too, so the centred header does not shift sideways
    when you switch between a page that scrolls and one that does not */
 html {
   scrollbar-gutter: stable;
+  /* scrollIntoView(), #anchors and the skip link stop below the sticky top bar, not under it */
+  scroll-padding-top: var(--header-h);
 }
 
 body {
   /* a faint gold glow behind the header, over the flat page colour (--accent-glow, not color-mix():
-     the build would fall back to the full-strength accent where color-mix is unsupported) */
+     the build would fall back to the full-strength accent where color-mix is unsupported).
+     no-repeat: the body background is painted on the canvas, sized to <html> (h-full = one screen),
+     so a repeating layer would start over every screen height and band a long page */
   background:
-    radial-gradient(1200px 360px at 50% -160px, var(--accent-glow), transparent),
+    radial-gradient(1200px 380px at 50% -160px, var(--accent-glow), transparent) no-repeat,
     var(--background);
   color: var(--foreground);
-  font-family: var(--font-thai), system-ui, sans-serif;
+  font-family: var(--font-body), system-ui, sans-serif;
   /* viewport-fit=cover (layout.tsx): keep content out from under the notch and the status bar of
-     the installed app (statusBarStyle black-translucent). The bottom inset is taken by the phone tab
-     bar and the bottom padding of <main> (ui/Page.tsx). */
+     the installed app (statusBarStyle black-translucent). The sticky top bar (TopNav) pulls itself
+     up over this top padding and pads itself instead, so it still covers the status bar once the
+     page scrolls. The bottom inset is taken by the phone tab bar and the bottom padding of <main>
+     (ui/Page.tsx). */
   padding-top: env(safe-area-inset-top);
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
+}
+
+/* a soft vignette towards the bottom corners of the screen. A fixed layer rather than a body
+   background: it stays put while the page scrolls instead of repeating down a long page, and
+   iOS ignores background-attachment: fixed. z-index -1 paints it over the page colour and under
+   all content (body is not a stacking context). */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(130% 100% at 50% 0%, transparent 55%, rgb(0 0 0 / 0.35));
 }
 
 .num {
@@ -96,13 +212,19 @@ input[type="number"]::-webkit-outer-spin-button {
   opacity: 1;
 }
 
+/* no motion for those who ask: overlays appear at once, colours change at once, skeletons rest */
 @media (prefers-reduced-motion: reduce) {
   *,
   ::before,
   ::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+  /* its own rule: a browser without ::backdrop would drop the whole list above */
+  ::backdrop {
+    animation-duration: 0.01ms !important;
   }
 }
 

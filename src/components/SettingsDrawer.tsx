@@ -5,7 +5,8 @@ import { GUEST_STORAGE_NOTE } from "@/lib/guest/storage";
 import { SETTINGS_TITLE } from "@/lib/settings-labels";
 import { SettingsPanel } from "./SettingsPanel";
 import { useUserData } from "./UserDataProvider";
-import { btn } from "./ui/button";
+import { btn, iconBtn } from "./ui/button";
+import { Icon } from "./ui/Icon";
 
 /**
  * "ตั้งค่าตัวละคร": the one place to change the character settings, opened from the home page,
@@ -51,33 +52,35 @@ export function SettingsDrawer({ open, onClose }: { open: boolean; onClose: () =
       onClick={(e) => {
         if (e.target === e.currentTarget) close();
       }}
-      className="mb-0 mt-auto w-full max-w-none overflow-hidden rounded-t-xl border border-border bg-background p-0 text-foreground shadow-2xl backdrop:bg-black/60 md:my-0 md:ml-auto md:mr-0 md:h-dvh md:max-h-dvh md:w-[36rem] md:rounded-none md:rounded-l-xl"
+      // a sheet that slides up on phones, a panel that slides in from the right on md and up; the
+      // body is the page colour so the setting cards inside stand out as cards
+      className="mb-0 mt-auto w-full max-w-none animate-sheet-in overflow-hidden rounded-t-xl border border-border-strong bg-background p-0 text-foreground shadow-pop backdrop:bg-black/60 backdrop:backdrop-blur-[2px] md:my-0 md:ml-auto md:mr-0 md:h-dvh md:max-h-dvh md:w-[36rem] md:animate-drawer-in md:rounded-none md:rounded-l-xl"
     >
       {open && (
         <div className="flex max-h-[85dvh] flex-col md:h-full md:max-h-none">
-          <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-            <div className="min-w-0">
-              <h2 id={titleId} className="text-base font-semibold">
-                {SETTINGS_TITLE}
-              </h2>
-              <p className="text-xs text-muted">เปลี่ยนแล้วบันทึกให้เอง ใช้กับทุกหน้า</p>
-              {guest && <p className="text-xs text-muted">{GUEST_STORAGE_NOTE}</p>}
+          {/* phones: a small grab bar says this is a sheet (decoration; close with x, ปิด or the backdrop) */}
+          <div aria-hidden className="flex justify-center bg-panel pt-2 md:hidden">
+            <span className="h-1 w-10 rounded-full bg-border-strong" />
+          </div>
+          <header className="flex items-start justify-between gap-3 border-b border-border bg-panel px-4 py-3">
+            <div className="flex min-w-0 items-start gap-2.5">
+              <Icon name="settings" className="mt-0.5 h-5 w-5 text-accent" />
+              <div className="min-w-0">
+                <h2 id={titleId} className="font-display text-title font-semibold">
+                  {SETTINGS_TITLE}
+                </h2>
+                <p className="text-xs text-muted">เปลี่ยนแล้วบันทึกให้เอง ใช้กับทุกหน้า</p>
+                {guest && <p className="text-xs text-muted">{GUEST_STORAGE_NOTE}</p>}
+              </div>
             </div>
-            <button
-              ref={closeRef}
-              type="button"
-              onClick={close}
-              aria-label="ปิด"
-              title="ปิด"
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded text-xl leading-none text-muted hover:bg-panel-2 hover:text-foreground md:h-9 md:w-9"
-            >
-              ×
+            <button ref={closeRef} type="button" onClick={close} aria-label="ปิด" title="ปิด" className={`${iconBtn("ghost")} -mr-1.5`}>
+              <Icon name="x" />
             </button>
           </header>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
             <SettingsPanel settings={settings} onChange={setSettings} />
           </div>
-          <footer className="flex justify-end border-t border-border px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:pb-3">
+          <footer className="flex justify-end border-t border-border bg-panel px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:pb-3">
             <button type="button" onClick={close} className={btn("secondary")}>
               ปิด
             </button>

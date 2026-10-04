@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { btn } from "./button";
+import { Icon } from "./Icon";
 
 export interface ConfirmOptions {
   title: string;
@@ -27,7 +28,8 @@ interface Request {
  *
  * Built on a native <dialog> opened with showModal(), which keeps keyboard focus inside it, makes
  * the page behind it inert and closes on Escape (= cancel). Focus starts on the cancel button and
- * goes back to whatever had it (usually the button that asked) when the dialog closes.
+ * goes back to whatever had it (usually the button that asked) when the dialog closes. A
+ * destructive question (tone "danger") gets a red warning icon by its title and a red confirm button.
  */
 export function useConfirm(): [(opts: ConfirmOptions) => Promise<boolean>, ReactNode] {
   const [request, setRequest] = useState<Request | null>(null);
@@ -95,24 +97,34 @@ function ConfirmDialog({ request, onAnswer }: { request: Request | null; onAnswe
       onClick={(e) => {
         if (e.target === e.currentTarget) e.currentTarget.close();
       }}
-      className="m-auto w-[calc(100%-2rem)] max-w-md rounded-lg border border-border bg-panel p-0 text-foreground shadow-2xl backdrop:bg-black/60"
+      // rises in over a dimmed, slightly blurred page; closing is immediate
+      className="m-auto w-[calc(100%-2rem)] max-w-md animate-rise-in rounded-xl border border-border-strong bg-panel p-0 text-foreground shadow-pop backdrop:bg-black/60 backdrop:backdrop-blur-[2px] backdrop:animate-fade-in"
     >
       {opts && (
-        <form method="dialog" className="p-4">
-          <h2 id={titleId} className="text-base font-semibold">
-            {opts.title}
-          </h2>
-          <div id={bodyId} className="mt-1 text-sm text-muted">
-            {opts.body}
+        <form method="dialog" className="p-5">
+          <div className="flex items-start gap-3">
+            {danger && (
+              <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bad/12 text-bad ring-1 ring-bad/30">
+                <Icon name="alert-triangle" className="h-5 w-5" />
+              </span>
+            )}
+            <div className="min-w-0 flex-1">
+              <h2 id={titleId} className="font-display text-title font-semibold text-balance">
+                {opts.title}
+              </h2>
+              <div id={bodyId} className="mt-1 text-sm text-muted">
+                {opts.body}
+              </div>
+            </div>
           </div>
           {opts.details && opts.details.length > 0 && (
-            <ul className="mt-3 max-h-48 space-y-0.5 overflow-y-auto rounded border border-border bg-background/40 px-3 py-2 text-xs text-muted">
+            <ul className="mt-4 max-h-48 space-y-1 overflow-y-auto rounded-lg border border-border bg-background/50 px-3 py-2 text-xs text-muted">
               {opts.details.map((d, i) => (
                 <li key={i}>{d}</li>
               ))}
             </ul>
           )}
-          <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <div className="mt-5 flex flex-wrap justify-end gap-2">
             <button ref={cancelRef} type="submit" value="cancel" className={btn("secondary")}>
               {opts.cancelLabel ?? "ยกเลิก"}
             </button>

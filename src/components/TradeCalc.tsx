@@ -12,8 +12,10 @@ import type { SessionUser } from "./auth/UserMenu";
 import { ItemIcon } from "./ItemIcon";
 import { NumberInput } from "./NumberInput";
 import { useSettings } from "./UserDataProvider";
-import { btn } from "./ui/button";
-import { fieldCls, selectCls } from "./ui/field";
+import { btn, iconBtn } from "./ui/button";
+import { Card, cardCls } from "./ui/Card";
+import { fieldCls, labelCls, selectCls } from "./ui/field";
+import { Icon, type IconName } from "./ui/Icon";
 import { Money, pctCls } from "./ui/Money";
 import { Page, PageHeader } from "./ui/Page";
 
@@ -39,8 +41,12 @@ interface MarketDetail {
   daily?: { day: string; price: number }[];
 }
 
-const inputCls = `${fieldCls()} num`;
-const labelCls = "flex flex-col gap-1 text-sm";
+/**
+ * A small action inside a line of text (ใช้ราคานี้, ลองใหม่): gold and underlined like a link, but
+ * 40px tall on phones so it is easy to tap.
+ */
+const inlineActionCls =
+  "-mx-1.5 inline-flex min-h-10 items-center rounded-md px-1.5 text-xs font-medium text-accent underline underline-offset-2 transition-colors duration-150 hover:text-accent-hover md:min-h-7";
 
 /** `user` null: a visitor who is not signed in. */
 export function TradeCalc({ user }: { user: SessionUser | null }) {
@@ -222,51 +228,58 @@ export function TradeCalc({ user }: { user: SessionUser | null }) {
 
   return (
     <Page user={user} width="narrow">
-      <PageHeader title="คิดภาษี / กำไรเทรด" description="ซื้อราคานี้ ขายราคานี้ จะได้เงินเท่าไหร่ หลังหักภาษีตลาดกลาง" />
+      <PageHeader eyebrow="ตลาดกลาง" title="คิดภาษี / กำไรเทรด" description="ซื้อราคานี้ ขายราคานี้ จะได้เงินเท่าไหร่ หลังหักภาษีตลาดกลาง" />
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
-        <section className="space-y-4 rounded-lg border border-border bg-panel p-4">
+      {/* the form, then the answer: side by side from lg (the answer stays in view while you type),
+          one under the other below that */}
+      <div className="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
+        <Card>
           {/* item picker (optional) */}
-          <div className="relative">
+          <div className="relative p-4">
             <label className={labelCls}>
-              <span className="font-medium">ไอเท็ม (ไม่บังคับ — เลือกแล้วจะเห็นช่องราคาจริงในตลาด)</span>
-              <input
-                role="combobox"
-                aria-expanded={showList}
-                aria-controls={listId}
-                aria-autocomplete="list"
-                aria-activedescendant={showList && activeHit >= 0 && hits[activeHit] ? optionId(hits[activeHit].id) : undefined}
-                autoComplete="off"
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  setListOpen(true);
-                }}
-                onFocus={() => setListOpen(true)}
-                onBlur={() => {
-                  setListOpen(false);
-                  setActiveHit(-1);
-                }}
-                onKeyDown={onSearchKey}
-                placeholder="พิมพ์ชื่อไอเท็ม…"
-                className={fieldCls()}
-              />
+              <span>ไอเท็ม (ไม่บังคับ — เลือกแล้วจะเห็นช่องราคาจริงในตลาด)</span>
+              <span className="relative">
+                <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
+                <input
+                  role="combobox"
+                  aria-expanded={showList}
+                  aria-controls={listId}
+                  aria-autocomplete="list"
+                  aria-activedescendant={showList && activeHit >= 0 && hits[activeHit] ? optionId(hits[activeHit].id) : undefined}
+                  autoComplete="off"
+                  value={query}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setListOpen(true);
+                  }}
+                  onFocus={() => setListOpen(true)}
+                  onBlur={() => {
+                    setListOpen(false);
+                    setActiveHit(-1);
+                  }}
+                  onKeyDown={onSearchKey}
+                  placeholder="พิมพ์ชื่อไอเท็ม…"
+                  className={`${fieldCls()} pl-9`}
+                />
+              </span>
             </label>
             {searchFailed && (
-              <p role="status" className="mt-1 flex flex-wrap items-center gap-x-1 text-xs text-bad">
+              <p role="status" className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-bad">
+                <Icon name="alert-circle" className="h-4 w-4" />
                 ค้นหาไม่สำเร็จ ·
-                <button type="button" onClick={() => setSearchAttempt((a) => a + 1)} className="underline hover:text-foreground">
+                <button type="button" onClick={() => setSearchAttempt((a) => a + 1)} className={inlineActionCls}>
                   ลองใหม่
                 </button>
               </p>
             )}
-            {/* always in the page (hidden when closed) so aria-controls points at something */}
+            {/* always in the page (hidden when closed) so aria-controls points at something; no display
+                class on it, or the hidden attribute would not hide it */}
             <ul
               id={listId}
               role="listbox"
               aria-label="ผลค้นหาไอเท็ม"
               hidden={!showList}
-              className="absolute z-40 mt-1 max-h-72 w-full overflow-y-auto rounded border border-border bg-panel shadow-lg"
+              className="absolute inset-x-4 z-40 mt-1 max-h-72 overflow-y-auto rounded-xl border border-border-strong bg-panel py-1 shadow-pop"
             >
               {hits.map((h, i) => (
                 <li
@@ -277,32 +290,36 @@ export function TradeCalc({ user }: { user: SessionUser | null }) {
                   // keep focus in the box, so its blur does not close the list before the click lands
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => pick(h)}
-                  className={`flex min-h-11 cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm hover:bg-panel-2 ${i === activeHit ? "bg-panel-2" : ""}`}
+                  className={`flex min-h-11 cursor-pointer items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors duration-150 hover:bg-panel-2 ${i === activeHit ? "bg-panel-2" : ""}`}
                 >
-                  <ItemIcon id={h.id} grade={h.grade} size={24} />
+                  <ItemIcon id={h.id} grade={h.grade} size={28} />
                   <span className="min-w-0 flex-1 truncate">{h.th}</span>
-                  <span className="num text-xs text-muted">
+                  <span className="num shrink-0 text-xs text-muted">
                     {silver(h.price)} · ค้างขาย {silver(h.stock)}
                   </span>
                 </li>
               ))}
             </ul>
             {item && (
-              <div className="mt-2 flex items-center gap-2 rounded border border-border bg-panel-2/60 px-3 py-2 text-sm">
-                <ItemIcon id={item.id} grade={item.grade} size={28} />
-                <span className="min-w-0 flex-1 truncate font-medium">{item.th}</span>
-                <span className="num text-xs text-muted">ราคาตอนนี้ {silver(item.price)}</span>
+              <div className="mt-3 flex items-center gap-3 rounded-lg border border-border bg-panel-2/60 py-2 pl-3 pr-1.5">
+                <ItemIcon id={item.id} grade={item.grade} size={32} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{item.th}</p>
+                  <p className="num text-xs text-muted">ราคาตอนนี้ {silver(item.price)}</p>
+                </div>
                 <button type="button" onClick={removeItem} aria-label={`เอาออก ${item.th}`} className={btn("ghost", "sm")}>
+                  <Icon name="x" className="h-4 w-4" />
                   เอาออก
                 </button>
               </div>
             )}
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          {/* quantity narrow, the two prices (each with its market price list) wider */}
+          <div className="grid grid-cols-1 gap-4 border-t border-border p-4 sm:grid-cols-[minmax(0,8rem)_minmax(0,1fr)_minmax(0,1fr)]">
             <label className={labelCls}>
-              <span className="font-medium">จำนวน</span>
-              <NumberInput min={0} step={1} value={qty} onChange={(v) => setQty(Math.floor(v))} className={inputCls} />
+              <span>จำนวน</span>
+              <NumberInput min={0} step={1} value={qty} onChange={(v) => setQty(Math.floor(v))} className={fieldCls()} />
             </label>
             <PriceField label="ราคาซื้อ (ต่อชิ้น)" value={buy} onChange={setBuy} rungs={rungs} side="buy" loading={loadingOrders} hint="ใส่ 0 ถ้าไม่ได้ซื้อมา (คิดแค่ภาษี)" />
             <PriceField
@@ -314,15 +331,14 @@ export function TradeCalc({ user }: { user: SessionUser | null }) {
               loading={loadingOrders}
               extra={
                 normal !== null && (
-                  <p className="text-xs text-muted">
-                    ราคาปกติ 90 วัน: <span className="num">{silver(normal)}</span>
+                  <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted">
+                    <span>
+                      ราคาปกติ 90 วัน: <span className="num text-foreground">{silver(normal)}</span>
+                    </span>
                     {sell !== normal && (
-                      <>
-                        {" · "}
-                        <button type="button" onClick={() => setSell(normal)} className="text-accent underline hover:text-accent-hover">
-                          ใช้ราคานี้
-                        </button>
-                      </>
+                      <button type="button" onClick={() => setSell(normal)} className={inlineActionCls}>
+                        ใช้ราคานี้
+                      </button>
                     )}
                   </p>
                 )
@@ -330,50 +346,53 @@ export function TradeCalc({ user }: { user: SessionUser | null }) {
             />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
-            <label className={labelCls}>
-              <span className="font-medium">{VALUE_PACK.name}</span>
-              <select value={valuePack ? "1" : "0"} onChange={(e) => setValuePackOverride(e.target.value === "1")} className={`${selectCls()} w-full`}>
-                <option value="1">{VALUE_PACK.on}</option>
-                <option value="0">{VALUE_PACK.off}</option>
-              </select>
-            </label>
-            <label className={labelCls}>
-              <span className="font-medium">{MERCHANT_RING.name}</span>
-              <select value={merchantRing ? "1" : "0"} onChange={(e) => setMerchantRingOverride(e.target.value === "1")} className={`${selectCls()} w-full`}>
-                <option value="0">{MERCHANT_RING.off}</option>
-                <option value="1">{MERCHANT_RING.on}</option>
-              </select>
-            </label>
-            <label className={labelCls}>
-              <span className="font-medium">{FAMILY_FAME}</span>
-              <select value={familyFame} onChange={(e) => setFamilyFameOverride(Number(e.target.value))} className={`${selectCls()} w-full`}>
-                {FAMILY_FAME_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <p className="-mt-1 flex flex-wrap items-center gap-x-1 text-xs text-muted">
-            ใช้ค่าจาก{SETTINGS_TITLE} · เปลี่ยนตรงนี้ไม่บันทึก
-            {overridden && (
-              <>
-                {" · "}
-                <button type="button" onClick={resetBonuses} className="text-accent underline hover:text-accent-hover">
+          {/* the bonuses that set the tax: from ตั้งค่าตัวละคร unless changed here for this page */}
+          <div className="border-t border-border p-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <label className={labelCls}>
+                <span>{VALUE_PACK.name}</span>
+                <select value={valuePack ? "1" : "0"} onChange={(e) => setValuePackOverride(e.target.value === "1")} className={`${selectCls()} w-full`}>
+                  <option value="1">{VALUE_PACK.on}</option>
+                  <option value="0">{VALUE_PACK.off}</option>
+                </select>
+              </label>
+              <label className={labelCls}>
+                <span>{MERCHANT_RING.name}</span>
+                <select value={merchantRing ? "1" : "0"} onChange={(e) => setMerchantRingOverride(e.target.value === "1")} className={`${selectCls()} w-full`}>
+                  <option value="0">{MERCHANT_RING.off}</option>
+                  <option value="1">{MERCHANT_RING.on}</option>
+                </select>
+              </label>
+              <label className={labelCls}>
+                <span>{FAMILY_FAME}</span>
+                <select value={familyFame} onChange={(e) => setFamilyFameOverride(Number(e.target.value))} className={`${selectCls()} w-full`}>
+                  {FAMILY_FAME_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="mt-3 flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+              <Icon name="info" className="h-4 w-4 text-faint" />
+              <span className="min-w-0 flex-1">ใช้ค่าจาก{SETTINGS_TITLE} · เปลี่ยนตรงนี้ไม่บันทึก</span>
+              {overridden && (
+                <button type="button" onClick={resetBonuses} className={`${btn("ghost", "sm")} -my-1`}>
+                  <Icon name="refresh" className="h-4 w-4" />
                   คืนค่า
                 </button>
-              </>
-            )}
-          </p>
-        </section>
+              )}
+            </div>
+          </div>
+        </Card>
 
-        {/* below lg the result sits under the whole form: this bar keeps the outcome in sight */}
+        {/* below lg the result sits under the whole form: this bar keeps the outcome in sight (above
+            the phone tab bar) */}
         <button
           type="button"
           onClick={showResult}
-          className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 flex w-full items-center gap-3 rounded-lg border border-border bg-panel/95 px-4 py-2 text-left shadow-lg backdrop-blur md:bottom-0 lg:hidden"
+          className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 flex min-h-14 w-full items-center gap-3 rounded-xl border border-border-strong bg-panel/95 px-4 py-2 text-left shadow-pop backdrop-blur transition-colors duration-150 hover:bg-panel-2 md:bottom-4 lg:hidden"
         >
           <span className="min-w-0 flex-1">
             <span className="block text-xs text-muted">{NET}</span>
@@ -387,27 +406,40 @@ export function TradeCalc({ user }: { user: SessionUser | null }) {
               <span className="text-xs text-muted">ใส่ราคาซื้อ</span>
             )}
           </span>
-          <span aria-hidden className="text-muted">
-            ↓
-          </span>
+          <Icon name="chevron-down" className="h-5 w-5 text-muted" />
           <span className="sr-only">ดูผลคำนวณทั้งหมด</span>
         </button>
 
-        <section ref={resultRef} tabIndex={-1} aria-label="ผลคำนวณ" className="scroll-mt-2 space-y-2 rounded-lg border border-border bg-panel p-4 outline-hidden lg:self-start">
+        {/* the answer, as the gold card: the verdict in words first, then the sum as a ledger (each
+            total under a rule, in large) */}
+        <section
+          ref={resultRef}
+          tabIndex={-1}
+          aria-label="ผลคำนวณ"
+          className={`${cardCls("highlight")} scroll-mt-4 p-4 outline-hidden lg:sticky lg:top-[calc(var(--header-h)+1.5rem)]`}
+        >
           <Verdict verdict={verdict} />
-          <Line label="ขายได้ก่อนหักภาษี" value={silver(result.gross)} muted />
-          <Line label={`ภาษี (${pct(result.taxRate, 2)})`} value={`-${silver(result.tax)}`} cls="text-bad" />
-          <Line label={NET} value={silver(result.received)} big />
-          {buy > 0 && (
-            <>
-              <Line label="ต้นทุนซื้อ" value={`-${silver(result.cost)}`} muted />
-              {/* the verdict rounds the total (1.2M); the exact one, when it differs from per unit */}
-              {qty > 1 && <Line label={good ? "กำไรรวม" : "ขาดทุนรวม"} value={<Money value={result.profit} tone="profit" />} />}
-              <Line label="กำไร/ชิ้น" value={<Money value={result.profitPerUnit} tone="profit" />} />
-              {result.roi !== null && <Line label="ROI" value={signedPct(result.roi, 1)} cls={pctCls(result.roi, 1)} />}
-            </>
-          )}
-          <p className="pt-2 text-xs text-muted">
+          <dl className="mt-4 text-sm">
+            <Line label="ขายได้ก่อนหักภาษี" value={silver(result.gross)} muted />
+            {/* no price yet: a plain 0, not a red "-0" */}
+            <Line
+              label={`ภาษี (${pct(result.taxRate, 2)})`}
+              value={result.tax > 0 ? `-${silver(result.tax)}` : silver(0)}
+              cls={result.tax > 0 ? "text-bad" : "text-muted"}
+            />
+            <Line label={NET} value={silver(result.received)} big />
+            {buy > 0 && (
+              <>
+                <Line label="ต้นทุนซื้อ" value={`-${silver(result.cost)}`} muted />
+                {/* the verdict rounds the total (1.2M); the exact one, when it differs from per unit */}
+                {qty > 1 && <Line label={good ? "กำไรรวม" : "ขาดทุนรวม"} value={<Money value={result.profit} tone="profit" />} big />}
+                {/* one unit: per unit is the total, so it is the large one */}
+                <Line label="กำไร/ชิ้น" value={<Money value={result.profitPerUnit} tone="profit" />} big={qty <= 1} />
+                {result.roi !== null && <Line label="ROI" value={signedPct(result.roi, 1)} cls={pctCls(result.roi, 1)} />}
+              </>
+            )}
+          </dl>
+          <p className="mt-4 border-t border-border pt-3 text-xs text-faint">
             {NET} = ราคาขาย × 0.65 × (1 + Value Pack 0.30 + แหวน 0.05 + Family Fame) · ตัวเลขในเกมอาจต่างกันไม่กี่ซิลเวอร์จากการปัดเศษ
           </p>
         </section>
@@ -416,18 +448,24 @@ export function TradeCalc({ user }: { user: SessionUser | null }) {
   );
 }
 
+// full literal strings: Tailwind cannot see class names built at runtime
 const VERDICT_CLS: Record<VerdictTone, string> = {
-  good: "border-good/40 bg-good/10 text-good",
-  bad: "border-bad/40 bg-bad/10 text-bad",
+  good: "border-good/45 bg-good/10 text-good",
+  bad: "border-bad/45 bg-bad/10 text-bad",
   neutral: "border-border bg-panel-2/60 text-muted",
 };
+// the words say it too ("คุ้ม", "ไม่คุ้ม"); the icon only helps the eye
+const VERDICT_ICON: Record<VerdictTone, IconName> = { good: "check-circle", bad: "alert-circle", neutral: "info" };
 
 /** The answer first: worth it or not, by how much, and the lowest price that breaks even. */
 function Verdict({ verdict }: { verdict: TradeVerdict }) {
   return (
-    <div className={`rounded border px-3 py-3 ${VERDICT_CLS[verdict.tone]}`}>
-      <p className="text-lg font-semibold">{verdict.text}</p>
-      {verdict.breakEven && <p className="mt-0.5 text-xs text-muted">{verdict.breakEven}</p>}
+    <div className={`flex items-start gap-2.5 rounded-xl border p-3 ${VERDICT_CLS[verdict.tone]}`}>
+      <Icon name={VERDICT_ICON[verdict.tone]} className="mt-1 h-5 w-5" />
+      <div className="min-w-0">
+        <p className="text-lg font-semibold text-balance md:text-xl">{verdict.text}</p>
+        {verdict.breakEven && <p className="num mt-0.5 text-xs text-muted">{verdict.breakEven}</p>}
+      </div>
     </div>
   );
 }
@@ -510,13 +548,14 @@ function PriceField({
   const selectedAt = rungs.findIndex((r) => r.price === value);
 
   return (
-    <div className={labelCls}>
-      <label htmlFor={inputId} className="font-medium">
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={inputId} className="text-xs font-medium text-muted">
         {label}
       </label>
-      <NumberInput id={inputId} aria-describedby={approxId} min={0} value={value} blankZero placeholder="0" onChange={onChange} className={inputCls} />
-      {/* type=number shows no thousands separators: the short form, so 1250000 reads as 1.25M */}
-      <span id={approxId} className="num text-xs text-muted">
+      <NumberInput id={inputId} aria-describedby={approxId} min={0} value={value} blankZero placeholder="0" onChange={onChange} className={fieldCls()} />
+      {/* type=number shows no thousands separators: the short form, so 1250000 reads as 1.25M (a
+          blank line until then, so the fields beside it do not jump) */}
+      <span id={approxId} className="num -mt-0.5 text-xs text-faint">
         {value >= 1000 ? `≈ ${silverShort(value)}` : " "}
       </span>
       {extra}
@@ -537,35 +576,45 @@ function PriceField({
             aria-expanded={open}
             aria-controls={open ? listId : undefined}
             onClick={() => setOpen((o) => !o)}
-            className="flex min-h-10 w-full items-center justify-between rounded border border-border bg-panel-2 px-3 text-sm text-muted hover:text-foreground md:min-h-9"
+            className={`flex min-h-10 w-full items-center justify-between gap-2 rounded-lg border px-3 py-1.5 text-left text-sm transition-colors duration-150 md:min-h-9 ${
+              open ? "border-accent/60 bg-accent/12 text-accent" : "border-border-strong bg-panel-2 text-muted hover:bg-panel-3 hover:text-foreground"
+            }`}
           >
-            <span>
+            <span className="min-w-0">
               เลือกจากช่องราคาในตลาด ({rungs.length} ช่อง)<span className="sr-only"> สำหรับ{label}</span>
             </span>
-            <span aria-hidden className="text-xs">
-              {open ? "▴" : "▾"}
-            </span>
+            <Icon name={open ? "chevron-up" : "chevron-down"} className="h-4 w-4" />
           </button>
           {open && (
             <>
               {/* phones: a sheet from the bottom over a dimmed page; a tap on the dim closes it (on click,
                   not on press, so the tap cannot land on whatever is under the dim once it is gone) */}
-              <div aria-hidden className="fixed inset-0 z-50 bg-black/60 md:hidden" onMouseDown={(e) => e.preventDefault()} onClick={close} />
+              <div
+                aria-hidden
+                className="fixed inset-0 z-50 animate-fade-in bg-black/60 backdrop-blur-[2px] md:hidden"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={close}
+              />
               {/* tabIndex -1: a press on the title or the column names focuses this box, inside the
-                  wrapper, so the wrapper's blur does not close the list (focus would fall to <main>) */}
+                  wrapper, so the wrapper's blur does not close the list (focus would fall to <main>).
+                  From md a popover under the toggle, at least 18rem wide (a price column can be
+                  narrower): the buy list opens from its left edge, the sell list (the last column)
+                  from its right */}
               <div
                 tabIndex={-1}
-                className="fixed inset-x-0 bottom-0 z-50 max-h-[70dvh] overflow-y-auto rounded-t-xl border-t border-border bg-panel pb-[env(safe-area-inset-bottom)] outline-hidden md:absolute md:inset-x-0 md:bottom-auto md:top-full md:z-40 md:mt-1 md:max-h-72 md:rounded md:border md:pb-0 md:shadow-lg"
+                className={`fixed inset-x-0 bottom-0 z-50 max-h-[70dvh] animate-sheet-in overflow-y-auto rounded-t-xl border-t border-border-strong bg-panel pb-[env(safe-area-inset-bottom)] shadow-pop outline-hidden md:absolute md:bottom-auto md:top-full md:z-40 md:mt-1 md:max-h-72 md:w-72 md:min-w-full md:animate-rise-in md:rounded-xl md:border md:pb-0 ${
+                  side === "sell" ? "md:left-auto md:right-0" : "md:left-0 md:right-auto"
+                }`}
               >
                 <div className="sticky top-0 z-10 bg-panel">
-                  <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2 md:hidden">
-                    <span className="text-sm font-semibold">{label}</span>
-                    <button type="button" onClick={close} className={btn("ghost", "sm")}>
-                      ปิด
+                  <div className="flex items-center justify-between gap-3 border-b border-border py-1.5 pl-4 pr-2 md:hidden">
+                    <span className="font-display text-title font-semibold text-foreground">{label}</span>
+                    <button type="button" onClick={close} aria-label="ปิด" title="ปิด" className={iconBtn("ghost")}>
+                      <Icon name="x" className="h-5 w-5" />
                     </button>
                   </div>
-                  <div aria-hidden className="grid grid-cols-[1fr_auto_auto] gap-x-3 border-b border-border bg-panel-2 px-2 py-1 text-xs text-muted">
-                    <span>ราคา</span>
+                  <div aria-hidden className="grid grid-cols-[1fr_auto_auto] gap-x-3 border-b border-border bg-panel-2 px-3 py-1.5 text-xs font-medium text-muted">
+                    <span className="pl-6">ราคา</span>
                     <span className="w-16 text-right">มีขาย</span>
                     <span className="w-16 text-right">รอซื้อ</span>
                   </div>
@@ -587,9 +636,15 @@ function PriceField({
                           onChange(r.price);
                           close();
                         }}
-                        className={`grid min-h-11 w-full grid-cols-[1fr_auto_auto] items-center gap-x-3 px-2 py-1.5 text-left text-sm hover:bg-panel-2 focus-visible:-outline-offset-2 ${active ? "bg-accent/10 text-accent" : ""}`}
+                        className={`grid min-h-11 w-full grid-cols-[1fr_auto_auto] items-center gap-x-3 px-3 py-1.5 text-left text-sm transition-colors duration-150 hover:bg-panel-2 focus-visible:-outline-offset-2 md:min-h-10 ${
+                          active ? "bg-accent/10 text-accent" : ""
+                        }`}
                       >
-                        <span className={`num ${highlight ? "font-medium" : "text-muted"}`}>{silver(r.price)}</span>
+                        {/* the chosen price gets a tick as well as the gold, in a fixed slot so the prices line up */}
+                        <span className={`num flex items-center gap-2 ${active || highlight ? "font-medium" : "text-muted"}`}>
+                          <span className="flex w-4 shrink-0 justify-center">{active && <Icon name="check" className="h-4 w-4" />}</span>
+                          {silver(r.price)}
+                        </span>
                         <span className={`num w-16 text-right ${r.sellers > 0 ? "text-foreground" : "text-muted"}`}>{r.sellers > 0 ? silver(r.sellers) : "-"}</span>
                         <span className={`num w-16 text-right ${r.buyers > 0 ? "text-good" : "text-muted"}`}>{r.buyers > 0 ? silver(r.buyers) : "-"}</span>
                       </button>
@@ -601,17 +656,24 @@ function PriceField({
           )}
         </div>
       ) : (
-        <span className="text-xs text-muted">{loading ? "กำลังโหลดช่องราคา…" : (hint ?? "เลือกไอเท็มด้านบนเพื่อดึงช่องราคาจากตลาด")}</span>
+        <span className="flex items-center gap-1.5 text-xs text-muted">
+          {loading && <Icon name="loader" className="h-4 w-4 animate-spin" />}
+          {loading ? "กำลังโหลดช่องราคา…" : (hint ?? "เลือกไอเท็มด้านบนเพื่อดึงช่องราคาจากตลาด")}
+        </span>
       )}
     </div>
   );
 }
 
+/**
+ * One line of the result ledger. `big` is a total: under a rule, the figure in large (ได้รับจริง,
+ * กำไรรวม). Inside a <dl>: the label is the term, the figure its value.
+ */
 function Line({ label, value, cls = "", muted = false, big = false }: { label: string; value: ReactNode; cls?: string; muted?: boolean; big?: boolean }) {
   return (
-    <div className={`flex items-center justify-between gap-3 rounded border border-border px-3 ${big ? "bg-panel-2/60 py-2.5" : "py-1.5"}`}>
-      <span className={`${muted ? "text-muted" : ""} ${big ? "text-base" : "text-sm"}`}>{label}</span>
-      <span className={`num font-semibold ${big ? "text-xl" : "text-base"} ${cls}`}>{value}</span>
+    <div className={`flex items-baseline justify-between gap-3 ${big ? "mt-1.5 border-t border-border-strong pb-1.5 pt-2.5" : "py-1.5"}`}>
+      <dt className={big ? "font-medium text-foreground" : muted ? "text-muted" : "text-foreground"}>{label}</dt>
+      <dd className={`num whitespace-nowrap text-right font-semibold ${big ? "text-2xl" : "text-base"} ${cls}`}>{value}</dd>
     </div>
   );
 }

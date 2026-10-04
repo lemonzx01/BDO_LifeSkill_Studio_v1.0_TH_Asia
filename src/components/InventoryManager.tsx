@@ -25,17 +25,34 @@ import { ItemIcon } from "./ItemIcon";
 import { NumberInput } from "./NumberInput";
 import { useUserData } from "./UserDataProvider";
 import { Badge } from "./ui/Badge";
-import { btn, btnShape, toggleCls } from "./ui/button";
+import { btn, btnShape, iconBtn, toggleCls } from "./ui/button";
 import { Card, cardCls } from "./ui/Card";
 import { useConfirm } from "./ui/ConfirmDialog";
 import { EmptyState } from "./ui/EmptyState";
 import { checkboxCls, fieldCls } from "./ui/field";
+import { Icon } from "./ui/Icon";
 import { Notice, type NoticeTone } from "./ui/Notice";
 import { Page, PageHeader } from "./ui/Page";
 import { SearchInput } from "./ui/SearchInput";
 import { Segmented } from "./ui/Segmented";
 import { SkeletonRows } from "./ui/Skeleton";
 import { Stat } from "./ui/Stat";
+import {
+  headCls,
+  headStickyCls,
+  itemCellCls,
+  itemNameCls,
+  fillCellCls,
+  rowCls,
+  stackedListLgCls,
+  stackedMainCls,
+  tableCls,
+  tdCls,
+  tdNumCls,
+  thCls,
+  thNumCls,
+  toolbarCls,
+} from "./ui/table";
 import { toast } from "./ui/Toast";
 
 type InventorySort = keyof typeof INVENTORY_SORT_LABEL;
@@ -99,7 +116,7 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
   useEffect(() => {
     inventoryRef.current = inventory;
   }, [inventory]);
-  // each row's quantity box, per layout ("t-" table, "c-" phone card), to focus a row just added
+  // each row's quantity box, per layout ("t-" table, "c-" stacked row), to focus a row just added
   const qtyBoxes = useRef(new Map<string, HTMLInputElement>());
   const qtyBoxRef = (key: string) => (el: HTMLInputElement | null) => {
     if (el) qtyBoxes.current.set(key, el);
@@ -164,7 +181,7 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
 
   useEffect(() => {
     if (!highlight) return;
-    // the table on wide screens, the card on phones: whichever one is showing
+    // the table from lg up, the stacked row below it: whichever one is showing
     const box = [qtyBoxes.current.get(`t-${highlight.id}`), qtyBoxes.current.get(`c-${highlight.id}`)].find((el) => el && el.getClientRects().length > 0);
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     box?.closest("tr, li")?.scrollIntoView({ block: "center", behavior: reduceMotion ? "auto" : "smooth" });
@@ -382,426 +399,488 @@ export function InventoryManager({ items, user }: { items: ItemLite[]; user: Ses
     });
   };
 
-  /** the market price cell: price, "not on the market", loading or unknown */
-  const priceText = (id: ItemId, price: number) => (price ? silver(price) : !byId.get(id)?.market ? "ไม่มีในตลาด" : pricesLoading ? "…" : "-");
+  /** the line under a row's market value: the price per piece, "not on the market", or nothing (loading or unknown) */
+  const unitText = (id: ItemId, price: number) => (price ? `${silver(price)}/ชิ้น` : !byId.get(id)?.market ? "ไม่มีในตลาด" : null);
+  /** a row's market value: the number, a grey bar while its price is on the way, or "-" (unknown) */
+  const valueText = (o: OwnedRow, price: number) =>
+    price ? silver(o.qty * price) : byId.get(o.id)?.market && pricesLoading ? <PricePending /> : "-";
 
   return (
-    <Page user={user} width="narrow">
+    <Page user={user} width="wide">
       <PageHeader
         // no count until a guest's rows have been read from this browser
         title={ready ? `คลังของ (${owned.length})` : "คลังของ"}
         description="ของที่มีอยู่ ใช้หักออกจากวัตถุดิบที่ต้องซื้อในแผนผลิต และคิดต้นทุนตามที่ตั้งค่า"
-        actions={
-          <button type="button" aria-expanded={toolsOpen} aria-controls="inventory-tools" onClick={() => setToolsOpen((o) => !o)} className={`${btnShape()} ${toggleCls(toolsOpen)}`}>
-            นำเข้า / ส่งออก
-            <span aria-hidden className={`transition-transform ${toolsOpen ? "rotate-180" : ""}`}>
-              ▾
-            </span>
-          </button>
-        }
+        meta={[guest && GUEST_STORAGE_NOTE]}
       />
       {confirmDialog}
-      {guest && <p className="-mt-2 mb-3 text-xs text-muted">{GUEST_STORAGE_NOTE}</p>}
 
-      {toolsOpen && (
-        <div id="inventory-tools" className={`${cardCls()} mb-4 p-3`}>
-          <fieldset>
-            <legend className="text-xs font-semibold text-muted">ถ้าในคลังมีไอเท็มนั้นอยู่แล้ว</legend>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {IMPORT_MODES.map((m) => (
-                <label
-                  key={m.value}
-                  className={`${toggleCls(importMode === m.value)} flex cursor-pointer items-start gap-2 rounded px-3 py-2`}
-                >
-                  <input
-                    type="radio"
-                    name="inventory-import-mode"
-                    value={m.value}
-                    checked={importMode === m.value}
-                    onChange={() => setImportMode(m.value)}
-                    className={`${checkboxCls} mt-0.5 shrink-0`}
-                  />
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium">{IMPORT_MODE_LABEL[m.value]}</span>
-                    {/* grey in both states: only the choice itself turns gold */}
-                    <span className="block text-xs text-muted">{m.hint}</span>
-                  </span>
-                </label>
-              ))}
+      {/* xl: the list on the left and the ideas as a side card. Below xl the ideas follow the list:
+          the table's editable cells need about 800px, which a 1024px screen cannot spare next to it */}
+      <div className="grid grid-cols-1 items-start gap-4 md:gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="min-w-0 space-y-4">
+          {/* the answer first: what everything is worth now, and what it cost */}
+          {ready && owned.length > 0 && (
+            <div className="grid grid-cols-2 gap-2 md:gap-3">
+              <Stat
+                label="มูลค่าตลาด"
+                value={priceProblem ? "-" : silver(totalValue)}
+                emphasis
+                hint={pricesLoading ? "กำลังโหลดราคา…" : "ตามราคาตลาดตอนนี้"}
+              />
+              <Stat
+                label="ต้นทุนรวม"
+                value={totalCost ? silver(totalCost) : "-"}
+                hint={customCount > 0 ? `กำหนดเอง ${silver(customCount)} รายการ` : "ตามราคาตลาดทุกรายการ"}
+              />
             </div>
-          </fieldset>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {/* the ring only for keyboard focus: a mouse pick (and the dialog handing focus back) shows none */}
-            <label className={`${btn("secondary")} cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent`}>
-              เลือกไฟล์ CSV
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                className="sr-only"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void importCsv(f);
-                  e.target.value = "";
+          )}
+
+          <div className={toolbarCls}>
+            <div className="relative min-w-0 flex-1 basis-64">
+              <SearchInput
+                id="inventory-add"
+                label="เพิ่มไอเท็มเข้าคลัง"
+                value={query}
+                onChange={setQuery}
+                placeholder="พิมพ์ชื่อไอเท็มเพื่อเพิ่มเข้าคลัง…"
+                className="w-full"
+                onKeyDown={(e) => {
+                  // Enter adds the first match, so adding needs no mouse
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing && search && search.matches.length > 0) {
+                    e.preventDefault();
+                    addItem(search.matches[0].id);
+                  }
                 }}
               />
-            </label>
-            <button type="button" onClick={exportCsv} disabled={owned.length === 0} className={btn("secondary")}>
-              ส่งออก CSV
-            </button>
-            <button type="button" onClick={downloadTemplate} className={btn("secondary")} title="ไฟล์ตัวอย่างสำหรับกรอกแล้วนำเข้า">
-              ไฟล์ตัวอย่าง
+              {/* always in the page, so a screen reader announces the text when it changes */}
+              <p role="status" className="sr-only">
+                {search && search.matches.length === 0 ? noMatchText : ""}
+              </p>
+              {/* z-20: over the table's sticky header row (z-10) that follows it on the page */}
+              {search &&
+                (search.matches.length > 0 ? (
+                  <ul className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-xl border border-border-strong bg-panel shadow-pop">
+                    {search.matches.map((m, i) => (
+                      <li key={m.id}>
+                        {/* the first row is what Enter adds: tinted, with the key shown from md up */}
+                        <button
+                          type="button"
+                          onClick={() => addItem(m.id)}
+                          className={`flex min-h-10 w-full items-center gap-3 px-3 py-1.5 text-left text-sm transition-colors duration-150 hover:bg-panel-2 ${i === 0 ? "bg-panel-2" : ""}`}
+                        >
+                          <ItemIcon id={m.id} grade={m.grade} size={24} />
+                          <span className="min-w-0 flex-1 truncate text-foreground">{m.th}</span>
+                          <span className="min-w-0 max-w-[45%] truncate text-xs text-muted">{m.en}</span>
+                          {i === 0 && (
+                            <kbd aria-hidden className="hidden shrink-0 rounded-md border border-border-strong bg-panel-3 px-1.5 font-sans text-xs text-muted md:inline">
+                              Enter
+                            </kbd>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p
+                    aria-hidden
+                    className="absolute inset-x-0 top-full z-20 mt-1 flex items-center gap-2 rounded-xl border border-border-strong bg-panel px-3 py-2.5 text-sm text-muted shadow-pop"
+                  >
+                    <Icon name="search" className="h-4 w-4 text-faint" />
+                    {noMatchText}
+                  </p>
+                ))}
+            </div>
+            <button
+              type="button"
+              aria-expanded={toolsOpen}
+              aria-controls="inventory-tools"
+              onClick={() => setToolsOpen((o) => !o)}
+              className={`${btnShape()} ${toggleCls(toolsOpen)}`}
+            >
+              นำเข้า / ส่งออก
+              <Icon name="chevron-down" className={`h-4 w-4 transition-transform duration-150 ${toolsOpen ? "rotate-180" : ""}`} />
             </button>
           </div>
-          <p className="mt-2 text-xs text-muted">ไฟล์ต้องมีคอลัมน์ จำนวน และ id หรือ ชื่อไอเท็ม · ก่อนนำเข้าจะให้ดูก่อนว่าอะไรเปลี่ยน</p>
-          {importMsg && (
-            <Notice tone={importMsg.tone} className="mt-3" onClose={() => setImportMsg(null)}>
+
+          {toolsOpen && (
+            <div id="inventory-tools" className={`${cardCls()} space-y-4 p-4`}>
+              <fieldset>
+                <legend className="text-xs font-medium text-muted">ถ้าในคลังมีไอเท็มนั้นอยู่แล้ว</legend>
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {IMPORT_MODES.map((m) => (
+                    <label
+                      key={m.value}
+                      className={`${toggleCls(importMode === m.value)} flex cursor-pointer items-start gap-2.5 rounded-lg px-3 py-2.5 transition-colors duration-150`}
+                    >
+                      <input
+                        type="radio"
+                        name="inventory-import-mode"
+                        value={m.value}
+                        checked={importMode === m.value}
+                        onChange={() => setImportMode(m.value)}
+                        className={`${checkboxCls} mt-0.5`}
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium">{IMPORT_MODE_LABEL[m.value]}</span>
+                        {/* grey in both states: only the choice itself turns gold */}
+                        <span className="block text-xs text-muted">{m.hint}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* the ring only for keyboard focus: a mouse pick (and the dialog handing focus back) shows none */}
+                <label className={`${btn("secondary")} cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent`}>
+                  <Icon name="upload" className="h-4 w-4" />
+                  เลือกไฟล์ CSV
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void importCsv(f);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+                <button type="button" onClick={exportCsv} disabled={owned.length === 0} className={btn("secondary")}>
+                  <Icon name="download" className="h-4 w-4" />
+                  ส่งออก CSV
+                </button>
+                <button type="button" onClick={downloadTemplate} className={btn("ghost")} title="ไฟล์ตัวอย่างสำหรับกรอกแล้วนำเข้า">
+                  ไฟล์ตัวอย่าง
+                </button>
+              </div>
+              <p className="text-xs text-muted">ไฟล์ต้องมีคอลัมน์ จำนวน และ id หรือ ชื่อไอเท็ม · ก่อนนำเข้าจะให้ดูก่อนว่าอะไรเปลี่ยน</p>
+              {importMsg && (
+                <Notice tone={importMsg.tone} onClose={() => setImportMsg(null)}>
+                  {importMsg.text}
+                </Notice>
+              )}
+            </div>
+          )}
+          {!toolsOpen && importMsg && (
+            <Notice tone={importMsg.tone} onClose={() => setImportMsg(null)}>
               {importMsg.text}
             </Notice>
           )}
-        </div>
-      )}
-      {!toolsOpen && importMsg && (
-        <Notice tone={importMsg.tone} className="mb-3" onClose={() => setImportMsg(null)}>
-          {importMsg.text}
-        </Notice>
-      )}
 
-      <div className="relative mb-4">
-        <SearchInput
-          id="inventory-add"
-          label="เพิ่มไอเท็มเข้าคลัง"
-          value={query}
-          onChange={setQuery}
-          placeholder="พิมพ์ชื่อไอเท็มเพื่อเพิ่มเข้าคลัง…"
-          className="w-full"
-          onKeyDown={(e) => {
-            // Enter adds the first match, so adding needs no mouse
-            if (e.key === "Enter" && !e.nativeEvent.isComposing && search && search.matches.length > 0) {
-              e.preventDefault();
-              addItem(search.matches[0].id);
-            }
-          }}
-        />
-        {/* always in the page, so a screen reader announces the text when it changes */}
-        <p role="status" className="sr-only">
-          {search && search.matches.length === 0 ? noMatchText : ""}
-        </p>
-        {search &&
-          (search.matches.length > 0 ? (
-            <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded border border-border bg-panel shadow-lg">
-              {search.matches.map((m, i) => (
-                <li key={m.id}>
-                  {/* the first row is what Enter adds: tinted, with the key shown from md up */}
-                  <button
-                    type="button"
-                    onClick={() => addItem(m.id)}
-                    className={`flex min-h-10 w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-panel-2 md:min-h-0 md:py-1.5 ${i === 0 ? "bg-panel-2" : ""}`}
-                  >
-                    <ItemIcon id={m.id} grade={m.grade} size={22} />
-                    <span className="flex-1 truncate">{m.th}</span>
-                    <span className="truncate text-xs text-muted">{m.en}</span>
-                    {i === 0 && (
-                      <kbd aria-hidden className="hidden shrink-0 rounded border border-border bg-panel px-1 text-[10px] text-muted md:inline">
-                        Enter
-                      </kbd>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p aria-hidden className="absolute z-10 mt-1 w-full rounded border border-border bg-panel px-3 py-2 text-sm text-muted shadow-lg">
-              {noMatchText}
-            </p>
-          ))}
-      </div>
-
-      {customCount > 0 && settings.ownedCostMode !== "avg" && (
-        <Notice
-          tone="warn"
-          className="mb-3"
-          action={{ label: "ใช้ราคาที่จ่ายจริง", onClick: () => setSettings({ ...settings, ownedCostMode: "avg" }) }}
-        >
-          ต้นทุนที่กำหนดเองยังไม่ถูกใช้คิดกำไร · ตอนนี้คิดจาก &ldquo;{OWNED_COST_LABEL[settings.ownedCostMode]}&rdquo;
-        </Notice>
-      )}
-
-      {owned.length > 0 && (
-        <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
-          <SearchInput label="ค้นหาในคลัง" value={listFilter} onChange={setListFilter} placeholder="ค้นหาในคลัง…" className="w-52" />
-          <span className="text-xs text-muted">เรียงตาม</span>
-          <Segmented label="เรียงตาม" options={SORTS} value={sort} onChange={setSort} />
-          {listFilter && (
-            <span className="text-xs text-muted">
-              แสดง {visible.length} จาก {owned.length}
-            </span>
+          {customCount > 0 && settings.ownedCostMode !== "avg" && (
+            <Notice tone="warn" action={{ label: "ใช้ราคาที่จ่ายจริง", onClick: () => setSettings({ ...settings, ownedCostMode: "avg" }) }}>
+              ต้นทุนที่กำหนดเองยังไม่ถูกใช้คิดกำไร · ตอนนี้คิดจาก &ldquo;{OWNED_COST_LABEL[settings.ownedCostMode]}&rdquo;
+            </Notice>
           )}
-        </div>
-      )}
 
-      {priceProblem && owned.length > 0 && (
-        <Notice
-          tone="warn"
-          className="mb-3"
-          action={problemAction(priceProblem, () => {
-            setPriceProblem(null);
-            setPriceAttempt((a) => a + 1);
-          })}
-        >
-          โหลดราคาตลาดไม่สำเร็จ: {priceProblem.message} · ราคาและมูลค่าในตารางจึงเป็น &ldquo;-&rdquo;
-        </Notice>
-      )}
+          {priceProblem && owned.length > 0 && (
+            <Notice
+              tone="warn"
+              action={problemAction(priceProblem, () => {
+                setPriceProblem(null);
+                setPriceAttempt((a) => a + 1);
+              })}
+            >
+              โหลดราคาตลาดไม่สำเร็จ: {priceProblem.message} · ราคาและมูลค่าในตารางจึงเป็น &ldquo;-&rdquo;
+            </Notice>
+          )}
 
-      {!ready ? (
-        // a guest's rows are in this browser, read once the page is live: not "nothing here" before that
-        <SkeletonRows n={6} label="กำลังโหลดคลังของ…" />
-      ) : owned.length === 0 ? (
-        <Card>
-          <EmptyState title="ยังไม่มีของในคลัง" hint={<>พิมพ์ชื่อไอเท็มด้านบนเพื่อเพิ่ม หรือกรอกช่อง &ldquo;มีอยู่แล้ว&rdquo; ในแผนผลิต</>} />
-        </Card>
-      ) : (
-        <>
-          {/* md and up: the table */}
-          <div className="hidden overflow-x-auto rounded-lg border border-border bg-panel md:block lg:overflow-visible">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead className="bg-panel-2 text-xs text-muted lg:sticky lg:top-0 lg:z-10">
-                <tr>
-                  <th className="px-3 py-2 text-left font-medium">ไอเท็ม</th>
-                  <th className="px-2 py-2 text-right font-medium">จำนวน</th>
-                  <th className="px-2 py-2 text-right font-medium">ต้นทุน/ชิ้น</th>
-                  <th className="px-2 py-2 text-right font-medium">ราคาตลาดตอนนี้</th>
-                  <th className="px-2 py-2 text-right font-medium">มูลค่าตลาด</th>
-                  <th className="px-2 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((o) => {
-                  const it = byId.get(o.id);
-                  const name = nameOf(o.id);
-                  const price = prices[o.id]?.price ?? 0;
-                  return (
-                    <tr key={o.id} id={`inv-${o.id}`} className={`border-t border-border transition-colors ${highlightId === o.id ? "bg-accent/15" : ""}`}>
-                      <td className="px-3 py-1.5">
-                        <div className="flex items-center gap-2">
-                          <ItemIcon id={o.id} grade={it?.grade} size={26} />
-                          <div className="min-w-0">
-                            <div className="truncate">{name}</div>
-                            <div className="truncate text-xs text-muted">{it?.en}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-2 py-1.5 text-right">
-                        <NumberInput
-                          ref={qtyBoxRef(`t-${o.id}`)}
-                          min={0}
-                          value={o.qty}
-                          commitOnBlur
-                          title="พิมพ์จำนวนแล้วกด Enter หรือคลิกออกจากช่อง · ใส่ 0 = เอาออกจากคลัง"
-                          onChange={(v) => changeQty(o, v)}
-                          aria-label={`จำนวน ${name}`}
-                          className={`${fieldCls("sm")} w-24`}
-                        />
-                      </td>
-                      <td className="px-2 py-1.5 text-right">
-                        {o.avgCost === undefined ? (
-                          <div className="flex items-center justify-end gap-1.5">
-                            <span className="num text-muted">{price ? silver(price) : "-"}</span>
-                            <Badge tone="info" title="ใช้ราคาตลาดปัจจุบันเสมอ">
-                              ตามตลาด
-                            </Badge>
-                            <button
-                              type="button"
-                              onClick={() => setOwned(o.id, o.qty, price || 0)}
-                              aria-label={`กำหนดเอง (ต้นทุน ${name})`}
-                              className={btn("ghost", "sm")}
-                              title="กำหนดต้นทุนที่จ่ายจริงเอง"
-                            >
-                              กำหนดเอง
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-end gap-1.5">
-                            <NumberInput
-                              min={0}
-                              value={o.avgCost}
-                              commitOnBlur
-                              onChange={(v) => setOwned(o.id, o.qty, v)}
-                              aria-label={`ต้นทุนต่อชิ้น ${name}`}
-                              className={`${fieldCls("sm")} w-28`}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setOwned(o.id, o.qty, null)}
-                              aria-label={`ตามตลาด (ต้นทุน ${name})`}
-                              className={btn("ghost", "sm")}
-                              title="กลับไปใช้ราคาตลาดเสมอ"
-                            >
-                              ตามตลาด
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                      <td className="num px-2 py-1.5 text-right text-muted">{priceText(o.id, price)}</td>
-                      <td className="num px-2 py-1.5 text-right font-medium">{price ? silver(o.qty * price) : "-"}</td>
-                      <td className="px-2 py-1.5 text-right">
-                        <button type="button" onClick={() => removeRow(o)} aria-label={`ลบ ${name}`} className={btn("dangerGhost", "sm")}>
-                          ลบ
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {visible.length === 0 && (
-                  <tr>
-                    <td colSpan={6}>
-                      <EmptyState title={<>ไม่มีรายการในคลังที่ตรงกับ &ldquo;{listFilter}&rdquo;</>} />
-                    </td>
-                  </tr>
+          {!ready ? (
+            // a guest's rows are in this browser, read once the page is live: not "nothing here" before that
+            <SkeletonRows n={6} label="กำลังโหลดคลังของ…" />
+          ) : owned.length === 0 ? (
+            <Card>
+              <EmptyState
+                icon="package"
+                title="เริ่มจากเพิ่มของที่มีเข้าคลัง"
+                hint={
+                  <>
+                    พิมพ์ชื่อไอเท็มในช่องด้านบนเพื่อเพิ่ม หรือกรอกช่อง &ldquo;มีอยู่แล้ว&rdquo; ในแผนผลิต · มีไฟล์ CSV อยู่แล้ว กด &ldquo;นำเข้า / ส่งออก&rdquo;
+                  </>
+                }
+              />
+            </Card>
+          ) : (
+            <Card as="div">
+              {/* the list's own controls: narrow it down and order it */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border p-3">
+                <SearchInput
+                  label="ค้นหาในคลัง"
+                  value={listFilter}
+                  onChange={setListFilter}
+                  placeholder="ค้นหาในคลัง…"
+                  className="min-w-0 flex-1 basis-48 sm:max-w-xs"
+                />
+                <div className="flex min-w-0 max-w-full items-center gap-2">
+                  <span className="shrink-0 text-xs text-muted">เรียงตาม</span>
+                  <Segmented label="เรียงตาม" options={SORTS} value={sort} onChange={setSort} />
+                </div>
+                {listFilter && (
+                  <span className="text-xs text-muted">
+                    แสดง <span className="num">{visible.length}</span> จาก <span className="num">{owned.length}</span>
+                  </span>
                 )}
-              </tbody>
-              <tfoot>
-                <tr className="border-t border-border font-semibold">
-                  <td className="px-3 py-2" colSpan={2}>
-                    รวม
-                  </td>
-                  <td className="num px-2 py-2 text-right">{totalCost ? silver(totalCost) : "-"}</td>
-                  <td />
-                  <td className="num px-2 py-2 text-right">{priceProblem ? "-" : silver(totalValue)}</td>
-                  <td />
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+              </div>
 
-          {/* phones: one card per item, then the totals */}
-          <div className="space-y-2 md:hidden">
-            {visible.length === 0 ? (
-              <Card>
-                <EmptyState title={<>ไม่มีรายการในคลังที่ตรงกับ &ldquo;{listFilter}&rdquo;</>} />
-              </Card>
-            ) : (
-              <ul className="space-y-2" aria-label="ของในคลัง">
-                {visible.map((o) => {
-                  const it = byId.get(o.id);
-                  const name = nameOf(o.id);
-                  const price = prices[o.id]?.price ?? 0;
-                  return (
-                    <li
-                      key={o.id}
-                      id={`inv-card-${o.id}`}
-                      className={`rounded-lg border p-3 transition-colors ${highlightId === o.id ? "border-accent/40 bg-accent/15" : "border-border bg-panel"}`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <ItemIcon id={o.id} grade={it?.grade} size={28} />
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm">{name}</div>
-                          <div className="truncate text-xs text-muted">{it?.en}</div>
-                        </div>
-                        <div className="shrink-0 text-right">
-                          <div className="num text-sm font-medium">{price ? silver(o.qty * price) : "-"}</div>
-                          <div className="num text-xs text-muted">{price ? `${silver(price)}/ชิ้น` : priceText(o.id, price)}</div>
-                        </div>
-                      </div>
-                      <div className="mt-2 grid grid-cols-2 gap-2">
-                        <div className="min-w-0">
-                          <div aria-hidden className="mb-1 text-xs text-muted">
-                            จำนวน
-                          </div>
-                          <NumberInput
-                            ref={qtyBoxRef(`c-${o.id}`)}
-                            min={0}
-                            value={o.qty}
-                            commitOnBlur
-                            onChange={(v) => changeQty(o, v)}
-                            aria-label={`จำนวน ${name}`}
-                            className={`${fieldCls()} num`}
-                          />
-                        </div>
-                        <div className="min-w-0">
-                          <div aria-hidden className="mb-1 text-xs text-muted">
-                            ต้นทุน/ชิ้น
-                          </div>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {o.avgCost === undefined ? (
-                              <span className="num min-w-0 flex-1 text-sm text-muted">
-                                {/* the caption above is hidden from screen readers: say what this number is */}
-                                <span className="sr-only">ต้นทุนต่อชิ้น {name} ตามตลาด </span>
-                                {price ? silver(price) : "-"}
-                              </span>
-                            ) : (
+              {visible.length === 0 ? (
+                <EmptyState
+                  compact
+                  icon="search"
+                  title={<>ไม่มีรายการในคลังที่ตรงกับ &ldquo;{listFilter}&rdquo;</>}
+                  action={{ label: "ล้างคำค้น", onClick: () => setListFilter("") }}
+                />
+              ) : (
+                <>
+                  {/* lg and up: the table, its header row kept in view under the top bar */}
+                  <table className={`${tableCls} hidden lg:table`}>
+                    <thead className={`${headCls} ${headStickyCls}`}>
+                      <tr>
+                        <th className={thCls}>ไอเท็ม</th>
+                        <th className={thNumCls}>จำนวน</th>
+                        <th className={thNumCls}>ต้นทุน/ชิ้น</th>
+                        <th className={thCls}>
+                          <span className="sr-only">ที่มาของต้นทุน</span>
+                        </th>
+                        <th className={thNumCls}>มูลค่าตลาด</th>
+                        <th className={thCls}>
+                          <span className="sr-only">ลบ</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visible.map((o) => {
+                        const it = byId.get(o.id);
+                        const name = nameOf(o.id);
+                        const price = prices[o.id]?.price ?? 0;
+                        const unit = unitText(o.id, price);
+                        return (
+                          <tr key={o.id} id={`inv-${o.id}`} className={`${rowCls} ${highlightId === o.id ? "bg-accent/12" : ""}`}>
+                            {/* fillCellCls: a long name is cut short instead of pushing the table past its card */}
+                            <td className={`${tdCls} ${fillCellCls}`}>
+                              <div className={itemCellCls}>
+                                <ItemIcon id={o.id} grade={it?.grade} size={28} />
+                                <div className="min-w-0">
+                                  <div className={itemNameCls}>{name}</div>
+                                  <div className="truncate text-xs text-faint">{it?.en}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className={tdNumCls}>
                               <NumberInput
+                                ref={qtyBoxRef(`t-${o.id}`)}
                                 min={0}
-                                value={o.avgCost}
+                                value={o.qty}
                                 commitOnBlur
-                                onChange={(v) => setOwned(o.id, o.qty, v)}
-                                aria-label={`ต้นทุนต่อชิ้น ${name}`}
-                                className={`${fieldCls()} num min-w-0 flex-1`}
+                                title="พิมพ์จำนวนแล้วกด Enter หรือคลิกออกจากช่อง · ใส่ 0 = เอาออกจากคลัง"
+                                onChange={(v) => changeQty(o, v)}
+                                aria-label={`จำนวน ${name}`}
+                                className={`${fieldCls("sm")} w-24`}
                               />
-                            )}
-                            {o.avgCost === undefined ? (
-                              <button
-                                type="button"
-                                onClick={() => setOwned(o.id, o.qty, price || 0)}
-                                aria-label={`กำหนดเอง (ต้นทุน ${name})`}
-                                className={btn("secondary", "sm")}
-                                title="กำหนดต้นทุนที่จ่ายจริงเอง"
-                              >
-                                กำหนดเอง
+                            </td>
+                            <td className={tdNumCls}>
+                              {o.avgCost === undefined ? (
+                                <span className="text-muted">{price ? silver(price) : "-"}</span>
+                              ) : (
+                                <NumberInput
+                                  min={0}
+                                  value={o.avgCost}
+                                  commitOnBlur
+                                  onChange={(v) => setOwned(o.id, o.qty, v)}
+                                  aria-label={`ต้นทุนต่อชิ้น ${name}`}
+                                  className={`${fieldCls("sm")} w-28`}
+                                />
+                              )}
+                            </td>
+                            {/* where the cost comes from, and the switch to the other source */}
+                            <td className="py-2.5 pr-3 align-middle">
+                              <div className="flex items-center gap-1.5">
+                                {o.avgCost === undefined ? (
+                                  <>
+                                    <Badge tone="info" title="ใช้ราคาตลาดปัจจุบันเสมอ">
+                                      ตามตลาด
+                                    </Badge>
+                                    <button
+                                      type="button"
+                                      onClick={() => setOwned(o.id, o.qty, price || 0)}
+                                      aria-label={`กำหนดเอง (ต้นทุน ${name})`}
+                                      className={btn("ghost", "sm")}
+                                      title="กำหนดต้นทุนที่จ่ายจริงเอง"
+                                    >
+                                      กำหนดเอง
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Badge tone="special" title="ใช้ราคาที่จ่ายจริงที่กรอกไว้">
+                                      กำหนดเอง
+                                    </Badge>
+                                    <button
+                                      type="button"
+                                      onClick={() => setOwned(o.id, o.qty, null)}
+                                      aria-label={`ตามตลาด (ต้นทุน ${name})`}
+                                      className={btn("ghost", "sm")}
+                                      title="กลับไปใช้ราคาตลาดเสมอ"
+                                    >
+                                      ตามตลาด
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                            <td className={tdNumCls}>
+                              <div className="font-semibold text-foreground">{valueText(o, price)}</div>
+                              {unit && <div className="text-xs text-muted">{unit}</div>}
+                            </td>
+                            <td className={`${tdCls} w-px`}>
+                              <button type="button" onClick={() => removeRow(o)} aria-label={`ลบ ${name}`} title="ลบ" className={iconBtn("dangerGhost", "sm")}>
+                                <Icon name="trash" className="h-4 w-4" />
                               </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => setOwned(o.id, o.qty, null)}
-                                aria-label={`ตามตลาด (ต้นทุน ${name})`}
-                                className={btn("secondary", "sm")}
-                                title="กลับไปใช้ราคาตลาดเสมอ"
-                              >
-                                ตามตลาด
-                              </button>
-                            )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+
+                  {/* below lg: one stacked row per item, the value on the right of the name */}
+                  <ul className={stackedListLgCls} aria-label="ของในคลัง">
+                    {visible.map((o) => {
+                      const it = byId.get(o.id);
+                      const name = nameOf(o.id);
+                      const price = prices[o.id]?.price ?? 0;
+                      const unit = unitText(o.id, price);
+                      return (
+                        <li
+                          key={o.id}
+                          id={`inv-card-${o.id}`}
+                          // stackedRowCls with more room between the lines: this row holds fields
+                          className={`flex flex-col gap-3 px-4 py-3 transition-colors duration-150 ${highlightId === o.id ? "bg-accent/12" : ""}`}
+                        >
+                          <div className={stackedMainCls}>
+                            <ItemIcon id={o.id} grade={it?.grade} size={32} />
+                            <div className="min-w-0 flex-1">
+                              <div className={itemNameCls}>{name}</div>
+                              <div className="truncate text-xs text-faint">{it?.en}</div>
+                            </div>
+                            <div className="shrink-0 text-right">
+                              <div className="num font-semibold text-foreground">{valueText(o, price)}</div>
+                              {unit && <div className="num text-xs text-muted">{unit}</div>}
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                      <div className="mt-1 flex justify-end">
-                        <button type="button" onClick={() => removeRow(o)} aria-label={`ลบ ${name}`} className={btn("dangerGhost", "sm")}>
-                          ลบ
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            <Card className="p-3">
-              <h2 className="mb-2 text-sm font-semibold">รวม {owned.length} รายการ</h2>
-              <div className="grid grid-cols-2 gap-2">
-                <Stat label="ต้นทุนรวม" value={totalCost ? silver(totalCost) : "-"} />
-                <Stat label="มูลค่าตลาด" value={priceProblem ? "-" : silver(totalValue)} emphasis />
+                          <div className="flex flex-wrap items-end gap-x-4 gap-y-2 sm:pl-11">
+                            <div className="grid min-w-0 flex-1 grid-cols-2 gap-3 sm:max-w-sm">
+                              <div className="min-w-0">
+                                <div aria-hidden className="mb-1 text-xs text-muted">
+                                  จำนวน
+                                </div>
+                                <NumberInput
+                                  ref={qtyBoxRef(`c-${o.id}`)}
+                                  min={0}
+                                  value={o.qty}
+                                  commitOnBlur
+                                  onChange={(v) => changeQty(o, v)}
+                                  aria-label={`จำนวน ${name}`}
+                                  className={fieldCls()}
+                                />
+                              </div>
+                              <div className="min-w-0">
+                                <div aria-hidden className="mb-1 text-xs text-muted">
+                                  ต้นทุน/ชิ้น
+                                </div>
+                                {o.avgCost === undefined ? (
+                                  <div className="flex min-h-10 min-w-0 items-center gap-1.5 md:min-h-9">
+                                    <span className="num min-w-0 truncate text-sm text-muted">
+                                      {/* the caption above is hidden from screen readers: say what this number is */}
+                                      <span className="sr-only">ต้นทุนต่อชิ้น {name} ตามตลาด </span>
+                                      {price ? silver(price) : "-"}
+                                    </span>
+                                    {/* the words are in the sr-only line already */}
+                                    <span aria-hidden className="shrink-0">
+                                      <Badge tone="info">ตามตลาด</Badge>
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <NumberInput
+                                    min={0}
+                                    value={o.avgCost}
+                                    commitOnBlur
+                                    onChange={(v) => setOwned(o.id, o.qty, v)}
+                                    aria-label={`ต้นทุนต่อชิ้น ${name}`}
+                                    className={fieldCls()}
+                                  />
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex w-full items-center justify-between gap-2 sm:ml-auto sm:w-auto">
+                              {o.avgCost === undefined ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setOwned(o.id, o.qty, price || 0)}
+                                  aria-label={`กำหนดเอง (ต้นทุน ${name})`}
+                                  className={btn("secondary", "sm")}
+                                  title="กำหนดต้นทุนที่จ่ายจริงเอง"
+                                >
+                                  กำหนดเอง
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setOwned(o.id, o.qty, null)}
+                                  aria-label={`ตามตลาด (ต้นทุน ${name})`}
+                                  className={btn("secondary", "sm")}
+                                  title="กลับไปใช้ราคาตลาดเสมอ"
+                                >
+                                  ตามตลาด
+                                </button>
+                              )}
+                              <button type="button" onClick={() => removeRow(o)} aria-label={`ลบ ${name}`} className={btn("dangerGhost", "sm")}>
+                                <Icon name="trash" className="h-4 w-4" />
+                                ลบ
+                              </button>
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
+              )}
+
+              {/* how the cost column works, and the actions on the whole list */}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-3 border-t border-border px-4 py-3">
+                <p className="min-w-0 flex-1 basis-72 text-xs text-muted">
+                  ต้นทุน/ชิ้น: &ldquo;ตามตลาด&rdquo; = ใช้ราคาตลาดปัจจุบันเสมอ (ค่าเริ่มต้น) · &ldquo;กำหนดเอง&rdquo; = ใส่ราคาที่จ่ายจริง ใช้คิดกำไรเมื่อตั้ง &ldquo;{OWNED_COST}&rdquo; เป็น
+                  &ldquo;{OWNED_COST_LABEL.avg}&rdquo; ใน{SETTINGS_TITLE} · ช่องจำนวน: พิมพ์แล้วกด Enter หรือคลิกออก
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {customCount > 0 && (
+                    <button type="button" onClick={allCostsToMarket} className={btn("ghost", "sm")} title="เปลี่ยนต้นทุนทุกรายการให้ใช้ราคาตลาดปัจจุบันเสมอ">
+                      ต้นทุนทั้งหมดตามตลาด
+                    </button>
+                  )}
+                  <button type="button" aria-haspopup="dialog" onClick={() => void clearAll()} className={btn("danger", "sm")}>
+                    <Icon name="trash" className="h-4 w-4" />
+                    ล้างทั้งหมด
+                  </button>
+                </div>
               </div>
             </Card>
-          </div>
-        </>
-      )}
-
-      <div className="mt-3 flex flex-wrap items-start gap-x-3 gap-y-2">
-        <p className="min-w-0 flex-1 basis-64 text-xs text-muted">
-          ต้นทุน/ชิ้น: &ldquo;ตามตลาด&rdquo; = ใช้ราคาตลาดปัจจุบันเสมอ (ค่าเริ่มต้น) · &ldquo;กำหนดเอง&rdquo; = ใส่ราคาที่จ่ายจริง ใช้คิดกำไรเมื่อตั้ง &ldquo;{OWNED_COST}&rdquo; เป็น
-          &ldquo;{OWNED_COST_LABEL.avg}&rdquo; ใน{SETTINGS_TITLE} · ช่องจำนวน: พิมพ์แล้วกด Enter หรือคลิกออก
-        </p>
-        {customCount > 0 && (
-          <button type="button" onClick={allCostsToMarket} className={btn("ghost", "sm")} title="เปลี่ยนต้นทุนทุกรายการให้ใช้ราคาตลาดปัจจุบันเสมอ">
-            ต้นทุนทั้งหมดตามตลาด
-          </button>
-        )}
-      </div>
-      {owned.length > 0 && (
-        <div className="mt-3 flex justify-end">
-          <button type="button" aria-haspopup="dialog" onClick={() => void clearAll()} className={btn("danger", "sm")}>
-            ล้างทั้งหมด
-          </button>
+          )}
         </div>
-      )}
-      <InventoryIdeasPanel />
+
+        <InventoryIdeasPanel />
+      </div>
     </Page>
+  );
+}
+
+/** A market price still on its way: a grey bar where the number will be, named for screen readers. */
+function PricePending() {
+  return (
+    <>
+      <span aria-hidden className="skeleton inline-block h-3 w-14 rounded-full align-middle" />
+      <span className="sr-only">กำลังโหลดราคา</span>
+    </>
   );
 }
