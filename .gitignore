@@ -48,4 +48,8 @@ scripts/.*.log
 
 # local PGlite database
 .data/
+
+# AI skill bundles installed locally (ui-ux-pro-max CLI), not part of the app
+/.claude/skills/
+/.agents/
 !.env.example
