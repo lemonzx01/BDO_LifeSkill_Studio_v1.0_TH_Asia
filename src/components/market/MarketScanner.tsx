@@ -508,7 +508,8 @@ export function MarketScanner({
           `มีประวัติแล้ว ${silver(withHistory)} ไอเท็ม`,
         ]}
         actions={
-          // forcing a whole-market refresh is for signed-in members; everyone gets the 5-minute updates
+          // forcing a whole-market refresh is for signed-in members; everyone gets the automatic
+          // refresh (at most every 15 minutes, AUTO_REFRESH_MS)
           user && (
             <button type="button" onClick={refresh} disabled={refreshing} className={btn("secondary")}>
               <Icon name={refreshing ? "loader" : "refresh"} className={refreshing ? "h-4 w-4 animate-spin" : "h-4 w-4"} />

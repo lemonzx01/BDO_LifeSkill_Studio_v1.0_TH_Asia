@@ -12,9 +12,9 @@ export const BRAND_LINE = APP_NAME.split(" by ")[0];
  * inner edge (the blood-moon hint) and a small four-point star in its curve.
  *
  * Only three places: next to the wordmark in the top bar, on the sign-in card, and on the loading
- * screen. Decorative by default (the brand name is written next to it); pass `label` where it
- * stands alone. `framed` sets it in a round panel disc with a faint gold ring, for the sign-in
- * card and the loading screen.
+ * screen (a plain 18px mark in the skeleton's top bar). Decorative by default (the brand name is
+ * written next to it); pass `label` where it stands alone. `framed` sets it in a round panel disc
+ * with a faint gold ring, for the sign-in card.
  */
 export function Emblem({
   size = 24,
